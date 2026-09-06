@@ -4137,6 +4137,20 @@ function show(next){
  if(active){
   el('onlineRecoveryEmailField').style.display=next==='request'?'':'none';
   el('onlineRecoveryPasswordFields').style.display=next==='password'?'block':'none';
+
+  // Only validate controls that belong to the currently visible recovery step.
+  // A hidden required email field can otherwise block the Update Password form
+  // before JavaScript receives the submit event.
+  const recoveryEmail=el('onlineRecoveryEmail');
+  const recoveryPassword=el('onlineRecoveryPassword');
+  const recoveryConfirm=el('onlineRecoveryConfirm');
+  recoveryEmail.required=next==='request';
+  recoveryEmail.disabled=next!=='request';
+  recoveryPassword.required=next==='password';
+  recoveryPassword.disabled=next!=='password';
+  recoveryConfirm.required=next==='password';
+  recoveryConfirm.disabled=next!=='password';
+
   el('onlineRecoveryTitle').textContent=next==='password'?'Choose a new password':'Reset your password';
   el('onlineRecoveryDescription').textContent=next==='password'?'Enter and confirm your new password.':'Enter your account email and we’ll send you a secure reset link.';
   el('onlineRecoverySubmit').textContent=next==='password'?'Update password':'Send reset link';
