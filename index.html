@@ -433,15 +433,43 @@ body.online-loading .app{visibility:hidden}
 @media(max-width:600px){.user-role-grid{grid-template-columns:1fr}}
 </style>
 
+
+<style id="finsight-password-recovery-css">
+#onlineRecoveryLink{display:block;margin:2px 0 0;text-align:right;font-size:11px}
+#onlineRecoveryPanel{display:none}
+#onlineRecoveryPanel.active{display:block}
+#onlineRecoveryPanel .online-login-actions{margin-top:14px}
+#onlineRecoveryMessage{font-size:11px;line-height:1.5;min-height:16px;margin-top:12px}
+#onlineRecoveryMessage.error{color:#b91c1c}
+#onlineRecoveryMessage.success{color:#15803d}
+#onlineRecoveryBack{margin-top:12px}
+</style>
 </head><body class="online-loading">
 <div id="onlineAuthGate">
   <div class="online-login-card">
     <div class="online-login-brand"><div class="logo">FI</div><div><h2>FinSight</h2><p>Management Intelligence · Online</p></div></div>
+    <div id="onlineLoginFields">
     <div class="field"><label>Email</label><input id="onlineEmail" class="input" type="email" autocomplete="username" placeholder="you@example.com"></div>
     <div class="field"><label>Password</label><input id="onlinePassword" class="input" type="password" autocomplete="current-password" placeholder="Password"></div>
+    <button type="button" class="link-btn" id="onlineRecoveryLink">Forgot password?</button>
     <div class="online-login-actions"><button class="btn primary" id="onlineLoginBtn">Sign In</button></div>
     <div class="online-error" id="onlineLoginError"></div>
     <div class="online-note">FinSight authenticates directly with Supabase. This HTML does not store your password.</div>
+    </div>
+  <div id="onlineRecoveryPanel" aria-live="polite">
+    <h3 id="onlineRecoveryTitle" style="margin:0 0 6px">Reset your password</h3>
+    <p id="onlineRecoveryDescription" class="online-note" style="margin:0 0 18px">Enter your account email and we’ll send you a secure reset link.</p>
+    <form id="onlineRecoveryForm">
+      <div class="field" id="onlineRecoveryEmailField"><label>Email</label><input id="onlineRecoveryEmail" class="input" type="email" autocomplete="email" required placeholder="you@example.com"></div>
+      <div id="onlineRecoveryPasswordFields" style="display:none">
+        <div class="field"><label>New password</label><input id="onlineRecoveryPassword" class="input" type="password" autocomplete="new-password" minlength="8" placeholder="At least 8 characters"></div>
+        <div class="field"><label>Confirm new password</label><input id="onlineRecoveryConfirm" class="input" type="password" autocomplete="new-password" minlength="8" placeholder="Confirm password"></div>
+      </div>
+      <div class="online-login-actions"><button class="btn primary" id="onlineRecoverySubmit" type="submit">Send reset link</button></div>
+    </form>
+    <div id="onlineRecoveryMessage" role="status"></div>
+    <button type="button" class="link-btn" id="onlineRecoveryBack">Back to login</button>
+  </div>
   </div>
 </div>
 <div id="onlineStatusBar" style="display:none"><span id="onlineStatusDot"></span><span id="onlineUser">Offline</span><button class="online-signout" id="onlineSignoutBtn">Sign out</button></div>
@@ -4085,6 +4113,97 @@ window.finsightRenderTrialBalance=renderTrial;
 </script>
 
 
+
+<script id="finsight-password-recovery">
+(function(){
+'use strict';
+const redirect='https://finsightmanagement.github.io/Finsight/';
+const el=id=>document.getElementById(id);
+let client=null,gate=null,mode='login',busy=false,recoverySession=false;
+const panel=()=>el('onlineRecoveryPanel');
+function message(text,error=false){
+ const box=el('onlineRecoveryMessage');box.textContent=text;box.className=error?'error':'success';
+}
+function show(next){
+ mode=next;
+ const active=next!=='login';
+ panel().classList.toggle('active',active);
+ el('onlineLoginFields').style.display=active?'none':'block';
+ el('onlineRecoveryLink').style.display=active?'none':'block';
+ ['onlineEmail','onlinePassword','onlineLoginBtn'].forEach(id=>el(id).disabled=active);
+ el('onlineAuthGate').classList.remove('hidden');
+ document.body.classList.remove('online-loading');
+ el('onlineStatusBar').style.display='none';
+ if(active){
+  el('onlineRecoveryEmailField').style.display=next==='request'?'':'none';
+  el('onlineRecoveryPasswordFields').style.display=next==='password'?'block':'none';
+  el('onlineRecoveryTitle').textContent=next==='password'?'Choose a new password':'Reset your password';
+  el('onlineRecoveryDescription').textContent=next==='password'?'Enter and confirm your new password.':'Enter your account email and we’ll send you a secure reset link.';
+  el('onlineRecoverySubmit').textContent=next==='password'?'Update password':'Send reset link';
+ }
+ message('');
+}
+async function finish(){
+ recoverySession=false;
+ await client.auth.signOut();
+ history.replaceState(null,'',location.pathname);
+ location.reload();
+}
+function attach(sb,authGate){
+ client=sb;gate=authGate;
+ el('onlineRecoveryLink').onclick=()=>{el('onlineRecoveryEmail').value=el('onlineEmail').value.trim();show('request')};
+ el('onlineRecoveryBack').onclick=async()=>{
+  if(busy)return;
+  if(recoverySession){await finish();return}
+  show('login');
+ };
+ el('onlineRecoveryForm').onsubmit=async e=>{
+  e.preventDefault();if(busy)return;
+  const btn=el('onlineRecoverySubmit');busy=true;btn.disabled=true;
+  const original=btn.textContent;btn.textContent='Please wait…';message('');
+  try{
+   if(mode==='request'){
+    const email=el('onlineRecoveryEmail').value.trim();
+    if(!email)throw new Error('Enter your email address.');
+    const {error}=await client.auth.resetPasswordForEmail(email,{redirectTo:redirect});
+    if(error)throw error;
+    message('If an account exists for this email, a password reset link will be sent. Check your inbox and spam folder.');
+   }else if(mode==='password'){
+    const password=el('onlineRecoveryPassword').value;
+    if(password.length<8)throw new Error('Use at least 8 characters.');
+    if(password!==el('onlineRecoveryConfirm').value)throw new Error('The passwords do not match.');
+    const {error}=await client.auth.updateUser({password});
+    if(error)throw error;
+    message('Password updated successfully. Returning to login…');
+    await new Promise(resolve=>setTimeout(resolve,1400));
+    await finish();
+   }
+  }catch(err){message(err.message||'Unable to complete password reset.',true)}
+  finally{busy=false;btn.disabled=false;btn.textContent=original}
+ };
+ const params=new URLSearchParams(location.search),hash=new URLSearchParams(location.hash.slice(1));
+ const recovery=params.get('type')==='recovery'||hash.get('type')==='recovery'||hash.has('error')||params.has('error');
+ if(recovery){
+  recoverySession=true;show('password');
+  if(hash.has('error')||params.has('error')){
+   recoverySession=false;show('request');
+   message(hash.get('error_description')||params.get('error_description')||'This reset link is invalid or expired. Request a new one.',true);
+  }else{
+   message('Verifying your reset link…');
+   client.auth.getSession().then(({data,error})=>{
+    if(error||!data.session){show('request');message('This reset link is invalid or expired. Request a new one.',true)}
+    else message('Your reset link is verified. Choose a new password.');
+   });
+  }
+ }
+ client.auth.onAuthStateChange((event)=>{
+  if(event==='PASSWORD_RECOVERY'){recoverySession=true;show('password');message('Your reset link is verified. Choose a new password.')}
+ });
+}
+window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySession};
+})();
+</script>
+
 <script id="finsight-supabase-online">
 (function(){
   'use strict';
@@ -4235,8 +4354,9 @@ window.finsightRenderTrialBalance=renderTrial;
   window.finsightReloadCloudState=loadCloudState;
   async function signIn(){errEl.textContent='';loginBtn.disabled=true;loginBtn.textContent='Signing in…';try{const email=emailEl.value.trim(),password=passEl.value;if(!email||!password)throw new Error('Enter your email and password.');const {error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;await loadCloudState()}catch(e){fail(e.message||String(e))}finally{loginBtn.disabled=false;loginBtn.textContent='Sign In'}}
   loginBtn.addEventListener('click',signIn);passEl.addEventListener('keydown',e=>{if(e.key==='Enter')signIn()});signoutBtn.addEventListener('click',async()=>{await sb.auth.signOut();location.reload()});
+  if(window.finsightPasswordRecovery)window.finsightPasswordRecovery.attach(sb,gate);
   window.FINSIGHT_ONLINE_PHASE1=true;
-  (async()=>{try{const {data:{session}}=await sb.auth.getSession();if(session){gate.classList.remove('hidden');errEl.style.color='#475569';errEl.textContent='Signing you in…';loginBtn.disabled=true;emailEl.disabled=true;passEl.disabled=true;await loadCloudState();}else{document.body.classList.remove('online-loading');gate.classList.remove('hidden');statusBar.style.display='none'}}catch(e){document.body.classList.remove('online-loading');gate.classList.remove('hidden');fail(e.message||String(e))}})();
+  (async()=>{try{const {data:{session}}=await sb.auth.getSession();if(session && !window.finsightPasswordRecovery?.isActive()){gate.classList.remove('hidden');errEl.style.color='#475569';errEl.textContent='Signing you in…';loginBtn.disabled=true;emailEl.disabled=true;passEl.disabled=true;await loadCloudState();}else{document.body.classList.remove('online-loading');gate.classList.remove('hidden');statusBar.style.display='none'}}catch(e){document.body.classList.remove('online-loading');gate.classList.remove('hidden');fail(e.message||String(e))}})();
 })();
 </script>
 
