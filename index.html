@@ -4503,10 +4503,12 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
   async function lookupByName(table,name){
     const sb=window.finsightSupabase, online=window.finsightOnline||{};
     if(!sb||!online.companyId)throw new Error('FinSight cloud connection is not ready.');
-    const {data,error}=await sb.from(table).select('*').eq('company_id',online.companyId).eq('name',name).limit(1);
+    const wanted=String(name||'').trim().toLowerCase();
+    const {data,error}=await sb.from(table).select('*').eq('company_id',online.companyId);
     if(error)throw error;
-    if(!data?.length)throw new Error(`${name} was not found in ${table.replaceAll('_',' ')}.`);
-    return data[0];
+    const match=(data||[]).find(row=>String(row.name||'').trim().toLowerCase()===wanted);
+    if(!match)throw new Error(`${name} was not found in ${table.replaceAll('_',' ')}.`);
+    return match;
   }
 
   function accountIdByName(name){
@@ -5892,6 +5894,115 @@ document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(apply,20)
 document.addEventListener('DOMContentLoaded',()=>setTimeout(apply,50));
 setTimeout(apply,800);
 setTimeout(apply,1800);
+})();
+</script>
+
+
+
+<script id="finsight-v18-4-3-supplier-bill-fix">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+async function addSupplierFromBill(){
+  const sb=window.finsightSupabase, cid=window.finsightOnline?.companyId;
+  if(!sb||!cid)return toast('FinSight cloud connection is not ready.');
+
+  closeModal();
+  openModal('Add Supplier','This supplier will be saved online and will be immediately available on supplier invoices.',
+    `<div class="field"><label>Supplier Name</label>
+       <input id="billCloudSupplierName" class="input" placeholder="e.g. Naivas">
+     </div>
+     <div id="billCloudSupplierMsg" class="small-note" style="margin-top:10px"></div>
+     <div class="modal-actions">
+       <button class="btn" id="billCloudSupplierCancel" type="button">Cancel</button>
+       <button class="btn primary" id="billCloudSupplierSave" type="button">Add Supplier</button>
+     </div>`);
+
+  q('#billCloudSupplierCancel').onclick=()=>{closeModal();window.openBill?.()};
+  q('#billCloudSupplierSave').onclick=async()=>{
+    const input=q('#billCloudSupplierName');
+    const name=input.value.trim();
+    if(!name)return toast('Enter supplier name');
+    const btn=q('#billCloudSupplierSave'),msg=q('#billCloudSupplierMsg');
+    btn.disabled=true;btn.textContent='Adding…';msg.textContent='';
+
+    try{
+      // First check the actual online supplier table for a normalized match.
+      const {data:existing,error:readErr}=await sb.from('suppliers')
+        .select('id,name,is_active')
+        .eq('company_id',cid);
+      if(readErr)throw readErr;
+
+      const found=(existing||[]).find(x=>
+        String(x.name||'').trim().toLowerCase()===name.toLowerCase()
+      );
+
+      if(found){
+        // If it already exists but was inactive, reactivate it.
+        if(found.is_active===false){
+          const {error:updateErr}=await sb.from('suppliers')
+            .update({is_active:true})
+            .eq('company_id',cid).eq('id',found.id);
+          if(updateErr)throw updateErr;
+        }
+      }else{
+        const {error:insertErr}=await sb.from('suppliers')
+          .insert({company_id:cid,name,is_active:true});
+        if(insertErr)throw insertErr;
+      }
+
+      if(typeof window.finsightReloadCloudState==='function'){
+        await window.finsightReloadCloudState();
+      }
+
+      closeModal();
+      window.openBill?.();
+
+      // Select the supplier we just added after the form is rebuilt.
+      setTimeout(()=>{
+        const select=q('#bSupplier');
+        if(!select)return;
+        const option=[...select.options].find(o=>
+          String(o.textContent||o.value).trim().toLowerCase()===name.toLowerCase()
+        );
+        if(option)select.value=option.value;
+      },80);
+
+      toast(`${name} is ready for supplier invoices`);
+    }catch(e){
+      console.error('[FinSight] Supplier add from bill failed',e);
+      msg.textContent=e?.message||'Unable to add supplier online.';
+      msg.style.color='#b91c1c';
+      btn.disabled=false;btn.textContent='Add Supplier';
+    }
+  };
+}
+
+function patchBillForm(){
+  const add=q('#bAddSupplier');
+  if(add && !add.dataset.cloudBound){
+    add.dataset.cloudBound='1';
+    add.onclick=(e)=>{e.preventDefault();addSupplierFromBill()};
+  }
+}
+
+document.addEventListener('click',e=>{
+  if(e.target.closest('#newBillBtn'))setTimeout(patchBillForm,30);
+});
+document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(patchBillForm,30));
+
+const oldOpenBill=window.openBill;
+if(typeof oldOpenBill==='function'){
+  window.openBill=function(){
+    const out=oldOpenBill.apply(this,arguments);
+    setTimeout(patchBillForm,30);
+    return out;
+  };
+  const b=q('#newBillBtn');if(b)b.onclick=window.openBill;
+}
+setTimeout(patchBillForm,800);
 })();
 </script>
 
