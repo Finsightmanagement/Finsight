@@ -504,7 +504,7 @@ body.online-loading .app{visibility:hidden}
 <main class="main">
 <div class="topbar">
   <div class="title"><h2 id="pageTitle">Executive Dashboard</h2><p id="pageSub">Sales performance, item analysis and bank position.</p></div>
-  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.4.3 Online</div>
+  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.5.1 Audited</div>
 </div>
 
 <section class="page active" id="dashboard">
@@ -7509,6 +7509,203 @@ document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(bind,250)
 document.addEventListener('DOMContentLoaded',()=>setTimeout(bind,1100));
 setTimeout(bind,1800);
 setTimeout(bind,3200);
+})();
+</script>
+
+
+<style id="finsight-v18-5-5-rebuild-css">
+#dashboardTo[readonly]{background:#f8fafc;color:#64748b;cursor:not-allowed}
+.payment-v1855{width:100%;border-collapse:collapse}.payment-v1855 th,.payment-v1855 td{padding:11px 12px;border-bottom:1px solid var(--line)}.payment-v1855 th{background:#f8fafc;text-align:left}.payment-v1855 th:nth-child(n+2),.payment-v1855 td:nth-child(n+2){text-align:right}.payment-v1855 .subtotal td{font-weight:900;border-top:2px solid #cbd5e1}
+.category-bar-chart{display:grid;gap:11px}.category-bar-row{display:grid;grid-template-columns:minmax(110px,180px) 1fr minmax(100px,140px);gap:10px;align-items:center}.category-bar-track{height:14px;background:#eef2f7;border-radius:999px;overflow:hidden}.category-bar-fill{height:100%;background:linear-gradient(90deg,#4f46e5,#06b6d4);border-radius:999px}.category-bar-value{text-align:right;font-weight:800;font-size:11px}.category-bar-name{font-size:11px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cogs-v1855-bar{display:flex;gap:10px;align-items:end;flex-wrap:wrap}.cogs-v1855-bar .field{min-width:170px}.inventory-recon-table{min-width:860px}.recon-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}.stock-remove-v1855{min-width:36px!important;font-size:18px!important;line-height:1!important}.recon-note{padding:10px 12px;background:#eff6ff;color:#1e40af;border:1px solid #dbeafe;border-radius:10px;font-size:10px;margin-top:10px}
+@media(max-width:700px){.category-bar-row{grid-template-columns:1fr}.category-bar-value{text-align:left}}
+</style>
+<script id="finsight-v18-5-5-rebuild-final">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s),qa=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num=v=>Number(v||0), money=v=>typeof fmt==='function'?fmt(num(v)):'KSh '+num(v).toLocaleString('en-KE',{maximumFractionDigits:2});
+const iso=d=>d.toISOString().slice(0,10), addDays=(ds,n)=>{const d=new Date(ds+'T12:00:00');d.setDate(d.getDate()+n);return iso(d)};
+const label=ds=>{try{return new Date(ds+'T12:00:00').toLocaleDateString(undefined,{day:'2-digit',month:'short'})}catch(_){return ds}};
+const cid=()=>window.finsightOnline?.companyId||null;
+async function rpc(name,args){const sb=window.finsightSupabase;if(!sb)throw new Error('Supabase is not connected.');const {data,error}=await sb.rpc(name,args);if(error)throw error;return data}
+function activePage(id){return q('#'+id)?.classList.contains('active')}
+
+/* DASHBOARD: one selected start date always means exactly seven days. */
+function dashboardBounds(){
+  const f=q('#dashboardFrom')?.value||state.dashboardSummary?.latestSalesDate||iso(new Date());
+  const t=addDays(f,6);
+  if(q('#dashboardFrom')&&!q('#dashboardFrom').value)q('#dashboardFrom').value=f;
+  if(q('#dashboardTo')){q('#dashboardTo').value=t;q('#dashboardTo').readOnly=true;q('#dashboardTo').title='Automatically set to six days after Start Date';}
+  return {f,t};
+}
+function sevenDaySales(){const {f,t}=dashboardBounds();return {f,t,sales:(state.sales||[]).filter(x=>x.date>=f&&x.date<=t),items:(state.saleItems||[]).filter(x=>x.date>=f&&x.date<=t)}}
+function renderSevenDayGraph(){
+  const svg=q('#salesSvg'),labels=q('#salesLabels'),title=q('#dashboardDailySalesTitle');if(!svg||!labels)return;
+  const {f,t,sales}=sevenDaySales(),days=Array.from({length:7},(_,i)=>addDays(f,i)),vals=days.map(d=>sales.filter(x=>x.date===d).reduce((a,b)=>a+num(b.amount),0)),mx=Math.max(...vals,1),W=720,L=28,R=22,B=188,step=(W-L-R)/6;
+  if(title)title.textContent=`Daily Sales · ${label(f)} – ${label(t)}`;
+  const pts=vals.map((v,i)=>`${L+i*step},${B-(v/mx)*145}`).join(' ');
+  svg.innerHTML=`<svg viewBox="0 0 ${W} 210" preserveAspectRatio="none"><line class="chart-axis" x1="${L}" y1="${B}" x2="${W-R}" y2="${B}"/><polyline class="chart-line" points="${pts}"/>${vals.map((v,i)=>{const x=L+i*step,y=B-(v/mx)*145;return `<circle class="chart-dot" cx="${x}" cy="${y}" r="5"><title>${esc(label(days[i]))}: ${esc(money(v))}</title></circle><text x="${x}" y="${Math.max(14,y-10)}" text-anchor="middle" font-size="10" font-weight="700" fill="#374151">${v?esc(Math.round(v).toLocaleString()):''}</text>`}).join('')}</svg>`;
+  labels.style.minWidth='';labels.innerHTML=days.map(d=>`<span>${esc(label(d))}</span>`).join('');
+}
+function renderPaymentTableV1855(){
+  const box=q('#salesAnalysis');if(!box)return;const {f,t,sales}=sevenDaySales();
+  const types=[...new Set([...(state.paymentTypes||[]),...sales.map(x=>x.paymentType).filter(Boolean)])];
+  const rows=types.map(pt=>({pt,total:sales.filter(x=>x.paymentType===pt).reduce((a,b)=>a+num(b.amount),0)})).filter(x=>x.total!==0),grand=rows.reduce((a,b)=>a+b.total,0);
+  box.innerHTML=`<div style="overflow:auto"><table class="payment-v1855"><thead><tr><th>Payment Type</th><th>Sales Amount</th><th>% of Sales</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td><b>${esc(r.pt)}</b></td><td>${money(r.total)}</td><td>${grand?(r.total/grand*100).toFixed(1):'0.0'}%</td></tr>`).join(''):'<tr><td colspan="3"><div class="empty-state">No sales in this seven-day period.</div></td></tr>'}<tr class="subtotal"><td>Total Sales</td><td>${money(grand)}</td><td>${grand?'100.0':'0.0'}%</td></tr></tbody></table></div>`;
+  if(q('#paymentMixPeriod'))q('#paymentMixPeriod').textContent=`${label(f)} – ${label(t)}`;
+}
+function renderCategoryFresh(){
+  const {f,t,items}=sevenDaySales(),cats={};items.forEach(x=>{const k=String(x.category||'Uncategorised').trim()||'Uncategorised';cats[k]=(cats[k]||0)+num(x.revenue)});
+  const rows=Object.entries(cats).sort((a,b)=>b[1]-a[1]),mx=Math.max(...rows.map(x=>x[1]),1),tot=rows.reduce((a,b)=>a+b[1],0);
+  let host=q('#categoryBarChart');
+  if(!host){const pie=q('#categoryPie'),legend=q('#categoryLegend'),wrap=pie?.parentElement||legend?.parentElement;if(!wrap)return;wrap.classList.remove('pie-wrap');wrap.innerHTML='<div id="categoryBarChart" class="category-bar-chart"></div>';host=q('#categoryBarChart')}
+  host.innerHTML=rows.length?rows.map(([name,val])=>`<div class="category-bar-row"><div class="category-bar-name" title="${esc(name)}">${esc(name)}</div><div class="category-bar-track"><div class="category-bar-fill" style="width:${Math.max(1,val/mx*100)}%"></div></div><div class="category-bar-value">${money(val)}<div class="small-note">${tot?(val/tot*100).toFixed(1):'0.0'}%</div></div></div>`).join(''):'<div class="empty-state">No category sales for this company in this seven-day period.</div>';
+}
+let dashPainting=false;
+function renderDashboardV1855(){if(dashPainting||!activePage('dashboard'))return;dashPainting=true;try{dashboardBounds();renderSevenDayGraph();renderPaymentTableV1855();renderCategoryFresh()}finally{dashPainting=false}}
+function stabilizeDashboard(){
+  let paymentHost=q('#salesAnalysis');
+  if(paymentHost?.dataset.paymentObserver){const fresh=paymentHost.cloneNode(false);fresh.id='salesAnalysis';paymentHost.replaceWith(fresh);paymentHost=fresh;}
+  const from=q('#dashboardFrom'),to=q('#dashboardTo'),month=q('#dashboardMonthBtn');
+  if(from){const fld=from.closest('.field');const lab=fld?.querySelector('label');if(lab)lab.textContent='Start Date';if(!from.dataset.v1855){from.dataset.v1855='1';from.addEventListener('change',()=>{dashboardBounds();setTimeout(renderDashboardV1855,120)})}}
+  if(to){const lab=to.closest('.field')?.querySelector('label');if(lab)lab.textContent='End Date (Auto)';to.readOnly=true}
+  if(month)month.style.display='none';
+  const apply=q('#applyDashboardDates');if(apply&&!apply.dataset.v1855){apply.dataset.v1855='1';apply.addEventListener('click',()=>setTimeout(renderDashboardV1855,180),true)}
+  const todayBtn=q('#dashboardTodayBtn');if(todayBtn&&!todayBtn.dataset.v1855){todayBtn.dataset.v1855='1';todayBtn.addEventListener('click',()=>{if(from)from.value=iso(new Date());dashboardBounds();setTimeout(renderDashboardV1855,180)},true)}
+  const pay=q('#salesAnalysis');if(pay&&!pay.dataset.v1855observer){pay.dataset.v1855observer='1';new MutationObserver(()=>{if(!dashPainting&&pay.querySelector('.payment-total-grid'))setTimeout(renderPaymentTableV1855,0)}).observe(pay,{childList:true,subtree:true})}
+  renderDashboardV1855();
+}
+
+/* INVENTORY: arbitrary COGS dates + grouped stock reconciliations. */
+const inv={start:'',end:'',detail:[],summary:{},posting:null};
+function summaryObj(d){return Array.isArray(d)?(d[0]||{}):(d||{})}
+function val(o,...ks){for(const k of ks)if(o&&o[k]!=null&&o[k]!=='')return num(o[k]);return 0}
+async function loadCogsPosting(start,end){const {data,error}=await window.finsightSupabase.from('cogs_period_postings').select('*').eq('company_id',cid()).eq('period_start',start).eq('period_end',end).limit(1);if(error)throw error;return data?.[0]||null}
+function renderCogsRows(){
+  const body=q('#inventoryTable');if(!body)return;const rows=inv.detail||[];
+  body.innerHTML=rows.length?rows.map(r=>{const name=r.item_name||r.stock_item_name||r.name||'Stock Item',oq=val(r,'opening_qty','opening_quantity'),oc=val(r,'opening_unit_cost','opening_cost'),pq=val(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=val(r,'purchases','purchase_value','purchases_value'),wac=val(r,'average_cost','weighted_average_cost','wac'),cq=val(r,'closing_qty','closing_quantity'),cc=val(r,'closing_unit_cost','closing_cost','closing_wac')||wac,cv=val(r,'closing_value','closing_stock_value')||(cq*cc),cogs=val(r,'consumption','cost_of_sales','cogs','consumption_value');return `<tr><td><b>${esc(name)}</b></td><td>${oq.toFixed(3)}</td><td>${money(oc)}</td><td>${pq.toFixed(3)}</td><td>${money(pv)}</td><td>${money(wac)}</td><td>${cq.toFixed(3)}</td><td>${money(cc)}</td><td>${money(cv)}</td><td><b>${money(cogs)}</b></td></tr>`}).join(''):'<tr><td colspan="10"><div class="empty-state">No inventory activity for this period.</div></td></tr>';
+}
+function renderCogsStatus(){const h=q('#cogsPostingStatus'),b=q('#postCogsPeriodBtn');if(!h)return;const c=val(inv.summary,'cost_of_sales','calculated_cogs','cogs');if(inv.posting){h.className='cogs-status-card posted';h.innerHTML=`<b>Period already posted</b><div class="small-note">${esc(inv.start)} to ${esc(inv.end)} · Current calculated COGS ${money(c)}</div>`;if(b){b.disabled=true;b.textContent='COGS Already Posted'}}else{h.className='cogs-status-card';h.innerHTML=`<b>Period not posted</b><div class="small-note">Review opening stock, purchases and closing stock for ${esc(inv.start)} to ${esc(inv.end)}.</div>`;if(b){b.disabled=false;b.textContent='Post Period COGS'}}}
+async function refreshInventoryV1855(){
+  const f=q('#cogsFrom')?.value,t=q('#cogsTo')?.value;if(!cid()||!f||!t)return;if(f>t)return toast('COGS From date cannot be after To date.');inv.start=f;inv.end=t;
+  q('#inventoryTable').innerHTML='<tr><td colspan="10"><div class="empty-state">Loading live COGS…</div></td></tr>';
+  try{const [d,s,p]=await Promise.all([rpc('get_cogs_report',{p_company_id:cid(),p_start_date:f,p_end_date:t}),rpc('get_cogs_period_summary',{p_company_id:cid(),p_start_date:f,p_end_date:t}),loadCogsPosting(f,t)]);inv.detail=d||[];inv.summary=summaryObj(s);inv.posting=p;q('#openingVal').textContent=money(val(inv.summary,'opening_stock','opening_stock_value'));q('#purchVal').textContent=money(val(inv.summary,'purchases','purchase_value'));q('#closingVal').textContent=money(val(inv.summary,'closing_stock','closing_stock_value'));q('#calcCogs').textContent=money(val(inv.summary,'cost_of_sales','calculated_cogs','cogs'));renderCogsRows();renderCogsStatus();}catch(e){q('#inventoryTable').innerHTML=`<tr><td colspan="10"><div class="empty-state">${esc(e.message||String(e))}</div></td></tr>`;toast(e.message||String(e))}
+}
+async function postCogsV1855(){if(inv.posting)return toast('This exact COGS period is already posted.');const invAcc=(state.accounts||[]).find(a=>a.active!==false&&String(a.sub||'').toLowerCase()==='inventory'),cogsAcc=(state.accounts||[]).find(a=>a.active!==false&&(['cost of sales','cogs'].includes(String(a.type||'').toLowerCase())||String(a.sub||'').toLowerCase()==='cogs'));if(!invAcc||!cogsAcc)return toast('Inventory and Cost of Sales accounts are required.');if(!confirm(`Post COGS for ${inv.start} to ${inv.end}?`))return;const b=q('#postCogsPeriodBtn');b.disabled=true;try{await rpc('post_cogs_period',{p_company_id:cid(),p_period_start:inv.start,p_period_end:inv.end,p_inventory_account_id:invAcc.id,p_cogs_account_id:cogsAcc.id,p_reference:`COGS ${inv.start} to ${inv.end}`,p_memo:'Posted from FinSight Inventory & COGS'});toast('COGS period posted');await refreshInventoryV1855()}catch(e){toast(e.message||String(e));b.disabled=false}}
+function stockItems(){return state.stockItems||[]}
+function openReconciliation(existing=null,type='closing'){
+  const items=stockItems();if(!items.length)return toast('Add a Purchase / Recipe Item first.');const editing=!!existing,kind=existing?.reconciliation_type||type,date=existing?.stock_date||(kind==='opening'?inv.start:inv.end)||iso(new Date()),lines=existing?.inventory_reconciliation_lines||[];
+  openModal(editing?'Edit Inventory Reconciliation':'Inventory Reconciliation',editing?existing.reconciliation_no:'Remove any item you do not want to count using × before saving.',`<div class="form-grid"><div class="field"><label>Type</label><select class="input" id="irType"><option value="closing">Closing Stock</option><option value="opening">Opening Stock</option></select></div><div class="field"><label>Stock Date</label><input class="input" id="irDate" type="date" value="${esc(date)}"></div><div class="field full"><label>Notes</label><input class="input" id="irNotes" value="${esc(existing?.notes||'')}" placeholder="Optional stock-take note"></div></div><div class="recon-note">This saves as one reconciliation. Chicken, buns, chips and the other counted items remain inside the same reconciliation number.</div><div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Stock Item</th><th>Quantity</th><th>Unit Cost</th><th>Value</th><th></th></tr></thead><tbody id="irLines"></tbody></table></div><button class="btn" type="button" id="irAdd">+ Add Item</button><div class="modal-actions"><button class="btn primary" type="button" id="irSave">${editing?'Save Changes':'Save Reconciliation'}</button></div>`);
+  q('#irType').value=kind;const tb=q('#irLines');
+  const add=line=>{line=line||{};const tr=document.createElement('tr');tr.innerHTML=`<td><select class="input iri">${items.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></td><td><input class="input irq" type="number" min="0" step="0.001" value="${num(line.quantity)}"></td><td><input class="input irc" type="number" min="0" step="0.01" value="${num(line.unit_cost)}"></td><td class="irv">${money(num(line.quantity)*num(line.unit_cost))}</td><td><button class="btn stock-remove-v1855" type="button" title="Remove item">×</button></td>`;tb.appendChild(tr);if(line.stock_item_id)q('.iri',tr).value=line.stock_item_id;const calc=()=>q('.irv',tr).textContent=money(num(q('.irq',tr).value)*num(q('.irc',tr).value));q('.irq',tr).oninput=calc;q('.irc',tr).oninput=calc;q('.stock-remove-v1855',tr).onclick=e=>{e.preventDefault();e.stopPropagation();tr.remove()};};
+  if(lines.length)lines.forEach(add);else items.forEach(x=>add({stock_item_id:x.id,quantity:0,unit_cost:0}));q('#irAdd').onclick=()=>add();
+  q('#irSave').onclick=async()=>{const rows=qa('#irLines tr').map(r=>({stock_item_id:q('.iri',r).value,quantity:num(q('.irq',r).value),unit_cost:num(q('.irc',r).value)}));if(!q('#irDate').value)return toast('Choose the stock date.');if(!rows.length)return toast('Keep at least one stock item.');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same stock item cannot appear twice.');if(rows.some(x=>x.quantity<0||x.unit_cost<0))return toast('Quantity and unit cost cannot be negative.');const b=q('#irSave');b.disabled=true;b.textContent='Saving…';try{await rpc('save_inventory_reconciliation',{p_company_id:cid(),p_reconciliation_id:existing?.id||null,p_type:q('#irType').value,p_stock_date:q('#irDate').value,p_notes:q('#irNotes').value||null,p_lines:rows});closeModal();await window.finsightReloadCloudState?.();await refreshInventoryV1855();await loadReconciliations();toast(editing?'Reconciliation updated':'Reconciliation saved')}catch(e){toast(e.message||String(e));b.disabled=false;b.textContent=editing?'Save Changes':'Save Reconciliation'}};
+}
+async function loadReconciliations(){
+  const host=q('#inventoryReconHistory');if(!host||!cid())return;const sb=window.finsightSupabase;const {data,error}=await sb.from('inventory_reconciliations').select('id,reconciliation_no,reconciliation_type,stock_date,notes,created_at,inventory_reconciliation_lines(id,stock_item_id,quantity,unit_cost)').eq('company_id',cid()).order('stock_date',{ascending:false}).order('created_at',{ascending:false});if(error){host.innerHTML=`<div class="empty-state">${esc(error.message)}</div>`;return}const rows=data||[];
+  host.innerHTML=rows.length?`<div style="overflow:auto"><table class="inventory-recon-table"><thead><tr><th>Reconciliation No.</th><th>Date</th><th>Type</th><th>Items Counted</th><th>Total Value</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows.map(r=>{const ls=r.inventory_reconciliation_lines||[],total=ls.reduce((a,x)=>a+num(x.quantity)*num(x.unit_cost),0);return `<tr><td><b>${esc(r.reconciliation_no)}</b></td><td>${esc(r.stock_date)}</td><td>${esc(r.reconciliation_type==='opening'?'Opening Stock':'Closing Stock')}</td><td>${ls.length}</td><td>${money(total)}</td><td>${esc(r.notes||'—')}</td><td><div class="recon-actions"><button class="mini-btn" type="button" data-ir-edit="${r.id}">Edit</button><button class="mini-btn danger" type="button" data-ir-delete="${r.id}">Delete</button></div></td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty-state">No grouped inventory reconciliations posted yet.</div>';
+  qa('[data-ir-edit]',host).forEach(b=>b.onclick=()=>openReconciliation(rows.find(x=>x.id===b.dataset.irEdit)));
+  qa('[data-ir-delete]',host).forEach(b=>b.onclick=async()=>{const r=rows.find(x=>x.id===b.dataset.irDelete);if(!confirm(`Delete ${r?.reconciliation_no||'this reconciliation'}? This also removes the stock count saved by this reconciliation.`))return;try{await rpc('delete_inventory_reconciliation',{p_company_id:cid(),p_reconciliation_id:b.dataset.irDelete});await window.finsightReloadCloudState?.();await refreshInventoryV1855();await loadReconciliations();toast('Reconciliation deleted')}catch(e){toast(e.message||String(e))}})
+}
+window.renderInventory=function(){
+  const sec=q('#inventory');if(!sec)return;const now=iso(new Date()),start=now.slice(0,8)+'01';
+  sec.innerHTML=`<div class="section-title"><div><h3>Inventory & Cost of Sales</h3><div class="small-note">Choose any COGS period. Stock-taking is grouped into numbered inventory reconciliations.</div></div><div class="cogs-actions"><button class="btn" id="stockItemsBtn">Purchase / Recipe Items</button><button class="btn" id="recipeManagerBtn">Menu Items & Recipes</button><button class="btn" id="openingStockBtn">Opening Stock</button><button class="btn primary" id="closingStockBtn">Closing Stock</button></div></div><div class="card panel"><div class="cogs-v1855-bar"><div class="field"><label>COGS From</label><input class="input" id="cogsFrom" type="date" value="${start}"></div><div class="field"><label>COGS To</label><input class="input" id="cogsTo" type="date" value="${now}"></div><button class="btn" id="refreshCogsBtn">Refresh COGS</button><button class="btn primary" id="postCogsPeriodBtn">Post Period COGS</button></div><div id="cogsPostingStatus" class="cogs-status-card" style="margin-top:12px"></div></div><div class="grid kpis" style="margin-top:16px"><div class="card kpi"><div class="label">Opening Stock</div><div class="value" id="openingVal">KSh 0</div></div><div class="card kpi"><div class="label">Inventory Purchases</div><div class="value" id="purchVal">KSh 0</div></div><div class="card kpi"><div class="label">Closing Stock</div><div class="value" id="closingVal">KSh 0</div></div><div class="card kpi"><div class="label">Calculated COGS</div><div class="value" id="calcCogs">KSh 0</div></div></div><div class="card table-card" style="overflow:auto"><table class="cogs-live-table"><thead><tr><th>Item</th><th>Opening Qty</th><th>Opening Unit Cost</th><th>Purchase Qty</th><th>Purchases</th><th>Average Cost</th><th>Closing Qty</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Consumption / COGS</th></tr></thead><tbody id="inventoryTable"></tbody></table></div><div class="section-title" style="margin-top:18px"><div><h3>Inventory Reconciliations</h3><div class="small-note">One row represents one complete stock-taking exercise.</div></div></div><div class="card table-card" id="inventoryReconHistory"><div class="empty-state">Loading reconciliations…</div></div>`;
+  q('#refreshCogsBtn').onclick=refreshInventoryV1855;q('#cogsFrom').onchange=refreshInventoryV1855;q('#cogsTo').onchange=refreshInventoryV1855;q('#postCogsPeriodBtn').onclick=postCogsV1855;q('#openingStockBtn').onclick=()=>openReconciliation(null,'opening');q('#closingStockBtn').onclick=()=>openReconciliation(null,'closing');q('#stockItemsBtn').onclick=()=>typeof manageSimpleList==='function'?manageSimpleList('stock'):toast('Stock item manager unavailable');q('#recipeManagerBtn').onclick=()=>typeof window.openRecipeManager==='function'?window.openRecipeManager():toast('Recipe manager is unavailable.');
+  refreshInventoryV1855();loadReconciliations();setTimeout(()=>{try{if(typeof window.ensureInventoryExtensions==='function')window.ensureInventoryExtensions()}catch(_){}},150);
+};
+
+function boot(){stabilizeDashboard();if(activePage('inventory'))setTimeout(()=>window.renderInventory(),120)}
+document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(boot,450));
+document.addEventListener('click',e=>{if(e.target.closest('[data-page="dashboard"]'))setTimeout(stabilizeDashboard,500);if(e.target.closest('[data-page="inventory"]'))setTimeout(()=>window.renderInventory(),500)});
+setTimeout(boot,3000);setTimeout(stabilizeDashboard,3800);
+})();
+</script>
+
+
+<script id="finsight-v18-5-5-variance-preserve">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s),esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),n=v=>Number(v||0),money=v=>typeof fmt==='function'?fmt(n(v)):'KSh '+n(v).toLocaleString('en-KE',{maximumFractionDigits:2});
+function latest(rows,item,date,from=''){return (rows||[]).filter(x=>x.item===item&&(!date||x.date<=date)&&(!from||x.date>=from)).sort((a,b)=>String(a.date).localeCompare(String(b.date))).slice(-1)[0]}
+function purchaseQty(item,f,t){let qty=0;(state.bills||[]).filter(b=>(!f||b.date>=f)&&(!t||b.date<=t)).forEach(b=>(b.lines||[]).forEach(l=>{if(String(l.item||l.desc||'').trim().toLowerCase()===String(item).trim().toLowerCase())qty+=n(l.qty)}));return qty}
+async function varianceData(f,t){
+ const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;if(!sb||!cid)return {menu:[],recipes:[]};
+ const [m,r]=await Promise.all([sb.from('menu_items').select('id,name').eq('company_id',cid).eq('is_active',true),sb.from('recipe_lines').select('menu_item_id,stock_item_id,quantity_per_sale').eq('company_id',cid)]);if(m.error)throw m.error;if(r.error)throw r.error;return {menu:m.data||[],recipes:r.data||[]};
+}
+async function renderVariance(){
+ const host=q('#varianceRowsV1855');if(!host)return;const f=q('#varianceFromV1855')?.value||'',t=q('#varianceToV1855')?.value||'';if(f&&t&&f>t)return toast('Variance From date cannot be after To date.');host.innerHTML='<tr><td colspan="10"><div class="empty-state">Loading variance…</div></td></tr>';
+ try{const {menu,recipes}=await varianceData(f,t),menuByName=new Map(menu.map(x=>[String(x.name).trim().toLowerCase(),x.id])),theoByStock={};(state.saleItems||[]).filter(x=>(!f||x.date>=f)&&(!t||x.date<=t)).forEach(s=>{const mid=menuByName.get(String(s.item||'').trim().toLowerCase());if(!mid)return;recipes.filter(r=>r.menu_item_id===mid).forEach(r=>theoByStock[r.stock_item_id]=(theoByStock[r.stock_item_id]||0)+n(s.qty)*n(r.quantity_per_sale))});
+ let rows=(state.stockItems||[]).map(si=>{const op=latest(state.stock?.opening,si.name,f),cl=latest(state.stock?.closing,si.name,t,f),opening=n(op?.qty),purchases=purchaseQty(si.name,f,t),theoretical=n(theoByStock[si.id]),expected=opening+purchases-theoretical,actual=n(cl?.qty),variance=actual-expected,cost=n(cl?.unitCost||op?.unitCost),hasClosing=!!cl;return{id:si.id,name:si.name,opening,purchases,theoretical,expected,actual,variance,cost,value:variance*cost,hasClosing}});
+ const scope=q('#varianceScopeV1855')?.value||'closing',specific=q('#varianceItemV1855')?.value||'';if(scope==='closing')rows=rows.filter(x=>x.hasClosing);if(specific)rows=rows.filter(x=>x.id===specific);
+ let tv=0,av=0,vv=0,count=0;rows.forEach(r=>{tv+=r.theoretical*r.cost;if(r.hasClosing){av+=(r.opening+r.purchases-r.actual)*r.cost;vv+=r.value;if(Math.abs(r.variance)>.0005)count++}});q('#varianceKpisV1855').innerHTML=`<div class="card kpi"><div class="label">Theoretical Usage Value</div><div class="value">${money(tv)}</div></div><div class="card kpi"><div class="label">Actual Usage Value</div><div class="value">${money(av)}</div></div><div class="card kpi"><div class="label">Variance Value</div><div class="value">${money(vv)}</div></div><div class="card kpi"><div class="label">Items With Variance</div><div class="value">${count}</div></div>`;host.innerHTML=rows.length?rows.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td>${r.opening.toFixed(3)}</td><td>${r.purchases.toFixed(3)}</td><td>${r.theoretical.toFixed(3)}</td><td>${r.expected.toFixed(3)}</td><td>${r.hasClosing?r.actual.toFixed(3):'No count'}</td><td>${r.hasClosing?r.variance.toFixed(3):'—'}</td><td>${money(r.cost)}</td><td>${r.hasClosing?money(r.value):'—'}</td><td>${!r.hasClosing?'<span class="badge amber">Missing Closing</span>':Math.abs(r.variance)<=.0005?'<span class="badge green">Matched</span>':r.variance<0?'<span class="badge amber">Shortage</span>':'<span class="badge blue">Over</span>'}</td></tr>`).join(''):'<tr><td colspan="10"><div class="empty-state">No stock items match this filter.</div></td></tr>';}catch(e){host.innerHTML=`<tr><td colspan="10"><div class="empty-state">${esc(e.message||String(e))}</div></td></tr>`}
+}
+function ensureVariance(){
+ const sec=q('#inventory');if(!sec||!sec.classList.contains('active'))return;if(q('#varianceV1855'))return;const today=new Date().toISOString().slice(0,10),start=today.slice(0,8)+'01';
+ sec.insertAdjacentHTML('beforeend',`<div class="section-title" style="margin-top:18px"><div><h3>Stock Variance Report</h3><div class="small-note">Recipe-based theoretical usage compared with the actual closing stock.</div></div><button class="btn" type="button" id="toggleVarianceV1855">Hide Variance</button></div><div id="varianceV1855"><div class="card panel"><div class="toolbar"><div class="field"><label>From</label><input class="input" id="varianceFromV1855" type="date" value="${start}"></div><div class="field"><label>To</label><input class="input" id="varianceToV1855" type="date" value="${today}"></div><div class="field"><label>Items</label><select class="input" id="varianceScopeV1855"><option value="closing">With Closing Balance</option><option value="all">All Items</option></select></div><div class="field"><label>Specific Item</label><select class="input" id="varianceItemV1855"><option value="">All matching items</option>${(state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></div><button class="btn primary" type="button" id="applyVarianceV1855">Apply</button></div></div><div class="grid kpis" id="varianceKpisV1855" style="margin-top:16px"></div><div class="card table-card" style="overflow:auto"><table><thead><tr><th>Stock Item</th><th>Opening Qty</th><th>Purchases Qty</th><th>Theoretical Usage</th><th>Expected Closing</th><th>Actual Closing</th><th>Variance Qty</th><th>WAC</th><th>Variance Value</th><th>Status</th></tr></thead><tbody id="varianceRowsV1855"></tbody></table></div></div>`);
+ q('#applyVarianceV1855').onclick=renderVariance;q('#varianceScopeV1855').onchange=renderVariance;q('#varianceItemV1855').onchange=renderVariance;q('#toggleVarianceV1855').onclick=()=>{const b=q('#varianceV1855'),btn=q('#toggleVarianceV1855'),hide=b.style.display!=='none';b.style.display=hide?'none':'';btn.textContent=hide?'Show Variance':'Hide Variance'};
+ const cogsTable=q('#inventoryTable')?.closest('.card');if(cogsTable){const btn=document.createElement('button');btn.className='btn';btn.type='button';btn.textContent='Hide COGS';btn.style.margin='10px 0';cogsTable.parentNode.insertBefore(btn,cogsTable);btn.onclick=()=>{const hide=cogsTable.style.display!=='none';cogsTable.style.display=hide?'none':'';btn.textContent=hide?'Show COGS':'Hide COGS'}}
+ renderVariance();
+}
+document.addEventListener('click',e=>{if(e.target.closest('[data-page="inventory"]'))setTimeout(ensureVariance,800)});document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(ensureVariance,800));setTimeout(ensureVariance,3800);
+})();
+</script>
+
+
+
+<style id="finsight-v18-5-5-1-audit-fixes">
+#cogsSectionToggleV18551{margin-left:8px}
+</style>
+<script id="finsight-v18-5-5-1-audit-fixes">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s);
+
+/* Keep ALL dashboard panels on the same seven-day window.
+   V18.5.5 already redraws the line/payment/category panels; this also
+   refreshes KPIs, trend, top/bottom items and bank balances first. */
+function refreshFullSevenDayDashboard(){
+  if(!q('#dashboard')?.classList.contains('active'))return;
+  try{ if(typeof dashboardBounds==='function') dashboardBounds(); }catch(_){}
+  try{ if(typeof renderDashboardV1854==='function') renderDashboardV1854(); }catch(e){console.warn('[FinSight audit] base dashboard refresh',e)}
+  try{ if(typeof renderDashboardV1855==='function') renderDashboardV1855(); }catch(e){console.warn('[FinSight audit] seven-day dashboard refresh',e)}
+}
+function bindDashboardAudit(){
+  const from=q('#dashboardFrom'),apply=q('#applyDashboardDates'),today=q('#dashboardTodayBtn'),pdf=q('#downloadDashboardPdfBtn');
+  if(from&&!from.dataset.audit551){from.dataset.audit551='1';from.addEventListener('change',()=>setTimeout(refreshFullSevenDayDashboard,220))}
+  if(apply&&!apply.dataset.audit551){apply.dataset.audit551='1';apply.addEventListener('click',()=>setTimeout(refreshFullSevenDayDashboard,240))}
+  if(today&&!today.dataset.audit551){today.dataset.audit551='1';today.addEventListener('click',()=>setTimeout(refreshFullSevenDayDashboard,240))}
+  if(pdf&&!pdf.dataset.audit551){
+    pdf.dataset.audit551='1';
+    pdf.addEventListener('click',()=>{try{if(typeof dashboardBounds==='function')dashboardBounds()}catch(_){};setTimeout(refreshFullSevenDayDashboard,0)},true);
+  }
+  refreshFullSevenDayDashboard();
+}
+
+/* Hide/Show the complete COGS working area, not only the long item table.
+   Inventory Reconciliations and Stock Variance remain visible below it. */
+function bindCogsCollapse(){
+  const sec=q('#inventory'); if(!sec||!sec.classList.contains('active'))return;
+  if(q('#cogsSectionToggleV18551'))return;
+  const title=sec.querySelector('.section-title'), actions=title?.querySelector('.cogs-actions');
+  if(!actions)return;
+  const btn=document.createElement('button');
+  btn.className='btn';btn.type='button';btn.id='cogsSectionToggleV18551';btn.textContent='Hide COGS';
+  actions.prepend(btn);
+  const nodes=()=>{const reconTitle=[...sec.querySelectorAll('.section-title')].find(x=>x.textContent.includes('Inventory Reconciliations'));let arr=[],el=title.nextElementSibling;while(el&&el!==reconTitle){if(el.id!=='varianceV1855'&&!el.querySelector?.('#varianceV1855'))arr.push(el);el=el.nextElementSibling}return arr};
+  btn.onclick=()=>{const hide=btn.dataset.hidden!=='1';nodes().forEach(el=>el.style.display=hide?'none':'');btn.dataset.hidden=hide?'1':'0';btn.textContent=hide?'Show COGS':'Hide COGS';};
+}
+function boot(){
+  bindDashboardAudit();
+  setTimeout(bindCogsCollapse,250);
+}
+document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(boot,700));
+document.addEventListener('click',e=>{
+  if(e.target.closest('[data-page="dashboard"]'))setTimeout(bindDashboardAudit,850);
+  if(e.target.closest('[data-page="inventory"]'))setTimeout(bindCogsCollapse,950);
+});
+setTimeout(boot,4200);
 })();
 </script>
 
