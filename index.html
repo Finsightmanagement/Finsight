@@ -504,7 +504,7 @@ body.online-loading .app{visibility:hidden}
 <main class="main">
 <div class="topbar">
   <div class="title"><h2 id="pageTitle">Executive Dashboard</h2><p id="pageSub">Sales performance, item analysis and bank position.</p></div>
-  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.4 Online</div>
+  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.4.1 Online</div>
 </div>
 
 <section class="page active" id="dashboard">
@@ -7119,6 +7119,195 @@ function renderVariance(){const f=q('#varianceFrom')?.value||q('#dashboardFrom')
 function bind(){const rb=q('#recipeManagerBtn');if(rb)rb.onclick=window.openRecipeManager;const ps=q('#postSalesBtn');if(ps)ps.onclick=window.openSalesForm;q('#applyDashboardDates')&&(q('#applyDashboardDates').onclick=renderDashboardV1854);q('#dashboardTodayBtn')&&(q('#dashboardTodayBtn').onclick=()=>{q('#dashboardFrom').value=today();q('#dashboardTo').value=today();renderDashboardV1854()});q('#dashboardMonthBtn')&&(q('#dashboardMonthBtn').onclick=()=>{const d=state.dashboardSummary?.latestSalesDate||today();q('#dashboardFrom').value=d.slice(0,8)+'01';q('#dashboardTo').value=d;renderDashboardV1854()});q('#applyVarianceDates')&&(q('#applyVarianceDates').onclick=renderVariance);const pdf=q('#downloadDashboardPdfBtn');if(pdf)pdf.onclick=()=>{renderDashboardV1854();const {f,t}=dashboardDates();q('#dashboardPrintPeriod').textContent=`${f} to ${t} · Generated ${new Date().toLocaleString()}`;document.body.classList.add('print-dashboard');window.print();setTimeout(()=>document.body.classList.remove('print-dashboard'),800)}}
 async function afterCloud(){try{await loadRecipes()}catch(e){console.warn('[FinSight V18.5.4 Recipes]',e.message)}bind();renderDashboardV1854();renderVariance()}
 document.addEventListener('finsight:cloud-state-loaded',afterCloud);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{bind();setTimeout(afterCloud,700)});else{bind();setTimeout(afterCloud,700)}
+})();
+</script>
+
+
+
+<style id="finsight-v18-5-4-1-visible-recipes-variance">
+#recipeVarianceExtension{margin-top:18px}
+#recipeVarianceExtension .variance-head{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
+#recipeVarianceExtension .variance-filters{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
+#recipeVarianceExtension .variance-filters .field{min-width:150px}
+.payment-total-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.payment-total-card{border:1px solid var(--line);border-radius:12px;padding:13px 14px;background:#fff}
+.payment-total-card span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.45px}
+.payment-total-card b{display:block;font-size:18px;margin-top:5px}
+.payment-total-card.total{background:#f8fafc}
+@media(max-width:800px){#recipeVarianceExtension .variance-filters{width:100%}}
+</style>
+
+<script id="finsight-v18-5-4-1-ui-correction">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s), qa=(s,r=document)=>[...r.querySelectorAll(s)];
+const clean=v=>String(v??'').trim(), norm=v=>clean(v).toLowerCase(), n=v=>Number(v||0);
+const money=v=>typeof fmt==='function'?fmt(v):('KSh '+n(v).toLocaleString('en-KE',{maximumFractionDigits:2}));
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const inDates=(d,f,t)=>(!f||String(d)>=f)&&(!t||String(d)<=t);
+
+function latestStock(rows,item,before,after=''){
+  return (rows||[]).filter(x=>norm(x.item)===norm(item)&&(!before||x.date<=before)&&(!after||x.date>=after))
+    .sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
+}
+function stockName(id){return (state.stockItems||[]).find(x=>x.id===id)?.name||''}
+function purchaseQty(item,f,t){
+  let qty=0;
+  (state.bills||[]).filter(b=>inDates(b.date,f,t)).forEach(b=>(b.lines||[]).forEach(l=>{
+    if(l.group==='Purchase Item'&&norm(l.item)===norm(item))qty+=n(l.qty||l.quantity);
+  }));
+  return qty;
+}
+function theoreticalUsage(item,f,t){
+  const rd=window.finsightRecipeData||{menu:[],lines:[]};
+  let total=0;
+  (state.saleItems||[]).filter(s=>inDates(s.date,f,t)).forEach(s=>{
+    const m=(rd.menu||[]).find(x=>norm(x.name)===norm(s.item));
+    if(!m)return;
+    const line=(rd.lines||[]).find(x=>x.menu_item_id===m.id&&norm(stockName(x.stock_item_id))===norm(item));
+    if(line)total+=n(s.qty)*n(line.quantity_per_sale);
+  });
+  return total;
+}
+function wac(item,op,cl){
+  try{if(typeof weightedCost==='function')return n(weightedCost(item))}catch(_){}
+  return n(cl?.unitCost||op?.unitCost);
+}
+
+function renderVisibleVariance(){
+  const box=q('#recipeVarianceExtension'); if(!box)return;
+  let f=q('#varianceFromFix')?.value||q('#dashboardFrom')?.value||today().slice(0,8)+'01';
+  let t=q('#varianceToFix')?.value||q('#dashboardTo')?.value||today();
+  if(f>t)[f,t]=[t,f];
+  if(q('#varianceFromFix'))q('#varianceFromFix').value=f;
+  if(q('#varianceToFix'))q('#varianceToFix').value=t;
+
+  const rows=(state.stockItems||[]).map(si=>{
+    const op=latestStock(state.stock.opening||[],si.name,f);
+    const cl=latestStock(state.stock.closing||[],si.name,t,f);
+    const opening=n(op?.qty), purchases=purchaseQty(si.name,f,t), theoretical=theoreticalUsage(si.name,f,t);
+    const expected=opening+purchases-theoretical, actual=n(cl?.qty), variance=actual-expected;
+    const cost=wac(si.name,op,cl), value=variance*cost;
+    return {name:si.name,opening,purchases,theoretical,expected,actual,variance,cost,value,hasClosing:!!cl};
+  });
+
+  let theoreticalValue=0, actualUsageValue=0, varianceValue=0, varianceCount=0;
+  rows.forEach(r=>{
+    theoreticalValue+=r.theoretical*r.cost;
+    if(r.hasClosing)actualUsageValue+=(r.opening+r.purchases-r.actual)*r.cost;
+    if(r.hasClosing)varianceValue+=r.value;
+    if(r.hasClosing&&Math.abs(r.variance)>.0005)varianceCount++;
+  });
+
+  q('#varianceKpisFix').innerHTML=`
+    <div class="card kpi"><div class="label">Theoretical Usage Value</div><div class="value">${money(theoreticalValue)}</div></div>
+    <div class="card kpi"><div class="label">Actual Usage Value</div><div class="value">${money(actualUsageValue)}</div></div>
+    <div class="card kpi"><div class="label">Stock Variance Value</div><div class="value">${money(varianceValue)}</div></div>
+    <div class="card kpi"><div class="label">Items With Variance</div><div class="value">${varianceCount}</div></div>`;
+
+  q('#stockVarianceRowsFix').innerHTML=rows.length?rows.map(r=>`
+    <tr>
+      <td><b>${esc(r.name)}</b></td><td>${r.opening.toFixed(3)}</td><td>${r.purchases.toFixed(3)}</td>
+      <td>${r.theoretical.toFixed(3)}</td><td>${r.expected.toFixed(3)}</td>
+      <td>${r.hasClosing?r.actual.toFixed(3):'No count'}</td>
+      <td class="${r.variance<-.0005?'variance-short':r.variance>.0005?'variance-over':'variance-ok'}">${r.hasClosing?r.variance.toFixed(3):'—'}</td>
+      <td>${money(r.cost)}</td>
+      <td class="${r.value<-.005?'variance-short':r.value>.005?'variance-over':'variance-ok'}">${r.hasClosing?money(r.value):'—'}</td>
+      <td>${!r.hasClosing?'<span class="badge amber">Missing Closing</span>':Math.abs(r.variance)<=.0005?'<span class="badge green">Matched</span>':r.variance<0?'<span class="badge amber">Shortage</span>':'<span class="badge blue">Over</span>'}</td>
+    </tr>`).join(''):'<tr><td colspan="10"><div class="empty-state">No stock items configured.</div></td></tr>';
+}
+
+function ensureInventoryExtensions(){
+  const sec=q('#inventory'); if(!sec)return;
+
+  const title=sec.querySelector('.section-title');
+  if(title){
+    let actions=title.lastElementChild;
+    if(!actions || actions===title.firstElementChild){
+      actions=document.createElement('div'); title.appendChild(actions);
+    }
+    if(!q('#recipeManagerBtn',sec)){
+      const b=document.createElement('button');
+      b.className='btn'; b.id='recipeManagerBtn'; b.textContent='Menu Items & Recipes';
+      b.onclick=()=>window.openRecipeManager?.();
+      actions.insertBefore(b,actions.firstChild);
+    } else {
+      q('#recipeManagerBtn',sec).onclick=()=>window.openRecipeManager?.();
+    }
+  }
+
+  if(!q('#recipeVarianceExtension',sec)){
+    sec.insertAdjacentHTML('beforeend',`
+      <div id="recipeVarianceExtension">
+        <div class="section-title variance-head">
+          <div><h3>Stock Variance Report</h3><div class="small-note">Actual closing stock compared with expected closing stock after recipe-based theoretical usage.</div></div>
+          <div class="variance-filters">
+            <div class="field"><label>From</label><input class="input" id="varianceFromFix" type="date"></div>
+            <div class="field"><label>To</label><input class="input" id="varianceToFix" type="date"></div>
+            <button class="btn primary" id="applyVarianceFix" type="button">Apply</button>
+          </div>
+        </div>
+        <div class="grid kpis" id="varianceKpisFix"></div>
+        <div class="card table-card" style="overflow:auto;margin-top:12px">
+          <table>
+            <thead><tr><th>Stock Item</th><th>Opening Qty</th><th>Purchases Qty</th><th>Theoretical Usage</th><th>Expected Closing</th><th>Actual Closing</th><th>Variance Qty</th><th>WAC</th><th>Variance Value</th><th>Status</th></tr></thead>
+            <tbody id="stockVarianceRowsFix"></tbody>
+          </table>
+        </div>
+        <div class="small-note" style="margin-top:10px">Variance Qty = Actual Closing − Expected Closing. Negative means shortage / usage above recipe expectation; positive means stock above theoretical expectation.</div>
+      </div>`);
+    q('#applyVarianceFix').onclick=renderVisibleVariance;
+  }
+  renderVisibleVariance();
+}
+
+function renderPaymentTotals(){
+  const box=q('#salesAnalysis'); if(!box)return;
+  let f=q('#dashboardFrom')?.value||'', t=q('#dashboardTo')?.value||'';
+  if(f&&t&&f>t)[f,t]=[t,f];
+  const sales=(state.sales||[]).filter(s=>inDates(s.date,f,t));
+  const types=[...new Set([...(state.paymentTypes||[]),...sales.map(s=>s.paymentType).filter(Boolean)])];
+  const rows=types.map(pt=>({pt,total:sales.filter(s=>s.paymentType===pt).reduce((a,b)=>a+n(b.amount),0)}));
+  const grand=rows.reduce((a,b)=>a+b.total,0);
+  box.innerHTML=`<div class="payment-total-grid">
+    ${rows.map(r=>`<div class="payment-total-card"><span>${esc(r.pt)}</span><b>${money(r.total)}</b></div>`).join('')}
+    <div class="payment-total-card total"><span>Total Sales</span><b>${money(grand)}</b></div>
+  </div>`;
+  const label=q('#paymentMixPeriod');if(label)label.textContent=(f&&t)?`${f} to ${t}`:'Selected period';
+}
+
+let paymentRendering=false;
+function schedulePaymentTotals(){
+  if(paymentRendering)return;
+  paymentRendering=true;
+  setTimeout(()=>{try{renderPaymentTotals()}finally{paymentRendering=false}},20);
+}
+function bindCorrection(){
+  const nav=q('.nav-item[data-page="inventory"]');
+  if(nav&&!nav.dataset.recipeFixBound){
+    nav.dataset.recipeFixBound='1';
+    nav.addEventListener('click',()=>setTimeout(ensureInventoryExtensions,80));
+  }
+  ['applyDashboardDates','dashboardTodayBtn','dashboardMonthBtn'].forEach(id=>{
+    const b=q('#'+id);
+    if(b&&!b.dataset.paymentFixBound){
+      b.dataset.paymentFixBound='1';
+      b.addEventListener('click',()=>setTimeout(renderPaymentTotals,60));
+    }
+  });
+  const analysis=q('#salesAnalysis');
+  if(analysis&&!analysis.dataset.paymentObserver){
+    analysis.dataset.paymentObserver='1';
+    new MutationObserver(()=>schedulePaymentTotals()).observe(analysis,{childList:true,subtree:true});
+  }
+  ensureInventoryExtensions();
+  renderPaymentTotals();
+}
+
+document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(bindCorrection,120));
+document.addEventListener('DOMContentLoaded',()=>setTimeout(bindCorrection,800));
+setTimeout(bindCorrection,1400);
+setTimeout(bindCorrection,2600);
 })();
 </script>
 
