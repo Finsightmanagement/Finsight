@@ -504,12 +504,17 @@ body.online-loading .app{visibility:hidden}
 <main class="main">
 <div class="topbar">
   <div class="title"><h2 id="pageTitle">Executive Dashboard</h2><p id="pageSub">Sales performance, item analysis and bank position.</p></div>
-  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.3 Online</div>
+  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.4 Online</div>
 </div>
 
 <section class="page active" id="dashboard">
   <div class="toolbar no-print" style="justify-content:flex-end;margin-bottom:12px">
-    <select class="select" id="dashboardRange"><option value="7">Last 7 Days</option><option value="14">Last 14 Days</option><option value="30">Last 30 Days</option></select>
+    <select class="select hidden" id="dashboardRange"><option value="7">Last 7 Days</option><option value="14">Last 14 Days</option><option value="30">Last 30 Days</option></select>
+    <div class="field"><label>From</label><input class="input" id="dashboardFrom" type="date"></div>
+    <div class="field"><label>To</label><input class="input" id="dashboardTo" type="date"></div>
+    <button class="btn" id="applyDashboardDates">Apply</button>
+    <button class="btn" id="dashboardTodayBtn">Today</button>
+    <button class="btn" id="dashboardMonthBtn">This Month</button>
     <button class="btn primary" id="downloadDashboardPdfBtn">Export Dashboard PDF</button>
   </div>
   <div class="dashboard-print-title"><h1>Executive Dashboard</h1><div id="dashboardPrintPeriod"></div></div>
@@ -522,11 +527,11 @@ body.online-loading .app{visibility:hidden}
 
   <div class="dashboard-grid">
     <div class="card panel">
-      <div class="panel-head"><h3>Sales — Past 7 Days</h3><span>Daily revenue</span></div>
+      <div class="panel-head"><h3 id="dashboardDailySalesTitle">Daily Sales</h3><span>Selected period</span></div>
       <div class="chartbox"><div id="salesSvg"></div><div class="chart-labels" id="salesLabels"></div></div>
     </div>
     <div class="card panel">
-      <div class="panel-head"><h3>Sales Analysis</h3><span>Current 7 days vs previous 7 days</span></div>
+      <div class="panel-head"><h3>Sales by Payment Type</h3><span id="paymentMixPeriod">Selected period</span></div>
       <div id="salesAnalysis"></div>
     </div>
   </div>
@@ -612,9 +617,17 @@ body.online-loading .app{visibility:hidden}
 </section>
 
 <section class="page" id="inventory">
-  <div class="section-title"><div><h3>Inventory & Cost of Sales</h3><div class="small-note">Opening stock uses your stock-item list. Closing stock unit cost is calculated using weighted average cost.</div></div><div><button class="btn" id="stockItemsBtn">Purchase / Recipe Items</button> <button class="btn" id="openingStockBtn">Opening Stock</button> <button class="btn primary" id="closingStockBtn">Closing Stock</button></div></div>
+  <div class="section-title"><div><h3>Inventory & Cost of Sales</h3><div class="small-note">Opening stock uses your stock-item list. Closing stock unit cost is calculated using weighted average cost.</div></div><div><button class="btn" id="stockItemsBtn">Purchase / Recipe Items</button> <button class="btn" id="recipeManagerBtn">Menu Items & Recipes</button> <button class="btn" id="openingStockBtn">Opening Stock</button> <button class="btn primary" id="closingStockBtn">Closing Stock</button></div></div>
   <div class="grid kpis"><div class="card kpi"><div class="label">Opening Stock</div><div class="value" id="openingVal">KSh 0</div></div><div class="card kpi"><div class="label">Inventory Purchases</div><div class="value" id="purchVal">KSh 0</div></div><div class="card kpi"><div class="label">Closing Stock</div><div class="value" id="closingVal">KSh 0</div></div><div class="card kpi"><div class="label">Calculated COGS</div><div class="value" id="calcCogs">KSh 0</div></div></div>
   <div class="card table-card"><table><thead><tr><th>Item</th><th>Opening Qty</th><th>Opening Unit Cost</th><th>Purchases</th><th>Closing Qty</th><th>Closing WAC</th><th>Consumption</th></tr></thead><tbody id="inventoryTable"></tbody></table></div>
+
+  <div class="card panel" id="stockVariancePanel" style="margin-top:16px">
+    <div class="panel-head"><h3>Stock Variance Report</h3><span>Theoretical recipe usage vs actual stock consumption</span></div>
+    <div class="toolbar no-print" style="margin-bottom:12px"><div class="field"><label>From</label><input class="input" id="varianceFrom" type="date"></div><div class="field"><label>To</label><input class="input" id="varianceTo" type="date"></div><button class="btn" id="applyVarianceDates">Apply</button></div>
+    <div class="summary-strip"><div class="summary-box"><span>Theoretical Usage</span><b id="varianceTheoValue">KSh 0</b></div><div class="summary-box"><span>Actual Usage</span><b id="varianceActualValue">KSh 0</b></div><div class="summary-box"><span>Variance Value</span><b id="varianceValue">KSh 0</b></div><div class="summary-box"><span>Items With Variance</span><b id="varianceItemCount">0</b></div></div>
+    <div class="table-card" style="overflow:auto;margin-top:12px"><table><thead><tr><th>Stock Item</th><th>Opening Qty</th><th>Purchases Qty</th><th>Theoretical Usage</th><th>Expected Closing</th><th>Actual Closing</th><th>Stock Variance Qty</th><th>WAC</th><th>Variance Value</th><th>Status</th></tr></thead><tbody id="stockVarianceRows"></tbody></table></div>
+    <div class="small-note" style="margin-top:10px">Stock Variance Qty = Actual Closing − Expected Closing. A negative quantity indicates a shortage / higher-than-recipe consumption; a positive quantity indicates stock above theoretical expectation.</div>
+  </div>
 </section>
 
 <section class="page" id="accounting">
@@ -7007,6 +7020,105 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 else setTimeout(bind,50);
 setTimeout(bind,1000);
 
+})();
+</script>
+
+
+
+<style id="finsight-v18-5-4-styles">
+.recipe-grid{display:grid;grid-template-columns:1fr 1.2fr;gap:14px}.recipe-list{max-height:430px;overflow:auto}.recipe-item{padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;cursor:pointer;background:#fff}.recipe-item.active{border-color:#4f46e5;box-shadow:0 0 0 2px rgba(79,70,229,.08)}.recipe-line-row{display:grid;grid-template-columns:1fr 140px 42px;gap:8px;align-items:end;margin-bottom:8px}.payment-mix-table{width:100%;font-size:10px}.payment-mix-table th,.payment-mix-table td{padding:7px 8px;white-space:nowrap}.variance-short{color:#b91c1c;font-weight:800}.variance-over{color:#166534;font-weight:800}.variance-ok{color:#475569;font-weight:800}@media(max-width:900px){.recipe-grid{grid-template-columns:1fr}.recipe-line-row{grid-template-columns:1fr 110px 42px}}
+</style>
+<script id="finsight-v18-5-4-recipes-dashboard-variance">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s),qa=(s,r=document)=>[...r.querySelectorAll(s)];
+const clean=v=>String(v??'').trim(),norm=v=>clean(v).toLowerCase(),num=v=>Number(v||0),money=v=>typeof fmt==='function'?fmt(v):('KSh '+num(v).toLocaleString('en-KE'));
+const html=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let recipeData={menu:[],lines:[]};window.finsightRecipeData=recipeData;
+function cloud(){const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;if(!sb||!cid)throw new Error('FinSight cloud connection is not ready.');return{sb,cid}}
+function catName(id){return recipeData.categories?.find(x=>x.id===id)?.name||''}function accName(id){return (state.accounts||[]).find(x=>x.id===id)?.name||''}function stockName(id){return (state.stockItems||[]).find(x=>x.id===id)?.name||''}
+async function loadRecipes(){
+  const {sb,cid}=cloud();
+  const [m,l,c]=await Promise.all([
+    sb.from('menu_items').select('*').eq('company_id',cid).order('name'),
+    sb.from('recipe_lines').select('*').eq('company_id',cid),
+    sb.from('sales_categories').select('id,name,is_active').eq('company_id',cid).eq('is_active',true).order('name')
+  ]);
+  if(m.error)throw m.error;if(l.error)throw l.error;if(c.error)throw c.error;
+  recipeData={menu:m.data||[],lines:l.data||[],categories:c.data||[]};window.finsightRecipeData=recipeData;
+  return recipeData;
+}
+function recipeFor(menuId){return recipeData.lines.filter(x=>x.menu_item_id===menuId)}
+function activeMenu(){return recipeData.menu.filter(x=>x.is_active!==false)}
+
+window.openRecipeManager=async function(){
+  try{await loadRecipes()}catch(e){return toast(e.message||'Run the V18.5.4 recipe SQL setup first.');}
+  openModal('Menu Items & Recipes','Create each sellable menu item and connect it to the purchase / recipe items it consumes.',`<div class="recipe-grid"><div><div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn primary" id="newMenuRecipe">+ New Menu Item</button></div><div class="recipe-list" id="recipeMenuList"></div></div><div id="recipeEditor"><div class="empty-state">Select a menu item or create a new one.</div></div></div>`);
+  renderRecipeList();q('#newMenuRecipe').onclick=()=>editRecipe(null);
+};
+function renderRecipeList(selected=''){
+  const box=q('#recipeMenuList');if(!box)return;
+  box.innerHTML=recipeData.menu.length?recipeData.menu.map(m=>`<div class="recipe-item ${m.id===selected?'active':''}" data-id="${m.id}"><b>${html(m.name)}</b><div class="small-note">${html(catName(m.category_id))} · ${recipeFor(m.id).length} ingredient(s) · ${m.is_active===false?'Inactive':'Active'}</div></div>`).join(''):'<div class="empty-state">No menu items yet.</div>';
+  qa('.recipe-item',box).forEach(x=>x.onclick=()=>editRecipe(x.dataset.id));
+}
+function lineHtml(line={}){const opts=(state.stockItems||[]).map(x=>`<option value="${x.id}" ${x.id===line.stock_item_id?'selected':''}>${html(x.name)} (${html(x.unit||'Unit')})</option>`).join('');return `<div class="recipe-line-row"><div class="field"><label>Purchase / Recipe Item</label><select class="input recipeStock">${opts}</select></div><div class="field"><label>Qty per 1 Sale</label><input class="input recipeQty" type="number" min="0.000001" step="0.001" value="${num(line.quantity_per_sale)||''}"></div><button class="btn recipeRemove" type="button">×</button></div>`}
+function editRecipe(id){
+  const m=recipeData.menu.find(x=>x.id===id)||null;renderRecipeList(id||'');
+  const box=q('#recipeEditor');if(!box)return;
+  const cats=(recipeData.categories||[]).map(x=>`<option value="${x.id}" ${x.id===m?.category_id?'selected':''}>${html(x.name)}</option>`).join('');
+  const incomes=(state.accounts||[]).filter(a=>a.active!==false&&a.type==='Income').map(a=>`<option value="${a.id}" ${a.id===m?.income_account_id?'selected':''}>${html(a.name)}</option>`).join('');
+  box.innerHTML=`<div class="form-grid"><div class="field"><label>Menu / Sales Item</label><input class="input" id="recipeMenuName" value="${html(m?.name||'')}" placeholder="e.g. Double Smash Burger"></div><div class="field"><label>Sales Category</label><select class="input" id="recipeCategory">${cats}</select></div><div class="field"><label>Income Account</label><select class="input" id="recipeIncome">${incomes}</select></div><div class="field"><label>Status</label><select class="input" id="recipeActive"><option value="true" ${m?.is_active!==false?'selected':''}>Active</option><option value="false" ${m?.is_active===false?'selected':''}>Inactive</option></select></div></div><div style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center"><b>Recipe</b><button class="btn" id="addRecipeLine" type="button">+ Ingredient</button></div><div id="recipeLines" style="margin-top:8px">${(m?recipeFor(m.id):[]).map(lineHtml).join('')}</div></div><div class="small-note">Quantities must use the same units as the Purchase / Recipe Items. Example: if Chicken Breast is stored in KG, 0.18 means 180g per menu item.</div><div class="modal-actions"><button class="btn primary" id="saveRecipe">Save Menu Item & Recipe</button></div>`;
+  const lines=q('#recipeLines');if(!lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());
+  const bindLines=()=>qa('.recipeRemove',lines).forEach(b=>b.onclick=()=>{b.closest('.recipe-line-row').remove();if(!lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());bindLines()});bindLines();
+  q('#addRecipeLine').onclick=()=>{lines.insertAdjacentHTML('beforeend',lineHtml());bindLines()};
+  q('#saveRecipe').onclick=async()=>{
+    const name=clean(q('#recipeMenuName').value),category=q('#recipeCategory').value,income=q('#recipeIncome').value,active=q('#recipeActive').value==='true';
+    const rows=qa('.recipe-line-row',lines).map(r=>({stock_item_id:q('.recipeStock',r).value,quantity_per_sale:num(q('.recipeQty',r).value)})).filter(x=>x.stock_item_id&&x.quantity_per_sale>0);
+    if(!name||!category||!income)return toast('Complete the menu item fields');if(!rows.length)return toast('Add at least one recipe ingredient');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same recipe item cannot appear twice');
+    const btn=q('#saveRecipe');btn.disabled=true;btn.textContent='Saving…';
+    try{const {sb,cid}=cloud();let menuId=m?.id;
+      if(menuId){const {error}=await sb.from('menu_items').update({name,category_id:category,income_account_id:income,is_active:active}).eq('id',menuId).eq('company_id',cid);if(error)throw error;const d=await sb.from('recipe_lines').delete().eq('company_id',cid).eq('menu_item_id',menuId);if(d.error)throw d.error;}
+      else{const ins=await sb.from('menu_items').insert({company_id:cid,name,category_id:category,income_account_id:income,is_active:active}).select('id').single();if(ins.error)throw ins.error;menuId=ins.data.id;}
+      const insLines=await sb.from('recipe_lines').insert(rows.map(x=>({company_id:cid,menu_item_id:menuId,...x})));if(insLines.error)throw insLines.error;
+      await loadRecipes();renderRecipeList(menuId);editRecipe(menuId);toast('Menu item and recipe saved');
+    }catch(e){toast(e.message||String(e));}finally{btn.disabled=false;btn.textContent='Save Menu Item & Recipe'}
+  };
+}
+
+/* New sales must use an active menu item with a recipe. */
+window.openSalesForm=async function(){
+  try{await loadRecipes()}catch(e){return toast(e.message||'Recipe setup is not ready.');}
+  const menu=activeMenu().filter(m=>recipeFor(m.id).length);if(!menu.length)return toast('Create at least one active Menu Item & Recipe before posting sales.');
+  const payments=(state.paymentTypes||[]).map(x=>`<option>${html(x)}</option>`).join('');
+  openModal('Post Sales','Every sale is connected to a menu recipe so FinSight can calculate theoretical stock usage.',`<div class="form-grid"><div class="field"><label>Date</label><input id="sDate" class="input" type="date" value="${today()}"></div><div class="field"><label>Payment Type</label><select id="sPayment" class="input">${payments}</select></div><div class="field"><label>Menu Item</label><select id="sMenuItem" class="input">${menu.map(m=>`<option value="${m.id}">${html(m.name)}</option>`).join('')}</select></div><div class="field"><label>Category</label><input id="sCategoryDisplay" class="input" disabled></div><div class="field"><label>Quantity Sold</label><input id="sQty" class="input" type="number" min="0.001" step="0.001" value="1"></div><div class="field"><label>Income Account</label><input id="sIncomeDisplay" class="input" disabled></div><div class="field"><label>Total Sales</label><input id="sAmount" class="input" type="number" min="0.01" step="0.01"></div><div class="field full"><label>Memo</label><input id="sMemo" class="input"></div></div><div class="small-note" id="recipeSaleHint"></div><div class="modal-actions"><button class="btn primary" id="saveSale">Post Sales</button></div>`);
+  const update=()=>{const m=recipeData.menu.find(x=>x.id===q('#sMenuItem').value);q('#sCategoryDisplay').value=catName(m?.category_id);q('#sIncomeDisplay').value=accName(m?.income_account_id);q('#recipeSaleHint').textContent=`Recipe connected: ${recipeFor(m?.id).length} purchase / recipe item(s).`};q('#sMenuItem').onchange=update;update();
+  q('#saveSale').onclick=async()=>{const m=recipeData.menu.find(x=>x.id===q('#sMenuItem').value),amount=num(q('#sAmount').value),qty=num(q('#sQty').value),date=q('#sDate').value,payName=q('#sPayment').value,memo=clean(q('#sMemo').value);if(!m||!recipeFor(m.id).length)return toast('Selected menu item has no recipe');if(!date||qty<=0||amount<=0)return toast('Enter a valid date, quantity and sales amount');const receivable=(state.accounts||[]).find(a=>a.active!==false&&norm(a.name)==='sales receivable');if(!receivable)return toast('Sales Receivable account is missing');const btn=q('#saveSale');btn.disabled=true;btn.textContent='Posting…';try{const {sb,cid}=cloud();const pay=await sb.from('payment_types').select('id').eq('company_id',cid).eq('name',payName).eq('is_active',true).single();if(pay.error)throw pay.error;const r=await sb.rpc('post_sale',{p_company_id:cid,p_sale_date:date,p_payment_type_id:pay.data.id,p_income_account_id:m.income_account_id,p_sales_receivable_account_id:receivable.id,p_total_amount:amount,p_memo:memo||null,p_items:[{category_id:m.category_id,item_name:m.name,quantity:qty,line_revenue:amount}]});if(r.error)throw r.error;closeModal();await window.finsightReloadCloudState();toast('Sales posted with recipe link');}catch(e){toast(e.message||String(e));btn.disabled=false;btn.textContent='Post Sales'}};
+};
+
+function iso(d){return d.toISOString().slice(0,10)}function addDays(ds,n){const d=new Date(ds+'T12:00:00');d.setDate(d.getDate()+n);return iso(d)}
+function dashboardDates(){let f=q('#dashboardFrom')?.value,t=q('#dashboardTo')?.value;const latest=state.dashboardSummary?.latestSalesDate||today();if(!t)t=latest;if(!f)f=addDays(t,-6);if(f>t)[f,t]=[t,f];return{f,t}}
+function setDashboardDefaults(){const latest=state.dashboardSummary?.latestSalesDate||today();if(q('#dashboardTo')&&!q('#dashboardTo').value)q('#dashboardTo').value=latest;if(q('#dashboardFrom')&&!q('#dashboardFrom').value)q('#dashboardFrom').value=addDays(latest,-6)}
+function dateList(f,t){const a=[];for(let d=f;d<=t;d=addDays(d,1)){a.push(d);if(a.length>370)break}return a}
+function renderDashboardV1854(){
+  setDashboardDefaults();const {f,t}=dashboardDates(),dates=dateList(f,t),sales=(state.sales||[]).filter(x=>inRange(x.date,f,t)),items=(state.saleItems||[]).filter(x=>inRange(x.date,f,t));
+  const cur=sales.reduce((a,b)=>a+num(b.amount),0),saleIds=new Set(sales.map(x=>x.id)),rec=(state.receipts||[]).filter(r=>saleIds.has(r.saleId)).reduce((a,b)=>a+num(b.amount),0);q('#dashSales').textContent=money(cur);q('#dashReceived').textContent=money(rec);q('#dashOutstanding').textContent=money(cur-rec);try{q('#dashProfit').textContent=money(dp(f,t)?.net||0)}catch(_){q('#dashProfit').textContent=money(0)}
+  const len=dates.length,pf=addDays(f,-len),pt=addDays(f,-1),prev=(state.sales||[]).filter(x=>inRange(x.date,pf,pt)).reduce((a,b)=>a+num(b.amount),0),pct=prev?((cur-prev)/prev*100):null;q('#dashTrendWrap').innerHTML=pct===null?'<span class="trend-chip trend-flat">No previous-period sales</span>':`<span class="trend-chip ${pct>0?'trend-up':pct<0?'trend-down':'trend-flat'}">${pct>0?'▲':pct<0?'▼':'•'} ${Math.abs(pct).toFixed(1)}% vs previous period</span>`;
+  q('#dashboardDailySalesTitle').textContent=`Daily Sales · ${f} to ${t}`;const daily=dates.map(d=>({d,v:sales.filter(x=>x.date===d).reduce((a,b)=>a+num(b.amount),0)})),max=Math.max(...daily.map(x=>x.v),1),w=680,step=daily.length>1?w/(daily.length-1):0,pts=daily.map((x,i)=>`${20+i*step},${190-(x.v/max)*150}`).join(' ');q('#salesSvg').innerHTML=`<svg viewBox="0 0 720 210" preserveAspectRatio="none"><line class="chart-axis" x1="20" y1="190" x2="700" y2="190"/><polyline class="chart-line" points="${pts}"/>${daily.map((x,i)=>{const cx=20+i*step,cy=190-(x.v/max)*150;return `<circle class="chart-dot" cx="${cx}" cy="${cy}" r="5"><title>${x.d}: ${money(x.v)}</title></circle><text x="${cx}" y="${Math.max(14,cy-10)}" text-anchor="middle" font-size="10" font-weight="700">${x.v?Math.round(x.v).toLocaleString():''}</text>`}).join('')}</svg>`;q('#salesLabels').innerHTML=daily.map(x=>`<span>${new Date(x.d+'T12:00:00').toLocaleDateString(undefined,{day:'2-digit',month:'short'})}</span>`).join('');
+  const paymentTypes=[...new Set([...(state.paymentTypes||[]),...sales.map(x=>x.paymentType).filter(Boolean)])],matrix=paymentTypes.map(pt=>({pt,vals:dates.map(d=>sales.filter(x=>x.date===d&&x.paymentType===pt).reduce((a,b)=>a+num(b.amount),0))}));q('#paymentMixPeriod').textContent=`${f} to ${t}`;q('#salesAnalysis').innerHTML=`<div style="overflow:auto"><table class="payment-mix-table"><thead><tr><th>Payment Type</th>${dates.map(d=>`<th>${new Date(d+'T12:00:00').toLocaleDateString(undefined,{day:'2-digit',month:'short'})}</th>`).join('')}<th>Period Total</th></tr></thead><tbody>${matrix.map(r=>`<tr><td><b>${html(r.pt)}</b></td>${r.vals.map(v=>`<td>${money(v)}</td>`).join('')}<td><b>${money(r.vals.reduce((a,b)=>a+b,0))}</b></td></tr>`).join('')}<tr class="subtotal"><td><b>Total</b></td>${dates.map((d,i)=>`<td><b>${money(matrix.reduce((a,r)=>a+r.vals[i],0))}</b></td>`).join('')}<td><b>${money(cur)}</b></td></tr></tbody></table></div>`;
+  const im={};items.forEach(x=>{im[x.item]=im[x.item]||{qty:0,revenue:0,category:x.category||'Uncategorised'};im[x.item].qty+=num(x.qty);im[x.item].revenue+=num(x.revenue)});const ranked=Object.entries(im).sort((a,b)=>b[1].revenue-a[1].revenue);q('#topItems').innerHTML=ranked.length?ranked.slice(0,5).map(([n,v],i)=>`<div class="rank-row"><div class="rank-no">${i+1}</div><div><b>${html(n)}</b><small>${v.qty} units · ${html(v.category)}</small></div><b>${money(v.revenue)}</b></div>`).join(''):'<div class="empty-state">No item sales yet.</div>';q('#bottomItems').innerHTML=ranked.length?ranked.slice(-2).reverse().map(([n,v],i)=>`<div class="rank-row bottom"><div class="rank-no">${i+1}</div><div><b>${html(n)}</b><small>${v.qty} units · ${html(v.category)}</small></div><b>${money(v.revenue)}</b></div>`).join(''):'<div class="empty-state">No item sales yet.</div>';
+  const cats={};items.forEach(x=>cats[x.category||'Uncategorised']=(cats[x.category||'Uncategorised']||0)+num(x.revenue));const ce=Object.entries(cats).sort((a,b)=>b[1]-a[1]),tot=ce.reduce((a,b)=>a+b[1],0),colors=['#4f46e5','#06b6d4','#16a34a','#f59e0b','#ec4899','#8b5cf6','#ef4444','#14b8a6'];if(ce.length&&tot){let a=0,st=[];ce.forEach(([n,v],i)=>{const s=a/tot*360;a+=v;st.push(`${colors[i%colors.length]} ${s}deg ${a/tot*360}deg`)});q('#categoryPie').style.background=`conic-gradient(${st.join(',')})`;q('#categoryLegend').innerHTML=ce.map(([n,v],i)=>`<div class="legend-row"><span class="legend-key"><i class="legend-swatch" style="background:${colors[i%colors.length]}"></i>${html(n)}</span><b>${(v/tot*100).toFixed(1)}%</b></div>`).join('')}else{q('#categoryPie').style.background='#e5e7eb';q('#categoryLegend').innerHTML='<div class="empty-state">No category sales data.</div>'}
+  q('#bankCards').innerHTML=banks().length?banks().map(b=>`<div class="card kpi"><div class="label">${html(b.name)}</div><div class="value">${money(accountBalance(b.id,'9999-12-31'))}</div><div class="sub">Book balance</div></div>`).join(''):'<div class="card empty-state">No bank accounts configured.</div>';
+}
+window.renderDashboard=renderDashboardV1854;try{renderDashboard=renderDashboardV1854}catch(_){}
+
+function latestStock(rows,item,before,after=''){return rows.filter(x=>norm(x.item)===norm(item)&&(!before||x.date<=before)&&(!after||x.date>=after)).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0]}
+function purchaseQty(item,f,t){let qty=0;(state.bills||[]).filter(b=>inRange(b.date,f,t)).forEach(b=>(b.lines||[]).forEach(l=>{if(l.group==='Purchase Item'&&norm(l.item)===norm(item))qty+=num(l.qty)}));return qty}
+function theoreticalUsage(item,f,t){let total=0;(state.saleItems||[]).filter(s=>inRange(s.date,f,t)).forEach(s=>{const m=recipeData.menu.find(x=>norm(x.name)===norm(s.item));if(!m)return;const line=recipeData.lines.find(x=>x.menu_item_id===m.id&&norm(stockName(x.stock_item_id))===norm(item));if(line)total+=num(s.qty)*num(line.quantity_per_sale)});return total}
+function renderVariance(){const f=q('#varianceFrom')?.value||q('#dashboardFrom')?.value||today().slice(0,8)+'01',t=q('#varianceTo')?.value||q('#dashboardTo')?.value||today();if(q('#varianceFrom')&&!q('#varianceFrom').value)q('#varianceFrom').value=f;if(q('#varianceTo')&&!q('#varianceTo').value)q('#varianceTo').value=t;const rows=(state.stockItems||[]).map(si=>{const op=latestStock(state.stock.opening||[],si.name,f),cl=latestStock(state.stock.closing||[],si.name,t,f),opening=num(op?.qty),purch=purchaseQty(si.name,f,t),theo=theoreticalUsage(si.name,f,t),expected=opening+purch-theo,actual=num(cl?.qty),variance=actual-expected,w=typeof weightedCost==='function'?num(weightedCost(si.name)):num(cl?.unitCost||op?.unitCost),value=variance*w,actualUse=opening+purch-actual;return{name:si.name,opening,purch,theo,expected,actual,variance,w,value,actualUse,hasClosing:!!cl}});let tv=0,av=0,vv=0,count=0;rows.forEach(r=>{tv+=r.theo*r.w;av+=r.actualUse*r.w;vv+=r.value;if(Math.abs(r.variance)>.0005)count++});q('#varianceTheoValue').textContent=money(tv);q('#varianceActualValue').textContent=money(av);q('#varianceValue').textContent=money(vv);q('#varianceItemCount').textContent=count;q('#stockVarianceRows').innerHTML=rows.length?rows.map(r=>`<tr><td><b>${html(r.name)}</b></td><td>${r.opening.toFixed(3)}</td><td>${r.purch.toFixed(3)}</td><td>${r.theo.toFixed(3)}</td><td>${r.expected.toFixed(3)}</td><td>${r.hasClosing?r.actual.toFixed(3):'No count'}</td><td class="${r.variance<-.0005?'variance-short':r.variance>.0005?'variance-over':'variance-ok'}">${r.hasClosing?r.variance.toFixed(3):'—'}</td><td>${money(r.w)}</td><td class="${r.value<-.005?'variance-short':r.value>.005?'variance-over':'variance-ok'}">${r.hasClosing?money(r.value):'—'}</td><td>${!r.hasClosing?'<span class="badge amber">Missing Closing</span>':Math.abs(r.variance)<=.0005?'<span class="badge green">Matched</span>':r.variance<0?'<span class="badge amber">Shortage</span>':'<span class="badge blue">Over</span>'}</td></tr>`).join(''):'<tr><td colspan="10"><div class="empty-state">No stock items.</div></td></tr>'}
+
+function bind(){const rb=q('#recipeManagerBtn');if(rb)rb.onclick=window.openRecipeManager;const ps=q('#postSalesBtn');if(ps)ps.onclick=window.openSalesForm;q('#applyDashboardDates')&&(q('#applyDashboardDates').onclick=renderDashboardV1854);q('#dashboardTodayBtn')&&(q('#dashboardTodayBtn').onclick=()=>{q('#dashboardFrom').value=today();q('#dashboardTo').value=today();renderDashboardV1854()});q('#dashboardMonthBtn')&&(q('#dashboardMonthBtn').onclick=()=>{const d=state.dashboardSummary?.latestSalesDate||today();q('#dashboardFrom').value=d.slice(0,8)+'01';q('#dashboardTo').value=d;renderDashboardV1854()});q('#applyVarianceDates')&&(q('#applyVarianceDates').onclick=renderVariance);const pdf=q('#downloadDashboardPdfBtn');if(pdf)pdf.onclick=()=>{renderDashboardV1854();const {f,t}=dashboardDates();q('#dashboardPrintPeriod').textContent=`${f} to ${t} · Generated ${new Date().toLocaleString()}`;document.body.classList.add('print-dashboard');window.print();setTimeout(()=>document.body.classList.remove('print-dashboard'),800)}}
+async function afterCloud(){try{await loadRecipes()}catch(e){console.warn('[FinSight V18.5.4 Recipes]',e.message)}bind();renderDashboardV1854();renderVariance()}
+document.addEventListener('finsight:cloud-state-loaded',afterCloud);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{bind();setTimeout(afterCloud,700)});else{bind();setTimeout(afterCloud,700)}
 })();
 </script>
 
