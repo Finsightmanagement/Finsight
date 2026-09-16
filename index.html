@@ -504,7 +504,7 @@ body.online-loading .app{visibility:hidden}
 <main class="main">
 <div class="topbar">
   <div class="title"><h2 id="pageTitle">Executive Dashboard</h2><p id="pageSub">Sales performance, item analysis and bank position.</p></div>
-  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.4.1 Online</div>
+  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.4.2 Online</div>
 </div>
 
 <section class="page active" id="dashboard">
@@ -7308,6 +7308,207 @@ document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(bindCorre
 document.addEventListener('DOMContentLoaded',()=>setTimeout(bindCorrection,800));
 setTimeout(bindCorrection,1400);
 setTimeout(bindCorrection,2600);
+})();
+</script>
+
+
+
+<style id="finsight-v18-5-4-2-polish">
+.fs-collapse-btn{white-space:nowrap}
+.fs-collapsed{display:none!important}
+#varianceItemFilter{min-width:190px}
+#varianceScopeFilter{min-width:180px}
+#varianceReportBody .summary-strip{margin-top:12px}
+.payment-prof-table td:last-child,.payment-prof-table th:last-child{text-align:right}
+.payment-prof-table .subtotal td{font-weight:800;border-top:2px solid var(--line)}
+.category-bar-chart{display:flex;flex-direction:column;gap:11px;padding:8px 2px}
+.category-bar-row{display:grid;grid-template-columns:minmax(105px,1.2fr) minmax(160px,3fr) minmax(90px,auto);gap:12px;align-items:center}
+.category-bar-name{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.category-bar-track{height:18px;background:#eef2f7;border-radius:999px;overflow:hidden}
+.category-bar-fill{height:100%;background:linear-gradient(90deg,#4f46e5,#06b6d4);border-radius:999px;min-width:2px}
+.category-bar-value{text-align:right;font-weight:800}
+.sales-chart-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:4px}
+.sales-chart-scroll svg{display:block;min-width:100%}
+.sales-chart-note{font-size:10px;color:var(--muted);margin-top:6px}
+@media(max-width:760px){.category-bar-row{grid-template-columns:100px minmax(120px,1fr) 82px}}
+</style>
+
+<script id="finsight-v18-5-4-2-dashboard-inventory-polish">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s), qa=(s,r=document)=>[...r.querySelectorAll(s)];
+const clean=v=>String(v??'').trim(), norm=v=>clean(v).toLowerCase(), num=v=>Number(v||0);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=v=>typeof fmt==='function'?fmt(v):('KSh '+num(v).toLocaleString('en-KE',{maximumFractionDigits:2}));
+const inRange2=(d,f,t)=>(!f||String(d)>=f)&&(!t||String(d)<=t);
+const addDays2=(ds,n)=>{const d=new Date(ds+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+const dateLabel=ds=>new Date(ds+'T12:00:00').toLocaleDateString(undefined,{day:'numeric',month:'short'});
+
+function collapseSetup(){
+  const inv=q('#inventory'); if(!inv)return;
+  const topTitle=inv.querySelector('.section-title');
+  let cogsAnchor=q('#cogsVisibilityAnchor');
+  if(!cogsAnchor){
+    cogsAnchor=document.createElement('div');cogsAnchor.id='cogsVisibilityAnchor';
+    const firstCard=topTitle?.nextElementSibling;
+    if(firstCard) inv.insertBefore(cogsAnchor,firstCard);
+  }
+  let variance=q('#recipeVarianceExtension');
+  if(!variance)return;
+
+  if(!q('#toggleCogsSection')){
+    const b=document.createElement('button');b.id='toggleCogsSection';b.type='button';b.className='btn fs-collapse-btn';b.textContent='Hide COGS';
+    topTitle?.lastElementChild?.appendChild(b);
+    b.onclick=()=>{
+      const hidden=b.dataset.hidden==='1';
+      setCogsHidden(!hidden);
+    };
+  }
+  if(!q('#toggleVarianceSection')){
+    const head=variance.querySelector('.variance-head');
+    const b=document.createElement('button');b.id='toggleVarianceSection';b.type='button';b.className='btn fs-collapse-btn';b.textContent='Hide Variance';
+    head?.appendChild(b);
+    b.onclick=()=>{
+      const body=q('#varianceReportBody'),hide=!body?.classList.contains('fs-collapsed');
+      body?.classList.toggle('fs-collapsed',hide);b.textContent=hide?'Show Variance':'Hide Variance';
+    };
+  }
+  wrapVarianceBody(variance);
+}
+function setCogsHidden(hide){
+  const inv=q('#inventory'),variance=q('#recipeVarianceExtension'),anchor=q('#cogsVisibilityAnchor'),b=q('#toggleCogsSection');
+  if(!inv||!variance||!anchor)return;
+  let el=anchor.nextElementSibling;
+  while(el&&el!==variance){
+    el.classList.toggle('fs-collapsed',hide);el=el.nextElementSibling;
+  }
+  if(b){b.dataset.hidden=hide?'1':'0';b.textContent=hide?'Show COGS':'Hide COGS'}
+}
+function wrapVarianceBody(variance){
+  if(q('#varianceReportBody',variance))return;
+  const head=variance.querySelector('.variance-head'); if(!head)return;
+  const body=document.createElement('div');body.id='varianceReportBody';
+  while(head.nextSibling)body.appendChild(head.nextSibling);
+  variance.appendChild(body);
+}
+
+function enhanceVarianceControls(){
+  const variance=q('#recipeVarianceExtension'); if(!variance)return;
+  const filters=variance.querySelector('.variance-filters'); if(!filters)return;
+  if(!q('#varianceScopeFilter')){
+    const d=document.createElement('div');d.className='field';d.innerHTML='<label>Items</label><select class="input" id="varianceScopeFilter"><option value="closing">With Closing Balance</option><option value="all">All Items</option></select>';
+    filters.insertBefore(d,q('#applyVarianceFix'));
+  }
+  if(!q('#varianceItemFilter')){
+    const d=document.createElement('div');d.className='field';d.innerHTML='<label>Specific Item</label><select class="input" id="varianceItemFilter"><option value="">All Selected Items</option></select>';
+    filters.insertBefore(d,q('#applyVarianceFix'));
+  }
+  const sel=q('#varianceItemFilter');
+  const old=sel.value;
+  sel.innerHTML='<option value="">All Selected Items</option>'+((state.stockItems||[]).map(x=>`<option value="${esc(x.id||x.name)}">${esc(x.name)}</option>`).join(''));
+  if([...sel.options].some(o=>o.value===old))sel.value=old;
+  q('#varianceScopeFilter').onchange=()=>renderVarianceFiltered();
+  sel.onchange=()=>renderVarianceFiltered();
+  q('#applyVarianceFix').onclick=()=>renderVarianceFiltered();
+}
+function latest(rows,item,before,after=''){
+  return (rows||[]).filter(x=>norm(x.item)===norm(item)&&(!before||x.date<=before)&&(!after||x.date>=after)).sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
+}
+function pQty(item,f,t){
+  let qty=0;(state.bills||[]).filter(b=>inRange2(b.date,f,t)).forEach(b=>(b.lines||[]).forEach(l=>{if(l.group==='Purchase Item'&&norm(l.item)===norm(item))qty+=num(l.qty||l.quantity)}));return qty;
+}
+function sName(id){return (state.stockItems||[]).find(x=>x.id===id)?.name||''}
+function theo(item,f,t){
+  const rd=window.finsightRecipeData||{menu:[],lines:[]};let total=0;
+  (state.saleItems||[]).filter(x=>inRange2(x.date,f,t)).forEach(si=>{
+    const mi=(rd.menu||[]).find(m=>norm(m.name)===norm(si.item));if(!mi)return;
+    (rd.lines||[]).filter(l=>l.menu_item_id===mi.id&&norm(sName(l.stock_item_id))===norm(item)).forEach(l=>total+=num(si.qty)*num(l.quantity_per_sale));
+  });return total;
+}
+function costOf(item,op,cl){
+  try{if(typeof weightedCost==='function')return num(weightedCost(item))}catch(_){}
+  return num(cl?.unitCost||op?.unitCost);
+}
+function renderVarianceFiltered(){
+  const box=q('#recipeVarianceExtension');if(!box)return;
+  enhanceVarianceControls();
+  let f=q('#varianceFromFix')?.value||q('#dashboardFrom')?.value||'',t=q('#varianceToFix')?.value||q('#dashboardTo')?.value||'';
+  if(f&&t&&f>t)[f,t]=[t,f];
+  const scope=q('#varianceScopeFilter')?.value||'closing',specific=q('#varianceItemFilter')?.value||'';
+  let rows=(state.stockItems||[]).map(si=>{
+    const op=latest(state.stock?.opening||[],si.name,f),cl=latest(state.stock?.closing||[],si.name,t,f);
+    const opening=num(op?.qty),purchases=pQty(si.name,f,t),theoretical=theo(si.name,f,t),expected=opening+purchases-theoretical,actual=num(cl?.qty),variance=actual-expected,cost=costOf(si.name,op,cl);
+    return {id:si.id||si.name,name:si.name,opening,purchases,theoretical,expected,actual,variance,cost,value:variance*cost,hasClosing:!!cl};
+  });
+  if(scope==='closing')rows=rows.filter(r=>r.hasClosing);
+  if(specific)rows=rows.filter(r=>String(r.id)===specific);
+  let tv=0,av=0,vv=0,vc=0;
+  rows.forEach(r=>{tv+=r.theoretical*r.cost;if(r.hasClosing){av+=(r.opening+r.purchases-r.actual)*r.cost;vv+=r.value;if(Math.abs(r.variance)>.0005)vc++}});
+  const k=q('#varianceKpisFix');if(k)k.innerHTML=`<div class="card kpi"><div class="label">Theoretical Usage Value</div><div class="value">${money(tv)}</div></div><div class="card kpi"><div class="label">Actual Usage Value</div><div class="value">${money(av)}</div></div><div class="card kpi"><div class="label">Stock Variance Value</div><div class="value">${money(vv)}</div></div><div class="card kpi"><div class="label">Items With Variance</div><div class="value">${vc}</div></div>`;
+  const tbody=q('#stockVarianceRowsFix');if(tbody)tbody.innerHTML=rows.length?rows.map(r=>`<tr><td><b>${esc(r.name)}</b></td><td>${r.opening.toFixed(3)}</td><td>${r.purchases.toFixed(3)}</td><td>${r.theoretical.toFixed(3)}</td><td>${r.expected.toFixed(3)}</td><td>${r.hasClosing?r.actual.toFixed(3):'No count'}</td><td>${r.hasClosing?r.variance.toFixed(3):'—'}</td><td>${money(r.cost)}</td><td>${r.hasClosing?money(r.value):'—'}</td><td>${!r.hasClosing?'<span class="badge amber">Missing Closing</span>':Math.abs(r.variance)<=.0005?'<span class="badge green">Matched</span>':r.variance<0?'<span class="badge amber">Shortage</span>':'<span class="badge blue">Over</span>'}</td></tr>`).join(''):'<tr><td colspan="10"><div class="empty-state">No stock items match this filter.</div></td></tr>';
+}
+
+/* Professional payment type table */
+function renderPaymentTable(){
+  const box=q('#salesAnalysis');if(!box)return;
+  let f=q('#dashboardFrom')?.value||'',t=q('#dashboardTo')?.value||'';if(f&&t&&f>t)[f,t]=[t,f];
+  const sales=(state.sales||[]).filter(x=>inRange2(x.date,f,t));
+  const types=[...new Set([...(state.paymentTypes||[]),...sales.map(x=>x.paymentType).filter(Boolean)])];
+  const rows=types.map(pt=>({pt,total:sales.filter(x=>x.paymentType===pt).reduce((a,b)=>a+num(b.amount),0)}));
+  const grand=rows.reduce((a,b)=>a+b.total,0);
+  box.innerHTML=`<div style="overflow:auto"><table class="payment-prof-table"><thead><tr><th>Payment Type</th><th>Sales Amount</th><th>% of Sales</th></tr></thead><tbody>${rows.map(r=>`<tr><td><b>${esc(r.pt)}</b></td><td>${money(r.total)}</td><td>${grand?((r.total/grand)*100).toFixed(1):'0.0'}%</td></tr>`).join('')}<tr class="subtotal"><td>Total Sales</td><td>${money(grand)}</td><td>${grand?'100.0':'0.0'}%</td></tr></tbody></table></div>`;
+  const label=q('#paymentMixPeriod');if(label)label.textContent=(f&&t)?`${dateLabel(f)} – ${dateLabel(t)}`:'Selected period';
+}
+
+/* Adaptive line chart: daily <=14 days, weekly >14 and <=90, monthly >90. */
+function chartBuckets(f,t,sales){
+  const days=[];for(let d=f;d<=t;d=addDays2(d,1)){days.push(d);if(days.length>370)break}
+  if(days.length<=14)return {mode:'Daily',rows:days.map(d=>({label:dateLabel(d),value:sales.filter(x=>x.date===d).reduce((a,b)=>a+num(b.amount),0)}))};
+  if(days.length<=90){
+    const rows=[];
+    for(let i=0;i<days.length;i+=7){
+      const chunk=days.slice(i,i+7),a=chunk[0],b=chunk[chunk.length-1];
+      rows.push({label:`${dateLabel(a)}–${dateLabel(b)}`,value:sales.filter(x=>x.date>=a&&x.date<=b).reduce((x,y)=>x+num(y.amount),0)});
+    }
+    return {mode:'Weekly',rows};
+  }
+  const map=new Map();sales.forEach(x=>{if(inRange2(x.date,f,t)){const k=String(x.date).slice(0,7);map.set(k,(map.get(k)||0)+num(x.amount))}});
+  const months=[];for(let d=f.slice(0,7);d<=t.slice(0,7);){months.push(d);let y=+d.slice(0,4),m=+d.slice(5,7)+1;if(m===13){m=1;y++}d=`${y}-${String(m).padStart(2,'0')}`}
+  return {mode:'Monthly',rows:months.map(k=>({label:new Date(k+'-01T12:00:00').toLocaleDateString(undefined,{month:'short',year:'numeric'}),value:map.get(k)||0}))};
+}
+function renderAdaptiveLine(){
+  const svgBox=q('#salesSvg'),labels=q('#salesLabels'),title=q('#dashboardDailySalesTitle');if(!svgBox||!labels)return;
+  let f=q('#dashboardFrom')?.value||'',t=q('#dashboardTo')?.value||'';if(!f||!t)return;if(f>t)[f,t]=[t,f];
+  const sales=(state.sales||[]).filter(x=>inRange2(x.date,f,t)),b=chartBuckets(f,t,sales),rows=b.rows,max=Math.max(...rows.map(x=>x.value),1);
+  if(title)title.textContent=`${b.mode} Sales · ${dateLabel(f)} to ${dateLabel(t)}`;
+  const width=Math.max(700,rows.length*75),left=30,right=20,base=190,usable=width-left-right,step=rows.length>1?usable/(rows.length-1):0;
+  const pts=rows.map((x,i)=>`${left+i*step},${base-(x.value/max)*145}`).join(' ');
+  svgBox.parentElement?.classList.add('sales-chart-scroll');
+  svgBox.innerHTML=`<svg viewBox="0 0 ${width} 210" style="width:${width}px"><line class="chart-axis" x1="${left}" y1="${base}" x2="${width-right}" y2="${base}"/><polyline class="chart-line" points="${pts}"/>${rows.map((x,i)=>{const cx=left+i*step,cy=base-(x.value/max)*145;return `<circle class="chart-dot" cx="${cx}" cy="${cy}" r="5"><title>${esc(x.label)}: ${esc(money(x.value))}</title></circle><text x="${cx}" y="${Math.max(14,cy-10)}" text-anchor="middle" font-size="10" font-weight="700" fill="#374151">${esc(money(x.value).replace('KSh ',''))}</text>`}).join('')}</svg>`;
+  labels.style.minWidth=width+'px';labels.innerHTML=rows.map(x=>`<span>${esc(x.label)}</span>`).join('');
+}
+
+/* Replace category pie with a horizontal bar graph. */
+function renderCategoryBars(){
+  const pie=q('#categoryPie'),legend=q('#categoryLegend');if(!pie||!legend)return;
+  let f=q('#dashboardFrom')?.value||'',t=q('#dashboardTo')?.value||'';if(f&&t&&f>t)[f,t]=[t,f];
+  const cats={};(state.saleItems||[]).filter(x=>inRange2(x.date,f,t)).forEach(x=>{const k=clean(x.category)||'Uncategorised';cats[k]=(cats[k]||0)+num(x.revenue||x.amount)});
+  const rows=Object.entries(cats).sort((a,b)=>b[1]-a[1]),max=Math.max(...rows.map(x=>x[1]),1),tot=rows.reduce((a,b)=>a+b[1],0);
+  const wrap=pie.parentElement;if(!wrap)return;
+  wrap.classList.remove('pie-wrap');wrap.innerHTML=`<div class="category-bar-chart" id="categoryBarChart">${rows.length?rows.map(([name,val])=>`<div class="category-bar-row"><div class="category-bar-name" title="${esc(name)}">${esc(name)}</div><div class="category-bar-track"><div class="category-bar-fill" style="width:${Math.max(1,val/max*100)}%"></div></div><div class="category-bar-value">${money(val)}<div class="small-note">${tot?(val/tot*100).toFixed(1):'0.0'}%</div></div></div>`).join(''):'<div class="empty-state">No category sales in this period.</div>'}</div>`;
+}
+function dashboardPolish(){
+  renderPaymentTable();renderAdaptiveLine();renderCategoryBars();
+}
+function bind(){
+  collapseSetup();enhanceVarianceControls();renderVarianceFiltered();dashboardPolish();
+  ['applyDashboardDates','dashboardTodayBtn','dashboardMonthBtn'].forEach(id=>{const b=q('#'+id);if(b&&!b.dataset.v18542){b.dataset.v18542='1';b.addEventListener('click',()=>setTimeout(dashboardPolish,100))}});
+  const nav=q('.nav-item[data-page="inventory"]');if(nav&&!nav.dataset.v18542){nav.dataset.v18542='1';nav.addEventListener('click',()=>setTimeout(()=>{collapseSetup();enhanceVarianceControls();renderVarianceFiltered()},180))}
+}
+document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(bind,250));
+document.addEventListener('DOMContentLoaded',()=>setTimeout(bind,1100));
+setTimeout(bind,1800);
+setTimeout(bind,3200);
 })();
 </script>
 
