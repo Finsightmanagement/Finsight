@@ -5430,13 +5430,39 @@ function activityName(r){
 function detailRows(rows,activity){
   const rs=arr(rows).filter(r=>activityName(r)===activity);
   if(!rs.length)return '<tr><td class="muted">None posted</td><td>'+money(0)+'</td></tr>';
-  return rs.map(r=>{
+
+  // Cash Flow Statement is a management summary. Consolidate sales receipts
+  // for the selected report period by payment type, while leaving every
+  // non-sales cash-flow transaction individually traceable.
+  const groupedSales=new Map(), normal=[];
+  for(const r of rs){
+    const source=String(val(r,'source_type','description')||'Journal Entry').trim();
+    const inflow=num(r,'inflow','money_in');
+    const outflow=num(r,'outflow','money_out');
+    if(/sales?\s*receipt|sales?\s*collection/i.test(source) && inflow>0 && outflow===0){
+      const paymentType=String(val(r,'reference','memo')||'Unspecified Payment Type').trim()||'Unspecified Payment Type';
+      const key=paymentType.toLowerCase();
+      const current=groupedSales.get(key)||{paymentType,amount:0};
+      current.amount+=inflow;
+      groupedSales.set(key,current);
+    }else{
+      normal.push(r);
+    }
+  }
+
+  const salesHtml=[...groupedSales.values()]
+    .sort((a,b)=>a.paymentType.localeCompare(b.paymentType))
+    .map(g=>`<tr><td>${esc('Sales Receipts — '+g.paymentType)}</td><td>${money(g.amount)}</td></tr>`).join('');
+
+  const normalHtml=normal.map(r=>{
     const inflow=num(r,'inflow','money_in');
     const outflow=num(r,'outflow','money_out');
     const amount=inflow-outflow;
     const label=[val(r,'source_type','description')||'Journal Entry',val(r,'reference','memo')].filter(Boolean).join(' — ');
     return `<tr><td>${esc(label)}</td><td>${amount<0?'('+money(Math.abs(amount))+')':money(amount)}</td></tr>`;
   }).join('');
+
+  return salesHtml+normalHtml;
 }
 async function renderLiveCashFlow(){
   const box=q('#reportCashFlow');
