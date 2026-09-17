@@ -7949,4 +7949,103 @@ body.fs-dark .fs-confirm-message{color:#98a2b3}
  },true);
 })();
 </script>
+
+
+<!-- FinSight V18.5.7.3 — Bank dark-mode completion + General Journal report -->
+<style id="finsight-v18573-bank-dark-journal-css">
+body.fs-dark #banking .recon-status,
+body.fs-dark #banking .card,
+body.fs-dark #banking .table-card,
+body.fs-dark #banking #reconHistory,
+body.fs-dark #banking .panel{
+  background:var(--card)!important;
+  color:var(--text)!important;
+  border-color:var(--line)!important;
+}
+body.fs-dark #banking .recon-status span,
+body.fs-dark #banking .recon-status .big,
+body.fs-dark #banking #reconBook,
+body.fs-dark #banking #reconDifference{color:var(--text)!important}
+body.fs-dark #banking .recon-status .small-note,
+body.fs-dark #banking #reconMessage{color:var(--muted)!important}
+body.fs-dark #banking table,
+body.fs-dark #banking tbody,
+body.fs-dark #banking tr,
+body.fs-dark #banking td{background:transparent!important;color:var(--text)!important;border-color:var(--line)!important}
+body.fs-dark #banking thead th{background:#101622!important;color:#b9c2d0!important;border-color:var(--line)!important}
+body.fs-dark #banking tbody tr:hover{background:#191f2e!important}
+.general-journal-table td:nth-last-child(-n+2),.general-journal-table th:nth-last-child(-n+2){text-align:right;white-space:nowrap}
+.general-journal-table .journal-entry-start td{border-top:1px solid var(--line)}
+.general-journal-table .journal-total td{font-weight:900;border-top:2px solid var(--text)}
+body.fs-dark .general-journal-table .journal-total td{border-top-color:#e5e7eb}
+</style>
+<script id="finsight-v18573-general-journal">
+(function(){
+'use strict';
+const q=s=>document.querySelector(s), qa=s=>[...document.querySelectorAll(s)];
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>typeof fmt==='function'?fmt(Number(n||0)):'KSh '+Number(n||0).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+function reportDates(){
+ const now=new Date(), end=q('#reportTo')?.value||now.toISOString().slice(0,10);
+ const start=q('#reportFrom')?.value||new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString().slice(0,10);
+ return {start,end};
+}
+function header(title,start,end){return typeof reportHeader==='function'?reportHeader(title,start,end):`<div class="report-headline"><h3>${esc(title)}</h3><div>${esc(start)} to ${esc(end)}</div></div>`;}
+function ensureJournalUI(){
+ const tabs=q('.report-tabs'), reports=q('#reports'); if(!tabs||!reports)return;
+ if(!q('.report-tab[data-report="journal"]')) tabs.insertAdjacentHTML('beforeend','<button class="report-tab" data-report="journal">General Journal</button>');
+ if(!q('#reportJournal')) reports.insertAdjacentHTML('beforeend','<div class="report-panel hidden" id="reportJournal"></div>');
+}
+function activateJournal(){
+ qa('.report-tab').forEach(x=>x.classList.remove('active')); q('.report-tab[data-report="journal"]')?.classList.add('active');
+ qa('.report-panel').forEach(x=>{x.classList.add('hidden');x.classList.remove('active')});
+ const p=q('#reportJournal'); if(p){p.classList.remove('hidden');p.classList.add('active');}
+ renderJournal();
+}
+async function fetchAllEntries(sb,cid,start,end){
+ let all=[],from=0; const size=1000;
+ while(true){const {data,error}=await sb.from('journal_entries').select('*').eq('company_id',cid).gte('entry_date',start).lte('entry_date',end).order('entry_date',{ascending:true}).order('created_at',{ascending:true}).range(from,from+size-1);if(error)throw error;all.push(...(data||[]));if(!data||data.length<size)break;from+=size;}
+ return all;
+}
+async function fetchLines(sb,ids){
+ let all=[];
+ for(let i=0;i<ids.length;i+=100){const chunk=ids.slice(i,i+100);const {data,error}=await sb.from('journal_lines').select('*').in('journal_entry_id',chunk);if(error)throw error;all.push(...(data||[]));}
+ return all;
+}
+async function renderJournal(){
+ ensureJournalUI(); const host=q('#reportJournal'); if(!host)return;
+ const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId,{start,end}=reportDates();
+ if(!sb||!cid){host.innerHTML='<div class="report-card"><div class="empty-state">FinSight cloud connection is not ready.</div></div>';return;}
+ host.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading General Journal…</div></div>';
+ try{
+   const entries=await fetchAllEntries(sb,cid,start,end);
+   if(!entries.length){host.innerHTML=`<div class="report-card">${header('GENERAL JOURNAL',start,end)}<div class="empty-state">No journal entries in this period.</div></div>`;return;}
+   const lines=await fetchLines(sb,entries.map(e=>e.id));
+   const accountIds=[...new Set(lines.map(l=>l.account_id).filter(Boolean))]; let amap={};
+   for(let i=0;i<accountIds.length;i+=100){const {data,error}=await sb.from('accounts').select('id,name').in('id',accountIds.slice(i,i+100));if(error)throw error;(data||[]).forEach(a=>amap[a.id]=a.name);}
+   const byEntry={}; lines.forEach(l=>(byEntry[l.journal_entry_id]??=[]).push(l));
+   let totalD=0,totalC=0,body='';
+   entries.forEach((e,ei)=>{
+     const ls=byEntry[e.id]||[];
+     if(!ls.length) return;
+     ls.forEach((l,li)=>{
+       const d=Number(l.debit||0),c=Number(l.credit||0); totalD+=d;totalC+=c;
+       body+=`<tr class="${li===0?'journal-entry-start':''}"><td>${li===0?esc(e.entry_date||''):''}</td><td>${li===0?esc(e.reference||e.journal_no||e.id?.slice(0,8)||'—'):''}</td><td>${li===0?esc(e.source_type||e.entry_type||'Journal Entry'):''}</td><td>${esc(amap[l.account_id]||l.account_name||'Account')}</td><td>${esc(l.description||e.memo||e.description||'—')}</td><td>${d?money(d):'—'}</td><td>${c?money(c):'—'}</td></tr>`;
+     });
+   });
+   body+=`<tr class="journal-total"><td colspan="5">Totals</td><td>${money(totalD)}</td><td>${money(totalC)}</td></tr>`;
+   host.innerHTML=`<div class="report-card">${header('GENERAL JOURNAL',start,end)}<table class="live-fin-table general-journal-table"><thead><tr><th>Date</th><th>Reference</th><th>Source</th><th>Account</th><th>Description / Memo</th><th>Debit</th><th>Credit</th></tr></thead><tbody>${body}</tbody></table></div>`;
+ }catch(e){console.error('[FinSight General Journal]',e);host.innerHTML=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;}
+}
+function bind(){
+ ensureJournalUI();
+ q('.report-tab[data-report="journal"]')?.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();activateJournal();},true);
+ q('#refreshReportsBtn')?.addEventListener('click',()=>{if(q('.report-tab[data-report="journal"]')?.classList.contains('active'))setTimeout(renderJournal,30)});
+}
+document.addEventListener('finsight:cloud-state-loaded',()=>{ensureJournalUI();if(q('.report-tab[data-report="journal"]')?.classList.contains('active'))renderJournal();});
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();
+setTimeout(bind,1000);
+window.finsightRenderGeneralJournal=renderJournal;
+})();
+</script>
 </body></html>
