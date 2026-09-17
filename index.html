@@ -454,7 +454,7 @@ body.online-loading .app{visibility:hidden}
     <button type="button" class="link-btn" id="onlineRecoveryLink">Forgot password?</button>
     <div class="online-login-actions"><button class="btn primary" id="onlineLoginBtn">Sign In</button></div>
     <div class="online-error" id="onlineLoginError"></div>
-    <div class="online-note">FinSight authenticates directly with Supabase. This HTML does not store your password.</div>
+    
     </div>
   <div id="onlineRecoveryPanel" aria-live="polite">
     <h3 id="onlineRecoveryTitle" style="margin:0 0 6px">Reset your password</h3>
@@ -7792,6 +7792,29 @@ body.fs-dark .action-link{color:#a5b4fc}
  }
  document.addEventListener('finsight:cloud-state-loaded',()=>{buildProfile();refreshProfile()});
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{buildProfile();cleanPageDescriptions()});else{buildProfile();cleanPageDescriptions()}
+})();
+</script>
+
+<style id="finsight-v18571-form-cleanup">
+/* V18.5.7.1 — form explanation cleanup only */
+.modal #modalSub,
+.modal .modal-size-note,
+.modal .small-note:not([id]) { display:none !important; }
+</style>
+<script id="finsight-v18571-form-cleanup-script">
+(function(){
+  function cleanFormExplanations(){
+    var sub=document.getElementById('modalSub');
+    if(sub){ sub.textContent=''; sub.style.display='none'; }
+    document.querySelectorAll('.modal .modal-size-note').forEach(function(el){el.style.display='none';});
+    document.querySelectorAll('.modal .small-note:not([id])').forEach(function(el){el.style.display='none';});
+  }
+  document.addEventListener('DOMContentLoaded',cleanFormExplanations);
+  var obs=new MutationObserver(cleanFormExplanations);
+  document.addEventListener('DOMContentLoaded',function(){
+    var m=document.getElementById('modal');
+    if(m) obs.observe(m,{childList:true,subtree:true});
+  });
 })();
 </script>
 </body></html>
