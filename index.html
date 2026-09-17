@@ -7817,4 +7817,136 @@ body.fs-dark .action-link{color:#a5b4fc}
   });
 })();
 </script>
+
+<style id="finsight-v18572-dark-confirm-css">
+/* V18.5.7.2 — dark-mode completion and form confirmation UX. UI only. */
+/* Remove the remaining duplicate Petty Cash page heading. */
+#petty > .section-title:first-child > div:first-child > h3{display:none!important}
+
+/* Legacy surfaces that used fixed white backgrounds now follow the active theme. */
+body.fs-dark .report-card,
+body.fs-dark .user-role-card,
+body.fs-dark .petty-lot,
+body.fs-dark .petty-balance-flow .flow-box,
+body.fs-dark .petty-expense-register,
+body.fs-dark .cogs-status-card,
+body.fs-dark .recipe-item,
+body.fs-dark .payment-total-card,
+body.fs-dark .live-fin-note,
+body.fs-dark .production-note,
+body.fs-dark .csv-result,
+body.fs-dark .report-tab,
+body.fs-dark .comment-input,
+body.fs-dark .kpi,
+body.fs-dark .stat,
+body.fs-dark .metric,
+body.fs-dark .report-wrap,
+body.fs-dark .report-container{
+ background:var(--card)!important;color:var(--text)!important;border-color:var(--line)!important
+}
+body.fs-dark .petty-lot-head,
+body.fs-dark .petty-expense-register-head,
+body.fs-dark .petty-balance-flow .flow-box.total,
+body.fs-dark .payment-total-card.total,
+body.fs-dark .pnl-detail .section-row td,
+body.fs-dark .live-fin-table .section-row td,
+body.fs-dark .grouped-head th,
+body.fs-dark .sub-head th,
+body.fs-dark .payment-v1855 th{
+ background:#101622!important;color:#cbd5e1!important;border-color:var(--line)!important
+}
+body.fs-dark .report-tab.active{background:#302d52!important;color:#ddd6fe!important;border-color:#4c4778!important}
+body.fs-dark .report-sheet,body.fs-dark .report-card{box-shadow:0 12px 34px rgba(0,0,0,.2)!important}
+body.fs-dark .report-sheet *,body.fs-dark .report-card *{border-color:var(--line)}
+body.fs-dark .report-sheet h1,body.fs-dark .report-sheet h2,body.fs-dark .report-sheet h3,
+body.fs-dark .report-card h1,body.fs-dark .report-card h2,body.fs-dark .report-card h3{color:var(--text)!important}
+body.fs-dark .report-sheet td,body.fs-dark .report-card td{color:#e5e7eb}
+body.fs-dark .report-sheet .muted,body.fs-dark .report-card .muted{color:var(--muted)!important}
+body.fs-dark .live-fin-note{background:#17233a!important;color:#bfdbfe!important;border-color:#29446e!important}
+body.fs-dark .production-note{background:#352a13!important;color:#fde68a!important;border-color:#5f4a1d!important}
+body.fs-dark .csv-result.warn{background:#3a2a16!important;color:#fdba74!important;border-color:#6b4423!important}
+body.fs-dark .recipe-item.active{background:#24213d!important;border-color:#6258c9!important}
+body.fs-dark #dashboardTo[readonly]{background:#101622!important;color:#98a2b3!important}
+body.fs-dark .pie:after{background:var(--card)!important}
+body.fs-dark .recon-box .small-note,body.fs-dark .summary-box .small-note{color:var(--muted)!important}
+
+/* Confirmation dialog sits above the existing application modal. */
+.fs-confirm-backdrop{position:fixed;inset:0;z-index:40000;background:rgba(2,6,23,.55);display:none;align-items:center;justify-content:center;padding:20px}
+.fs-confirm-backdrop.show{display:flex}
+.fs-confirm-card{width:min(430px,94vw);background:#fff;color:#111827;border:1px solid #e5e7eb;border-radius:18px;padding:20px;box-shadow:0 28px 80px rgba(15,23,42,.30)}
+.fs-confirm-title{font-size:17px;font-weight:850;margin:0 0 7px}
+.fs-confirm-message{font-size:11px;line-height:1.55;color:#667085;margin:0}
+.fs-confirm-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+.fs-confirm-actions button{min-width:92px}
+body.fs-dark .fs-confirm-backdrop{background:rgba(2,6,23,.76)}
+body.fs-dark .fs-confirm-card{background:#151b28;color:#e7eaf0;border-color:#2a3343}
+body.fs-dark .fs-confirm-message{color:#98a2b3}
+</style>
+<script id="finsight-v18572-confirm-controller">
+(function(){
+ 'use strict';
+ let bypassButton=null, confirmBusy=false;
+ function ensureConfirm(){
+   let el=document.getElementById('fsConfirmBackdrop');
+   if(el)return el;
+   el=document.createElement('div'); el.id='fsConfirmBackdrop'; el.className='fs-confirm-backdrop';
+   el.innerHTML='<div class="fs-confirm-card" role="dialog" aria-modal="true" aria-labelledby="fsConfirmTitle"><div class="fs-confirm-title" id="fsConfirmTitle"></div><p class="fs-confirm-message" id="fsConfirmMessage"></p><div class="fs-confirm-actions"><button type="button" class="btn" id="fsConfirmCancel">Cancel</button><button type="button" class="btn primary" id="fsConfirmOk">OK</button></div></div>';
+   document.body.appendChild(el); return el;
+ }
+ function ask(title,message,okText,cancelText){
+   if(confirmBusy)return Promise.resolve(false); confirmBusy=true;
+   const el=ensureConfirm(),t=el.querySelector('#fsConfirmTitle'),m=el.querySelector('#fsConfirmMessage'),ok=el.querySelector('#fsConfirmOk'),cancel=el.querySelector('#fsConfirmCancel');
+   t.textContent=title;m.textContent=message;ok.textContent=okText||'OK';cancel.textContent=cancelText||'Cancel';el.classList.add('show');
+   return new Promise(resolve=>{
+     const done=v=>{el.classList.remove('show');ok.onclick=cancel.onclick=null;confirmBusy=false;resolve(v)};
+     ok.onclick=()=>done(true);cancel.onclick=()=>done(false);
+   });
+ }
+ function visibleModal(){const b=document.getElementById('modalBackdrop');return b&&b.classList.contains('show')?b:null}
+ function modalHasEditableForm(){const b=visibleModal();return !!(b&&b.querySelector('#modalBody input:not([disabled]):not([readonly]),#modalBody select:not([disabled]),#modalBody textarea:not([disabled])'))}
+ function isCloseAttempt(target){
+   const b=visibleModal();if(!b)return false;
+   if(target===b)return true;
+   const btn=target.closest&&target.closest('button');if(!btn||!b.contains(btn))return false;
+   if(btn.id==='closeModalBtn')return true;
+   const tx=(btn.textContent||'').trim().toLowerCase();
+   return /^(cancel|close|back)$/.test(tx);
+ }
+ function isSaveAction(btn){
+   if(!btn||btn.disabled||btn.id==='fsConfirmOk'||btn.id==='fsConfirmCancel')return false;
+   if(btn===bypassButton){bypassButton=null;return false}
+   const tx=(btn.textContent||'').trim().replace(/\s+/g,' ');
+   if(!tx)return false;
+   if(/calculate|refresh|apply|today|month|export|download|print|view|edit|delete|remove|sample|upload csv/i.test(tx))return false;
+   return /^(save\b|post\b|deposit funds\b|transfer funds\b|pay\b|receive\b|invite\b|update\b|create\b|add account\b|add supplier\b)/i.test(tx);
+ }
+ document.addEventListener('click',async function(e){
+   const target=e.target;
+   if(document.getElementById('fsConfirmBackdrop')?.contains(target))return;
+   if(isCloseAttempt(target)&&modalHasEditableForm()){
+     e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
+     if(await ask('Close without saving?','Any information entered on this form will not be saved.','Close Without Saving','Keep Editing')){
+       try{ if(typeof window.closeModal==='function') window.closeModal(); else document.getElementById('modalBackdrop')?.classList.remove('show'); }catch(_){document.getElementById('modalBackdrop')?.classList.remove('show')}
+     }
+     return;
+   }
+   const btn=target.closest&&target.closest('button');
+   if(!isSaveAction(btn))return;
+   /* Require confirmation only for actions that submit/change data. */
+   e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
+   if(await ask('Save these changes?','Please confirm before FinSight saves or posts this information.','Save','Cancel')){
+     bypassButton=btn;btn.click();
+   }
+ },true);
+ /* Escape behaves like Close for editable forms. */
+ document.addEventListener('keydown',async function(e){
+   if(e.key!=='Escape'||!visibleModal()||document.getElementById('fsConfirmBackdrop')?.classList.contains('show'))return;
+   if(!modalHasEditableForm())return;
+   e.preventDefault();e.stopPropagation();
+   if(await ask('Close without saving?','Any information entered on this form will not be saved.','Close Without Saving','Keep Editing')){
+     try{if(typeof window.closeModal==='function')window.closeModal();else document.getElementById('modalBackdrop')?.classList.remove('show')}catch(_){document.getElementById('modalBackdrop')?.classList.remove('show')}
+   }
+ },true);
+})();
+</script>
 </body></html>
