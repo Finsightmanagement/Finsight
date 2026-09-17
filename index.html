@@ -504,7 +504,7 @@ body.online-loading .app{visibility:hidden}
 <main class="main">
 <div class="topbar">
   <div class="title"><h2 id="pageTitle">Executive Dashboard</h2><p id="pageSub">Sales performance, item analysis and bank position.</p></div>
-  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.5.1 Audited</div>
+  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.5.1 Dashboard & Reconciliation Fix</div>
 </div>
 
 <section class="page active" id="dashboard">
@@ -7532,15 +7532,17 @@ const cid=()=>window.finsightOnline?.companyId||null;
 async function rpc(name,args){const sb=window.finsightSupabase;if(!sb)throw new Error('Supabase is not connected.');const {data,error}=await sb.rpc(name,args);if(error)throw error;return data}
 function activePage(id){return q('#'+id)?.classList.contains('active')}
 
-/* DASHBOARD: one selected start date always means exactly seven days. */
+/* DASHBOARD: From/To controls the whole dashboard; only the line graph is seven days. */
 function dashboardBounds(){
-  const f=q('#dashboardFrom')?.value||state.dashboardSummary?.latestSalesDate||iso(new Date());
-  const t=addDays(f,6);
+  let f=q('#dashboardFrom')?.value||state.dashboardSummary?.latestSalesDate||iso(new Date());
+  let t=q('#dashboardTo')?.value||f;
+  if(f>t)[f,t]=[t,f];
   if(q('#dashboardFrom')&&!q('#dashboardFrom').value)q('#dashboardFrom').value=f;
-  if(q('#dashboardTo')){q('#dashboardTo').value=t;q('#dashboardTo').readOnly=true;q('#dashboardTo').title='Automatically set to six days after Start Date';}
+  if(q('#dashboardTo')&&!q('#dashboardTo').value)q('#dashboardTo').value=t;
   return {f,t};
 }
-function sevenDaySales(){const {f,t}=dashboardBounds();return {f,t,sales:(state.sales||[]).filter(x=>x.date>=f&&x.date<=t),items:(state.saleItems||[]).filter(x=>x.date>=f&&x.date<=t)}}
+function sevenDaySales(){const {f}=dashboardBounds(),t=addDays(f,6);return {f,t,sales:(state.sales||[]).filter(x=>x.date>=f&&x.date<=t),items:(state.saleItems||[]).filter(x=>x.date>=f&&x.date<=t)}}
+function dashboardPeriodSales(){const {f,t}=dashboardBounds();return {f,t,sales:(state.sales||[]).filter(x=>x.date>=f&&x.date<=t),items:(state.saleItems||[]).filter(x=>x.date>=f&&x.date<=t)}}
 function renderSevenDayGraph(){
   const svg=q('#salesSvg'),labels=q('#salesLabels'),title=q('#dashboardDailySalesTitle');if(!svg||!labels)return;
   const {f,t,sales}=sevenDaySales(),days=Array.from({length:7},(_,i)=>addDays(f,i)),vals=days.map(d=>sales.filter(x=>x.date===d).reduce((a,b)=>a+num(b.amount),0)),mx=Math.max(...vals,1),W=720,L=28,R=22,B=188,step=(W-L-R)/6;
@@ -7550,18 +7552,18 @@ function renderSevenDayGraph(){
   labels.style.minWidth='';labels.innerHTML=days.map(d=>`<span>${esc(label(d))}</span>`).join('');
 }
 function renderPaymentTableV1855(){
-  const box=q('#salesAnalysis');if(!box)return;const {f,t,sales}=sevenDaySales();
+  const box=q('#salesAnalysis');if(!box)return;const {f,t,sales}=dashboardPeriodSales();
   const types=[...new Set([...(state.paymentTypes||[]),...sales.map(x=>x.paymentType).filter(Boolean)])];
   const rows=types.map(pt=>({pt,total:sales.filter(x=>x.paymentType===pt).reduce((a,b)=>a+num(b.amount),0)})).filter(x=>x.total!==0),grand=rows.reduce((a,b)=>a+b.total,0);
-  box.innerHTML=`<div style="overflow:auto"><table class="payment-v1855"><thead><tr><th>Payment Type</th><th>Sales Amount</th><th>% of Sales</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td><b>${esc(r.pt)}</b></td><td>${money(r.total)}</td><td>${grand?(r.total/grand*100).toFixed(1):'0.0'}%</td></tr>`).join(''):'<tr><td colspan="3"><div class="empty-state">No sales in this seven-day period.</div></td></tr>'}<tr class="subtotal"><td>Total Sales</td><td>${money(grand)}</td><td>${grand?'100.0':'0.0'}%</td></tr></tbody></table></div>`;
+  box.innerHTML=`<div style="overflow:auto"><table class="payment-v1855"><thead><tr><th>Payment Type</th><th>Sales Amount</th><th>% of Sales</th></tr></thead><tbody>${rows.length?rows.map(r=>`<tr><td><b>${esc(r.pt)}</b></td><td>${money(r.total)}</td><td>${grand?(r.total/grand*100).toFixed(1):'0.0'}%</td></tr>`).join(''):'<tr><td colspan="3"><div class="empty-state">No sales in the selected dashboard period.</div></td></tr>'}<tr class="subtotal"><td>Total Sales</td><td>${money(grand)}</td><td>${grand?'100.0':'0.0'}%</td></tr></tbody></table></div>`;
   if(q('#paymentMixPeriod'))q('#paymentMixPeriod').textContent=`${label(f)} – ${label(t)}`;
 }
 function renderCategoryFresh(){
-  const {f,t,items}=sevenDaySales(),cats={};items.forEach(x=>{const k=String(x.category||'Uncategorised').trim()||'Uncategorised';cats[k]=(cats[k]||0)+num(x.revenue)});
+  const {f,t,items}=dashboardPeriodSales(),cats={};items.forEach(x=>{const k=String(x.category||'Uncategorised').trim()||'Uncategorised';cats[k]=(cats[k]||0)+num(x.revenue)});
   const rows=Object.entries(cats).sort((a,b)=>b[1]-a[1]),mx=Math.max(...rows.map(x=>x[1]),1),tot=rows.reduce((a,b)=>a+b[1],0);
   let host=q('#categoryBarChart');
   if(!host){const pie=q('#categoryPie'),legend=q('#categoryLegend'),wrap=pie?.parentElement||legend?.parentElement;if(!wrap)return;wrap.classList.remove('pie-wrap');wrap.innerHTML='<div id="categoryBarChart" class="category-bar-chart"></div>';host=q('#categoryBarChart')}
-  host.innerHTML=rows.length?rows.map(([name,val])=>`<div class="category-bar-row"><div class="category-bar-name" title="${esc(name)}">${esc(name)}</div><div class="category-bar-track"><div class="category-bar-fill" style="width:${Math.max(1,val/mx*100)}%"></div></div><div class="category-bar-value">${money(val)}<div class="small-note">${tot?(val/tot*100).toFixed(1):'0.0'}%</div></div></div>`).join(''):'<div class="empty-state">No category sales for this company in this seven-day period.</div>';
+  host.innerHTML=rows.length?rows.map(([name,val])=>`<div class="category-bar-row"><div class="category-bar-name" title="${esc(name)}">${esc(name)}</div><div class="category-bar-track"><div class="category-bar-fill" style="width:${Math.max(1,val/mx*100)}%"></div></div><div class="category-bar-value">${money(val)}<div class="small-note">${tot?(val/tot*100).toFixed(1):'0.0'}%</div></div></div>`).join(''):'<div class="empty-state">No category sales for this company in the selected dashboard period.</div>';
 }
 let dashPainting=false;
 function renderDashboardV1855(){if(dashPainting||!activePage('dashboard'))return;dashPainting=true;try{dashboardBounds();renderSevenDayGraph();renderPaymentTableV1855();renderCategoryFresh()}finally{dashPainting=false}}
@@ -7569,11 +7571,11 @@ function stabilizeDashboard(){
   let paymentHost=q('#salesAnalysis');
   if(paymentHost?.dataset.paymentObserver){const fresh=paymentHost.cloneNode(false);fresh.id='salesAnalysis';paymentHost.replaceWith(fresh);paymentHost=fresh;}
   const from=q('#dashboardFrom'),to=q('#dashboardTo'),month=q('#dashboardMonthBtn');
-  if(from){const fld=from.closest('.field');const lab=fld?.querySelector('label');if(lab)lab.textContent='Start Date';if(!from.dataset.v1855){from.dataset.v1855='1';from.addEventListener('change',()=>{dashboardBounds();setTimeout(renderDashboardV1855,120)})}}
-  if(to){const lab=to.closest('.field')?.querySelector('label');if(lab)lab.textContent='End Date (Auto)';to.readOnly=true}
-  if(month)month.style.display='none';
+  if(from){const lab=from.closest('.field')?.querySelector('label');if(lab)lab.textContent='From';}
+  if(to){const lab=to.closest('.field')?.querySelector('label');if(lab)lab.textContent='To';to.readOnly=false;to.removeAttribute('title');}
+  if(month)month.style.display='';
   const apply=q('#applyDashboardDates');if(apply&&!apply.dataset.v1855){apply.dataset.v1855='1';apply.addEventListener('click',()=>setTimeout(renderDashboardV1855,180),true)}
-  const todayBtn=q('#dashboardTodayBtn');if(todayBtn&&!todayBtn.dataset.v1855){todayBtn.dataset.v1855='1';todayBtn.addEventListener('click',()=>{if(from)from.value=iso(new Date());dashboardBounds();setTimeout(renderDashboardV1855,180)},true)}
+  const todayBtn=q('#dashboardTodayBtn');if(todayBtn&&!todayBtn.dataset.v1855){todayBtn.dataset.v1855='1';todayBtn.addEventListener('click',()=>{const d=iso(new Date());if(from)from.value=d;if(to)to.value=d;setTimeout(renderDashboardV1855,180)},true)}
   const pay=q('#salesAnalysis');if(pay&&!pay.dataset.v1855observer){pay.dataset.v1855observer='1';new MutationObserver(()=>{if(!dashPainting&&pay.querySelector('.payment-total-grid'))setTimeout(renderPaymentTableV1855,0)}).observe(pay,{childList:true,subtree:true})}
   renderDashboardV1855();
 }
@@ -7611,7 +7613,7 @@ async function loadReconciliations(){
 }
 window.renderInventory=function(){
   const sec=q('#inventory');if(!sec)return;const now=iso(new Date()),start=now.slice(0,8)+'01';
-  sec.innerHTML=`<div class="section-title"><div><h3>Inventory & Cost of Sales</h3><div class="small-note">Choose any COGS period. Stock-taking is grouped into numbered inventory reconciliations.</div></div><div class="cogs-actions"><button class="btn" id="stockItemsBtn">Purchase / Recipe Items</button><button class="btn" id="recipeManagerBtn">Menu Items & Recipes</button><button class="btn" id="openingStockBtn">Opening Stock</button><button class="btn primary" id="closingStockBtn">Closing Stock</button></div></div><div class="card panel"><div class="cogs-v1855-bar"><div class="field"><label>COGS From</label><input class="input" id="cogsFrom" type="date" value="${start}"></div><div class="field"><label>COGS To</label><input class="input" id="cogsTo" type="date" value="${now}"></div><button class="btn" id="refreshCogsBtn">Refresh COGS</button><button class="btn primary" id="postCogsPeriodBtn">Post Period COGS</button></div><div id="cogsPostingStatus" class="cogs-status-card" style="margin-top:12px"></div></div><div class="grid kpis" style="margin-top:16px"><div class="card kpi"><div class="label">Opening Stock</div><div class="value" id="openingVal">KSh 0</div></div><div class="card kpi"><div class="label">Inventory Purchases</div><div class="value" id="purchVal">KSh 0</div></div><div class="card kpi"><div class="label">Closing Stock</div><div class="value" id="closingVal">KSh 0</div></div><div class="card kpi"><div class="label">Calculated COGS</div><div class="value" id="calcCogs">KSh 0</div></div></div><div class="card table-card" style="overflow:auto"><table class="cogs-live-table"><thead><tr><th>Item</th><th>Opening Qty</th><th>Opening Unit Cost</th><th>Purchase Qty</th><th>Purchases</th><th>Average Cost</th><th>Closing Qty</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Consumption / COGS</th></tr></thead><tbody id="inventoryTable"></tbody></table></div><div class="section-title" style="margin-top:18px"><div><h3>Inventory Reconciliations</h3><div class="small-note">One row represents one complete stock-taking exercise.</div></div></div><div class="card table-card" id="inventoryReconHistory"><div class="empty-state">Loading reconciliations…</div></div>`;
+  sec.innerHTML=`<div class="section-title"><div><h3>Inventory & Cost of Sales</h3><div class="small-note">Choose any COGS period. Stock-taking is grouped into numbered inventory reconciliations.</div></div><div class="cogs-actions"><button class="btn" id="stockItemsBtn">Purchase / Recipe Items</button><button class="btn" id="recipeManagerBtn">Menu Items & Recipes</button><button class="btn" id="openingStockBtn">Opening Stock</button><button class="btn primary" id="closingStockBtn">Closing Stock</button></div></div><div class="card panel"><div class="cogs-v1855-bar"><div class="field"><label>COGS From</label><input class="input" id="cogsFrom" type="date" value="${start}"></div><div class="field"><label>COGS To</label><input class="input" id="cogsTo" type="date" value="${now}"></div><button class="btn" id="refreshCogsBtn">Refresh COGS</button><button class="btn primary" id="postCogsPeriodBtn">Post Period COGS</button></div><div id="cogsPostingStatus" class="cogs-status-card" style="margin-top:12px"></div></div><div class="grid kpis" style="margin-top:16px"><div class="card kpi"><div class="label">Opening Stock</div><div class="value" id="openingVal">KSh 0</div></div><div class="card kpi"><div class="label">Inventory Purchases</div><div class="value" id="purchVal">KSh 0</div></div><div class="card kpi"><div class="label">Closing Stock</div><div class="value" id="closingVal">KSh 0</div></div><div class="card kpi"><div class="label">Calculated COGS</div><div class="value" id="calcCogs">KSh 0</div></div></div><div class="section-title" style="margin-top:18px"><div><h3>Inventory Reconciliations</h3><div class="small-note">Each row is one complete stock-taking exercise. Open a reconciliation to see its stock items.</div></div></div><div class="card table-card" id="inventoryReconHistory"><div class="empty-state">Loading reconciliations…</div></div><table style="display:none"><tbody id="inventoryTable"></tbody></table>`;
   q('#refreshCogsBtn').onclick=refreshInventoryV1855;q('#cogsFrom').onchange=refreshInventoryV1855;q('#cogsTo').onchange=refreshInventoryV1855;q('#postCogsPeriodBtn').onclick=postCogsV1855;q('#openingStockBtn').onclick=()=>openReconciliation(null,'opening');q('#closingStockBtn').onclick=()=>openReconciliation(null,'closing');q('#stockItemsBtn').onclick=()=>typeof manageSimpleList==='function'?manageSimpleList('stock'):toast('Stock item manager unavailable');q('#recipeManagerBtn').onclick=()=>typeof window.openRecipeManager==='function'?window.openRecipeManager():toast('Recipe manager is unavailable.');
   refreshInventoryV1855();loadReconciliations();setTimeout(()=>{try{if(typeof window.ensureInventoryExtensions==='function')window.ensureInventoryExtensions()}catch(_){}},150);
 };
@@ -7649,63 +7651,6 @@ function ensureVariance(){
  renderVariance();
 }
 document.addEventListener('click',e=>{if(e.target.closest('[data-page="inventory"]'))setTimeout(ensureVariance,800)});document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(ensureVariance,800));setTimeout(ensureVariance,3800);
-})();
-</script>
-
-
-
-<style id="finsight-v18-5-5-1-audit-fixes">
-#cogsSectionToggleV18551{margin-left:8px}
-</style>
-<script id="finsight-v18-5-5-1-audit-fixes">
-(function(){
-'use strict';
-const q=(s,r=document)=>r.querySelector(s);
-
-/* Keep ALL dashboard panels on the same seven-day window.
-   V18.5.5 already redraws the line/payment/category panels; this also
-   refreshes KPIs, trend, top/bottom items and bank balances first. */
-function refreshFullSevenDayDashboard(){
-  if(!q('#dashboard')?.classList.contains('active'))return;
-  try{ if(typeof dashboardBounds==='function') dashboardBounds(); }catch(_){}
-  try{ if(typeof renderDashboardV1854==='function') renderDashboardV1854(); }catch(e){console.warn('[FinSight audit] base dashboard refresh',e)}
-  try{ if(typeof renderDashboardV1855==='function') renderDashboardV1855(); }catch(e){console.warn('[FinSight audit] seven-day dashboard refresh',e)}
-}
-function bindDashboardAudit(){
-  const from=q('#dashboardFrom'),apply=q('#applyDashboardDates'),today=q('#dashboardTodayBtn'),pdf=q('#downloadDashboardPdfBtn');
-  if(from&&!from.dataset.audit551){from.dataset.audit551='1';from.addEventListener('change',()=>setTimeout(refreshFullSevenDayDashboard,220))}
-  if(apply&&!apply.dataset.audit551){apply.dataset.audit551='1';apply.addEventListener('click',()=>setTimeout(refreshFullSevenDayDashboard,240))}
-  if(today&&!today.dataset.audit551){today.dataset.audit551='1';today.addEventListener('click',()=>setTimeout(refreshFullSevenDayDashboard,240))}
-  if(pdf&&!pdf.dataset.audit551){
-    pdf.dataset.audit551='1';
-    pdf.addEventListener('click',()=>{try{if(typeof dashboardBounds==='function')dashboardBounds()}catch(_){};setTimeout(refreshFullSevenDayDashboard,0)},true);
-  }
-  refreshFullSevenDayDashboard();
-}
-
-/* Hide/Show the complete COGS working area, not only the long item table.
-   Inventory Reconciliations and Stock Variance remain visible below it. */
-function bindCogsCollapse(){
-  const sec=q('#inventory'); if(!sec||!sec.classList.contains('active'))return;
-  if(q('#cogsSectionToggleV18551'))return;
-  const title=sec.querySelector('.section-title'), actions=title?.querySelector('.cogs-actions');
-  if(!actions)return;
-  const btn=document.createElement('button');
-  btn.className='btn';btn.type='button';btn.id='cogsSectionToggleV18551';btn.textContent='Hide COGS';
-  actions.prepend(btn);
-  const nodes=()=>{const reconTitle=[...sec.querySelectorAll('.section-title')].find(x=>x.textContent.includes('Inventory Reconciliations'));let arr=[],el=title.nextElementSibling;while(el&&el!==reconTitle){if(el.id!=='varianceV1855'&&!el.querySelector?.('#varianceV1855'))arr.push(el);el=el.nextElementSibling}return arr};
-  btn.onclick=()=>{const hide=btn.dataset.hidden!=='1';nodes().forEach(el=>el.style.display=hide?'none':'');btn.dataset.hidden=hide?'1':'0';btn.textContent=hide?'Show COGS':'Hide COGS';};
-}
-function boot(){
-  bindDashboardAudit();
-  setTimeout(bindCogsCollapse,250);
-}
-document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(boot,700));
-document.addEventListener('click',e=>{
-  if(e.target.closest('[data-page="dashboard"]'))setTimeout(bindDashboardAudit,850);
-  if(e.target.closest('[data-page="inventory"]'))setTimeout(bindCogsCollapse,950);
-});
-setTimeout(boot,4200);
 })();
 </script>
 
