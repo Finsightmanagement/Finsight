@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>FinSight V5 Review</title><style>
+<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>FinSight Management Intelligence</title><style>
 :root{
   --bg:#f5f7fb; --card:#ffffff; --nav:#0f172a; --nav2:#111c35;
   --primary:#4f46e5; --primary2:#7c3aed; --accent:#06b6d4;
@@ -7675,4 +7675,123 @@ document.addEventListener('click',e=>{if(e.target.closest('[data-page="inventory
 })();
 </script>
 
+<style id="finsight-v1857-design-system">
+/* V18.5.7 presentation-only structural cleanup. Business/accounting logic is untouched. */
+:root{
+ --soft-primary:#f1efff;--soft-primary-hover:#e8e4ff;--soft-primary-border:#ddd7ff;--soft-primary-text:#4f46e5;
+ --soft-danger:#fff1f2;--soft-danger-border:#fecdd3;--soft-danger-text:#be123c;
+}
+#buildVersionBadge,#pageSub{display:none!important}
+.title p{display:none!important}
+/* The topbar is the single page heading. Remove only duplicate page-level headings/descriptions. */
+.page>.section-title>div:first-child>h3,.page>.section-title>h3{display:none!important}
+.page>.section-title .small-note,.page>.section-title>div:first-child>.small-note{display:none!important}
+.page>.section-title>div:first-child:has(>h3){min-width:0}
+.page>.section-title>div:first-child:has(>h3):not(:has(>:not(h3):not(.small-note))){display:none!important}
+.panel-head>span{display:none}
+.topbar{min-height:42px;margin-bottom:18px;padding-right:50px}
+.title h2{font-size:24px;letter-spacing:-.35px}
+/* Secondary controls get a quiet tint; primary actions retain FinSight purple. */
+.btn:not(.primary),button.btn:not(.primary),.select,.tab{
+ background:var(--soft-primary);border-color:var(--soft-primary-border);color:var(--soft-primary-text);box-shadow:none;font-weight:650
+}
+.btn:not(.primary):hover,button.btn:not(.primary):hover,.tab:hover{background:var(--soft-primary-hover);border-color:#c9c1ff}
+.btn.primary{box-shadow:0 7px 18px rgba(79,70,229,.18)}
+.mini-btn.danger,.btn.danger,button.danger{background:var(--soft-danger)!important;border-color:var(--soft-danger-border)!important;color:var(--soft-danger-text)!important}
+.btn:disabled,.mini-btn:disabled{opacity:.5;cursor:not-allowed}
+/* Consistent cards and tables */
+.card,.metric-box,.recon-box,.summary-box,.account-group{border-color:var(--line);box-shadow:0 7px 22px rgba(15,23,42,.055)}
+.table-card{border:1px solid var(--line);border-radius:16px}
+table{font-size:11px} th{padding:11px 12px;background:#f6f7fb;color:#667085} td{padding:11px 12px}
+tbody tr{transition:background .15s ease} tbody tr:hover{background:#fafaff}
+td:last-child,th:last-child{white-space:nowrap}
+.empty-state{padding:30px 20px;color:var(--muted)}
+/* Cleaner active navigation */
+.nav-item.active{background:rgba(99,102,241,.18);border-left:3px solid #818cf8;color:#fff}
+.nav-item.active .dot{background:#818cf8;box-shadow:0 0 0 4px rgba(129,140,248,.12)}
+/* Compact profile control */
+#onlineStatusBar{right:18px;top:14px;background:transparent;border:0;box-shadow:none;padding:0;overflow:visible}
+#onlineStatusBar>#onlineStatusDot,#onlineStatusBar>#onlineUser,#onlineStatusBar>#onlineSignoutBtn{display:none!important}
+.fs-profile-wrap{position:relative}
+.fs-profile-button{width:38px;height:38px;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--text);display:grid;place-items:center;cursor:pointer;box-shadow:0 7px 20px rgba(15,23,42,.09);transition:.18s}
+.fs-profile-button:hover{transform:translateY(-1px);border-color:#c9c1ff;background:var(--soft-primary)}
+.fs-profile-button svg{width:19px;height:19px}
+.fs-profile-menu{position:absolute;right:0;top:47px;width:250px;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 48px rgba(15,23,42,.18);padding:14px;display:none;color:var(--text)}
+.fs-profile-menu.open{display:block}
+.fs-profile-name{font-size:13px;font-weight:800;margin-bottom:4px;overflow-wrap:anywhere}
+.fs-profile-company{font-size:11px;color:var(--muted);margin-bottom:3px;overflow-wrap:anywhere}
+.fs-profile-role{display:inline-block;margin-top:5px;padding:4px 8px;border-radius:999px;background:var(--soft-primary);color:var(--soft-primary-text);font-size:9px;font-weight:800;text-transform:capitalize}
+.fs-profile-divider{height:1px;background:var(--line);margin:12px 0}
+.fs-theme-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;font-weight:700}
+.fs-theme-toggle{display:flex;gap:4px;background:var(--bg);padding:3px;border-radius:10px;border:1px solid var(--line)}
+.fs-theme-option{border:0;background:transparent;color:var(--muted);font-size:9px;font-weight:800;padding:6px 8px;border-radius:7px;cursor:pointer}
+.fs-theme-option.active{background:var(--card);color:var(--soft-primary-text);box-shadow:0 2px 7px rgba(15,23,42,.08)}
+.fs-profile-signout{width:100%;border:1px solid var(--soft-danger-border);background:var(--soft-danger);color:var(--soft-danger-text);padding:9px 11px;border-radius:10px;font-size:10px;font-weight:800;cursor:pointer;text-align:left}
+/* Dark theme */
+body.fs-dark{
+ --bg:#0d111b;--card:#151b28;--nav:#0a0f19;--nav2:#101827;--text:#e7eaf0;--muted:#98a2b3;--line:#2a3343;
+ --shadow:0 14px 38px rgba(0,0,0,.22);--soft-primary:#23223d;--soft-primary-hover:#2d2a4d;--soft-primary-border:#3c3962;--soft-primary-text:#c4b5fd;
+ --soft-danger:#351b24;--soft-danger-border:#5b2938;--soft-danger-text:#fda4af;
+ color-scheme:dark
+}
+body.fs-dark .sidebar{background:linear-gradient(180deg,#090e18 0%,#0c1320 55%,#0a101c 100%)}
+body.fs-dark .card,body.fs-dark .panel,body.fs-dark .metric-box,body.fs-dark .recon-box,body.fs-dark .summary-box,body.fs-dark .account-group,body.fs-dark .report-sheet,body.fs-dark .modal,body.fs-dark .online-login-card,body.fs-dark .insight,body.fs-dark .upload,body.fs-dark .quick-action,body.fs-dark .manage-row{background:var(--card)!important;border-color:var(--line)!important;color:var(--text)}
+body.fs-dark .input,body.fs-dark input,body.fs-dark textarea,body.fs-dark select{background:#101622;color:var(--text);border-color:var(--line)}
+body.fs-dark th{background:#101622;color:#aab3c2} body.fs-dark td{border-color:var(--line)} body.fs-dark tbody tr:hover{background:#191f2e}
+body.fs-dark .btn:not(.primary),body.fs-dark button.btn:not(.primary),body.fs-dark .select,body.fs-dark .tab{background:var(--soft-primary);border-color:var(--soft-primary-border);color:var(--soft-primary-text)}
+body.fs-dark .tab.active{background:#302d52;color:#ddd6fe;border-color:#4c4778}
+body.fs-dark .empty-state,body.fs-dark .small-note,body.fs-dark .muted,body.fs-dark .kpi .label,body.fs-dark .kpi .sub,body.fs-dark .report-meta{color:var(--muted)!important}
+body.fs-dark .badge.blue{background:#262547;color:#c4b5fd} body.fs-dark .badge.green{background:#153426;color:#86efac} body.fs-dark .badge.red{background:#3a1c23;color:#fda4af} body.fs-dark .badge.amber{background:#3a2a16;color:#fcd34d}
+body.fs-dark .progress{background:#252d3c} body.fs-dark .chart{border-color:var(--line)}
+body.fs-dark .hero{background:linear-gradient(120deg,#111827,#242044 55%,#12443f)}
+body.fs-dark .modal-backdrop{background:rgba(2,6,23,.72)}
+body.fs-dark .fs-theme-option.active{background:#151b28;color:#ddd6fe}
+body.fs-dark .online-note{color:var(--muted)}
+body.fs-dark .users-notice{background:#17233a;border-color:#29446e;color:#bfdbfe}
+body.fs-dark .clickable:hover{background:#191f2e}
+body.fs-dark .action-link{color:#a5b4fc}
+@media(max-width:700px){.topbar{padding-right:42px}.fs-profile-menu{width:min(250px,calc(100vw - 34px))}}
+@media print{#onlineStatusBar{display:none!important}}
+</style>
+<script id="finsight-v1857-ui-controller">
+(function(){
+ 'use strict';
+ const THEME_KEY='finsight_theme';
+ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const prettyRole=r=>String(r||'User').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+ function applyTheme(theme){
+   const dark=theme==='dark'; document.body.classList.toggle('fs-dark',dark);
+   document.documentElement.dataset.theme=dark?'dark':'light';
+   try{localStorage.setItem(THEME_KEY,dark?'dark':'light')}catch(_){ }
+   document.querySelectorAll('.fs-theme-option').forEach(b=>b.classList.toggle('active',b.dataset.theme===(dark?'dark':'light')));
+ }
+ function profileData(){
+   const o=window.finsightOnline||{},p=o.profile||{},c=o.company||{};
+   return {name:p.full_name||p.name||p.email||'FinSight User',company:c.name||p.company_name||o.companyName||'FinSight',role:o.role||p.role||'User'};
+ }
+ function refreshProfile(){
+   const d=profileData(),n=document.getElementById('fsProfileName'),c=document.getElementById('fsProfileCompany'),r=document.getElementById('fsProfileRole');
+   if(n)n.textContent=d.name;if(c)c.textContent=d.company;if(r)r.textContent=prettyRole(d.role);
+ }
+ function buildProfile(){
+   const bar=document.getElementById('onlineStatusBar'); if(!bar||document.getElementById('fsProfileWrap'))return;
+   const wrap=document.createElement('div');wrap.className='fs-profile-wrap';wrap.id='fsProfileWrap';
+   wrap.innerHTML='<button class="fs-profile-button" id="fsProfileButton" type="button" aria-label="Open profile menu" aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 20c.8-4 3.3-6 7.5-6s6.7 2 7.5 6"></path></svg></button><div class="fs-profile-menu" id="fsProfileMenu"><div class="fs-profile-name" id="fsProfileName">FinSight User</div><div class="fs-profile-company" id="fsProfileCompany">FinSight</div><span class="fs-profile-role" id="fsProfileRole">User</span><div class="fs-profile-divider"></div><div class="fs-theme-row"><span>Appearance</span><div class="fs-theme-toggle" role="group" aria-label="Appearance"><button type="button" class="fs-theme-option" data-theme="light">Light</button><button type="button" class="fs-theme-option" data-theme="dark">Dark</button></div></div><div class="fs-profile-divider"></div><button type="button" class="fs-profile-signout" id="fsProfileSignout">Sign out</button></div>';
+   bar.appendChild(wrap);
+   const btn=document.getElementById('fsProfileButton'),menu=document.getElementById('fsProfileMenu');
+   btn.onclick=e=>{e.stopPropagation();const open=menu.classList.toggle('open');btn.setAttribute('aria-expanded',String(open))};
+   menu.onclick=e=>e.stopPropagation();
+   document.addEventListener('click',()=>{menu.classList.remove('open');btn.setAttribute('aria-expanded','false')});
+   document.querySelectorAll('.fs-theme-option').forEach(b=>b.onclick=()=>applyTheme(b.dataset.theme));
+   document.getElementById('fsProfileSignout').onclick=()=>document.getElementById('onlineSignoutBtn')?.click();
+   refreshProfile();
+   let saved='light';try{saved=localStorage.getItem(THEME_KEY)||'light'}catch(_){ }applyTheme(saved==='dark'?'dark':'light');
+ }
+ function cleanPageDescriptions(){
+   const sub=document.getElementById('pageSub');if(sub){sub.textContent='';sub.setAttribute('aria-hidden','true')}
+ }
+ document.addEventListener('finsight:cloud-state-loaded',()=>{buildProfile();refreshProfile()});
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>{buildProfile();cleanPageDescriptions()});else{buildProfile();cleanPageDescriptions()}
+})();
+</script>
 </body></html>
