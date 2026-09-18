@@ -7143,36 +7143,125 @@ function recipeFor(menuId){return recipeData.lines.filter(x=>x.menu_item_id===me
 function activeMenu(){return recipeData.menu.filter(x=>x.is_active!==false)}
 
 window.openRecipeManager=async function(){
-  try{await loadRecipes()}catch(e){return toast(e.message||'Run the V18.5.4 recipe SQL setup first.');}
-  openModal('Menu Items & Recipes','Create each sellable menu item and connect it to the purchase / recipe items it consumes.',`<div class="recipe-grid"><div><div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn primary" id="newMenuRecipe">+ New Menu Item</button></div><div class="recipe-list" id="recipeMenuList"></div></div><div id="recipeEditor"><div class="empty-state">Select a menu item or create a new one.</div></div></div>`);
-  renderRecipeList();q('#newMenuRecipe').onclick=()=>editRecipe(null);
+  try{await loadRecipes()}catch(e){return toast(e.message||'Unable to load Menu Items & Recipes.');}
+  openModal('Menu Items & Recipes','',`<div class="recipe-grid">
+    <div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="btn primary" id="newMenuRecipe" type="button">+ Add Menu Item</button>
+      </div>
+      <div class="recipe-list" id="recipeMenuList"></div>
+    </div>
+    <div id="recipeEditor"><div class="empty-state">Select a menu item or click Add Menu Item.</div></div>
+  </div>`);
+  renderRecipeList();
+  const add=q('#newMenuRecipe'); if(add)add.onclick=()=>editRecipe(null);
 };
 function renderRecipeList(selected=''){
   const box=q('#recipeMenuList');if(!box)return;
-  box.innerHTML=recipeData.menu.length?recipeData.menu.map(m=>`<div class="recipe-item ${m.id===selected?'active':''}" data-id="${m.id}"><b>${html(m.name)}</b><div class="small-note">${html(catName(m.category_id))} · ${recipeFor(m.id).length} ingredient(s) · ${m.is_active===false?'Inactive':'Active'}</div></div>`).join(''):'<div class="empty-state">No menu items yet.</div>';
+  const rows=recipeData.menu||[];
+  box.innerHTML=rows.length?rows.map(m=>`<div class="recipe-item ${m.id===selected?'active':''}" data-id="${m.id}">
+    <b>${html(m.name)}</b>
+    <div class="small-note">${html(catName(m.category_id))} · ${recipeFor(m.id).length} ingredient(s) · ${m.is_active===false?'Inactive':'Active'}</div>
+  </div>`).join(''):'<div class="empty-state">No menu items registered.</div>';
   qa('.recipe-item',box).forEach(x=>x.onclick=()=>editRecipe(x.dataset.id));
 }
-function lineHtml(line={}){const opts=(state.stockItems||[]).map(x=>`<option value="${x.id}" ${x.id===line.stock_item_id?'selected':''}>${html(x.name)} (${html(x.unit||'Unit')})</option>`).join('');return `<div class="recipe-line-row"><div class="field"><label>Purchase / Recipe Item</label><select class="input recipeStock">${opts}</select></div><div class="field"><label>Qty per 1 Sale</label><input class="input recipeQty" type="number" min="0.000001" step="0.001" value="${num(line.quantity_per_sale)||''}"></div><button class="btn recipeRemove" type="button">×</button></div>`}
+function lineHtml(line={}){
+  const opts=(state.stockItems||[]).filter(x=>x.is_active!==false).map(x=>`<option value="${x.id}" ${x.id===line.stock_item_id?'selected':''}>${html(x.name)} (${html(x.unit||'Unit')})</option>`).join('');
+  return `<div class="recipe-line-row">
+    <div class="field"><label>Purchase / Recipe Item</label><select class="input recipeStock">${opts}</select></div>
+    <div class="field"><label>Qty per 1 Sale</label><input class="input recipeQty" type="number" min="0.000001" step="0.001" value="${num(line.quantity_per_sale)||''}"></div>
+    <button class="btn recipeRemove" type="button">×</button>
+  </div>`;
+}
 function editRecipe(id){
-  const m=recipeData.menu.find(x=>x.id===id)||null;renderRecipeList(id||'');
+  const m=recipeData.menu.find(x=>x.id===id)||null;
+  renderRecipeList(id||'');
   const box=q('#recipeEditor');if(!box)return;
-  const cats=(recipeData.categories||[]).map(x=>`<option value="${x.id}" ${x.id===m?.category_id?'selected':''}>${html(x.name)}</option>`).join('');
-  const incomes=(state.accounts||[]).filter(a=>a.active!==false&&a.type==='Income').map(a=>`<option value="${a.id}" ${a.id===m?.income_account_id?'selected':''}>${html(a.name)}</option>`).join('');
-  box.innerHTML=`<div class="form-grid"><div class="field"><label>Menu / Sales Item</label><input class="input" id="recipeMenuName" value="${html(m?.name||'')}" placeholder="e.g. Double Smash Burger"></div><div class="field"><label>Sales Category</label><select class="input" id="recipeCategory">${cats}</select></div><div class="field"><label>Income Account</label><select class="input" id="recipeIncome">${incomes}</select></div><div class="field"><label>Status</label><select class="input" id="recipeActive"><option value="true" ${m?.is_active!==false?'selected':''}>Active</option><option value="false" ${m?.is_active===false?'selected':''}>Inactive</option></select></div></div><div style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center"><b>Recipe</b><button class="btn" id="addRecipeLine" type="button">+ Ingredient</button></div><div id="recipeLines" style="margin-top:8px">${(m?recipeFor(m.id):[]).map(lineHtml).join('')}</div></div><div class="small-note">Quantities must use the same units as the Purchase / Recipe Items. Example: if Chicken Breast is stored in KG, 0.18 means 180g per menu item.</div><div class="modal-actions"><button class="btn primary" id="saveRecipe">Save Menu Item & Recipe</button></div>`;
-  const lines=q('#recipeLines');if(!lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());
-  const bindLines=()=>qa('.recipeRemove',lines).forEach(b=>b.onclick=()=>{b.closest('.recipe-line-row').remove();if(!lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());bindLines()});bindLines();
-  q('#addRecipeLine').onclick=()=>{lines.insertAdjacentHTML('beforeend',lineHtml());bindLines()};
+
+  const cats=(recipeData.categories||[]).filter(x=>x.is_active!==false);
+  const incomes=(state.accounts||[]).filter(a=>a.active!==false&&String(a.type||'').toLowerCase()==='income');
+  const stocks=(state.stockItems||[]).filter(x=>x.is_active!==false);
+
+  box.innerHTML=`<div class="form-grid">
+    <div class="field"><label>Menu / Sales Item</label><input class="input" id="recipeMenuName" value="${html(m?.name||'')}" placeholder="e.g. Double Smash Burger"></div>
+    <div class="field"><label>Sales Category</label><div class="quick-add-wrap"><select class="input" id="recipeCategory">${cats.map(x=>`<option value="${x.id}" ${x.id===m?.category_id?'selected':''}>${html(x.name)}</option>`).join('')}</select><button class="quick-add-btn" id="recipeAddCategory" type="button">+ Add</button></div></div>
+    <div class="field"><label>Income Account</label><select class="input" id="recipeIncome">${incomes.map(a=>`<option value="${a.id}" ${a.id===m?.income_account_id?'selected':''}>${html(a.name)}</option>`).join('')}</select></div>
+    <div class="field"><label>Status</label><select class="input" id="recipeActive"><option value="true" ${m?.is_active!==false?'selected':''}>Active</option><option value="false" ${m?.is_active===false?'selected':''}>Inactive</option></select></div>
+  </div>
+  ${!cats.length?'<div class="empty-state" style="margin-top:10px">Add a Sales Category to continue.</div>':''}
+  ${!incomes.length?'<div class="empty-state" style="margin-top:10px">No active Income Account is available. Add one in Chart of Accounts first.</div>':''}
+  <div style="margin-top:14px">
+    <div style="display:flex;justify-content:space-between;align-items:center"><b>Recipe</b><button class="btn" id="addRecipeLine" type="button" ${stocks.length?'':'disabled'}>+ Ingredient</button></div>
+    <div id="recipeLines" style="margin-top:8px">${(m?recipeFor(m.id):[]).map(lineHtml).join('')}</div>
+    ${!stocks.length?'<div class="empty-state">Add a Purchase / Recipe Item first.</div>':''}
+  </div>
+  <div class="modal-actions"><button class="btn primary" id="saveRecipe" type="button">Save Menu Item & Recipe</button></div>`;
+
+  // Category quick-add uses the existing Smart Quick Add and then reloads this editor.
+  const addCat=q('#recipeAddCategory');
+  if(addCat)addCat.onclick=async()=>{
+    const api=window.finsightQuickAdd;
+    if(!api?.addSimple)return toast('Quick Add is unavailable.');
+    const target=q('#recipeCategory');
+    await api.addSimple('category',target);
+    // Quick Add is modal/async; its normal cloud refresh keeps category data current.
+  };
+
+  const lines=q('#recipeLines');
+  if(stocks.length && !lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());
+  const bindLines=()=>qa('.recipeRemove',lines).forEach(b=>b.onclick=()=>{
+    b.closest('.recipe-line-row')?.remove();
+    if(stocks.length&&!lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());
+    bindLines();
+    window.finsightQuickAdd?.enhance?.();
+  });
+  bindLines();
+  const addLine=q('#addRecipeLine');
+  if(addLine)addLine.onclick=()=>{lines.insertAdjacentHTML('beforeend',lineHtml());bindLines();window.finsightQuickAdd?.enhance?.()};
+  setTimeout(()=>window.finsightQuickAdd?.enhance?.(),0);
+
   q('#saveRecipe').onclick=async()=>{
-    const name=clean(q('#recipeMenuName').value),category=q('#recipeCategory').value,income=q('#recipeIncome').value,active=q('#recipeActive').value==='true';
-    const rows=qa('.recipe-line-row',lines).map(r=>({stock_item_id:q('.recipeStock',r).value,quantity_per_sale:num(q('.recipeQty',r).value)})).filter(x=>x.stock_item_id&&x.quantity_per_sale>0);
-    if(!name||!category||!income)return toast('Complete the menu item fields');if(!rows.length)return toast('Add at least one recipe ingredient');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same recipe item cannot appear twice');
+    const name=clean(q('#recipeMenuName').value);
+    const category=q('#recipeCategory')?.value||'';
+    const income=q('#recipeIncome')?.value||'';
+    const active=q('#recipeActive').value==='true';
+    const rows=qa('.recipe-line-row',lines).map(r=>({
+      stock_item_id:q('.recipeStock',r)?.value||'',
+      quantity_per_sale:num(q('.recipeQty',r)?.value)
+    })).filter(x=>x.stock_item_id&&x.quantity_per_sale>0);
+
+    if(!name)return toast('Enter the Menu / Sales Item name.');
+    if(!category)return toast('Add or select a Sales Category.');
+    if(!income)return toast('Add or select an Income Account.');
+    if(!rows.length)return toast('Add at least one recipe ingredient.');
+    if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same recipe item cannot appear twice.');
+
+    const duplicate=(recipeData.menu||[]).find(x=>x.id!==m?.id&&norm(x.name)===norm(name));
+    if(duplicate)return toast('A Menu Item with this name already exists.');
+
     const btn=q('#saveRecipe');btn.disabled=true;btn.textContent='Saving…';
-    try{const {sb,cid}=cloud();let menuId=m?.id;
-      if(menuId){const {error}=await sb.from('menu_items').update({name,category_id:category,income_account_id:income,is_active:active}).eq('id',menuId).eq('company_id',cid);if(error)throw error;const d=await sb.from('recipe_lines').delete().eq('company_id',cid).eq('menu_item_id',menuId);if(d.error)throw d.error;}
-      else{const ins=await sb.from('menu_items').insert({company_id:cid,name,category_id:category,income_account_id:income,is_active:active}).select('id').single();if(ins.error)throw ins.error;menuId=ins.data.id;}
-      const insLines=await sb.from('recipe_lines').insert(rows.map(x=>({company_id:cid,menu_item_id:menuId,...x})));if(insLines.error)throw insLines.error;
-      await loadRecipes();renderRecipeList(menuId);editRecipe(menuId);toast('Menu item and recipe saved');
-    }catch(e){toast(e.message||String(e));}finally{btn.disabled=false;btn.textContent='Save Menu Item & Recipe'}
+    try{
+      const {sb,cid}=cloud();let menuId=m?.id;
+      if(menuId){
+        const u=await sb.from('menu_items').update({name,category_id:category,income_account_id:income,is_active:active}).eq('id',menuId).eq('company_id',cid);
+        if(u.error)throw u.error;
+        const d=await sb.from('recipe_lines').delete().eq('company_id',cid).eq('menu_item_id',menuId);
+        if(d.error)throw d.error;
+      }else{
+        const ins=await sb.from('menu_items').insert({company_id:cid,name,category_id:category,income_account_id:income,is_active:active}).select('id').single();
+        if(ins.error)throw ins.error;menuId=ins.data.id;
+      }
+      const insLines=await sb.from('recipe_lines').insert(rows.map(x=>({company_id:cid,menu_item_id:menuId,...x})));
+      if(insLines.error)throw insLines.error;
+      await loadRecipes();
+      renderRecipeList(menuId);
+      editRecipe(menuId);
+      toast('Menu item and recipe saved');
+    }catch(e){
+      toast(e.message||String(e));
+    }finally{
+      const b=q('#saveRecipe');if(b){b.disabled=false;b.textContent='Save Menu Item & Recipe'}
+    }
   };
 }
 
@@ -7332,7 +7421,7 @@ function ensureInventoryExtensions(){
     sec.insertAdjacentHTML('beforeend',`
       <div id="recipeVarianceExtension">
         <div class="section-title variance-head">
-          <div><h3>Stock Variance Report</h3><div class="small-note">Actual closing stock compared with expected closing stock after recipe-based theoretical usage.</div></div>
+          <div><h3>Stock Variance Report</h3></div>
           <div class="variance-filters">
             <div class="field"><label>From</label><input class="input" id="varianceFromFix" type="date"></div>
             <div class="field"><label>To</label><input class="input" id="varianceToFix" type="date"></div>
@@ -7346,7 +7435,7 @@ function ensureInventoryExtensions(){
             <tbody id="stockVarianceRowsFix"></tbody>
           </table>
         </div>
-        <div class="small-note" style="margin-top:10px">Variance Qty = Actual Closing − Expected Closing. Negative means shortage / usage above recipe expectation; positive means stock above theoretical expectation.</div>
+        
       </div>`);
     q('#applyVarianceFix').onclick=renderVisibleVariance;
   }
