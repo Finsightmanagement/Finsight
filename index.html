@@ -738,8 +738,8 @@ body.online-loading .app{visibility:hidden}
   <div class="grid two">
     <div class="upload"><div style="font-size:30px">⇧</div><h4>Sales Analysis CSV</h4><p>Item-level sales used for revenue, top items and category analysis.</p><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="sales">Upload CSV</button><button class="btn sampleBtn" data-kind="sales">Sample CSV</button></div></div>
     <div class="upload"><div style="font-size:30px">⇧</div><h4>Supplier Bills CSV</h4><p>Multiple rows with the same invoice number become one multi-line supplier bill.</p><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="bills">Upload CSV</button><button class="btn sampleBtn" data-kind="bills">Sample CSV</button></div></div>
-    <div class="upload"><div style="font-size:30px">⇧</div><h4>Petty Cash CSV</h4><p>Template retained for the Petty Cash Report module.</p><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="petty">Upload CSV</button><button class="btn sampleBtn" data-kind="petty">Sample CSV</button></div></div>
-    <div class="upload"><div style="font-size:30px">⇧</div><h4>Stock CSV</h4><p>Opening or closing stock item quantities.</p><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="stock">Upload CSV</button><button class="btn sampleBtn" data-kind="stock">Sample CSV</button></div></div>
+    <div class="upload"><div style="font-size:30px">⇧</div><h4>Petty Cash CSV</h4><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="petty">Upload CSV</button><button class="btn sampleBtn" data-kind="petty">Sample CSV</button></div></div>
+    <div class="upload"><div style="font-size:30px">⇧</div><h4>Purchase / Recipe Items CSV</h4><p>Opening or closing stock item quantities.</p><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="stock">Upload CSV</button><button class="btn sampleBtn" data-kind="stock">Sample CSV</button></div></div>
   </div>
   <input id="csvInput" type="file" accept=".csv,text/csv" class="hidden">
 
@@ -926,7 +926,7 @@ function manageSimpleList(kind){
  const arr=kind==="payment"?state.paymentTypes:kind==="supplier"?state.suppliers:state.stockItems;
  openModal(title,"Add or remove entries used in posting forms.",`<div class="inline-add"><input class="input" id="newListValue" placeholder="Add ${title.slice(0,-1)}"><button class="btn primary" id="addListValue">Add</button></div><div class="manage-list" id="manageList" style="margin-top:14px"></div>`);
  const render=()=>{$("#manageList").innerHTML=arr.length?arr.map((x,i)=>`<div class="manage-row"><span>${typeof x==="string"?x:x.name}</span><button class="mini-btn danger removeList" data-i="${i}">Delete</button></div>`).join(""):`<div class="empty-state">No entries yet.</div>`;$$('.removeList').forEach(b=>b.onclick=async()=>{const i=Number(b.dataset.i),item=arr[i];if(kind==="stock"&&item&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(item.id||''))){const sb=window.finsightSupabase;const cid=window.finsightOnline?.companyId;const {error}=await sb.from('stock_items').delete().eq('company_id',cid).eq('id',item.id);if(error)return toast(error.message||String(error));if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();return manageSimpleList('stock');}arr.splice(i,1);render();save()})};
- setTimeout(()=>{$("#addListValue").onclick=async()=>{const v=$("#newListValue").value.trim();if(!v)return;if(kind==="stock"){const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;if(!sb||!cid)return toast('Supabase is not connected');if(arr.some(x=>String(x.name||'').toLowerCase()===v.toLowerCase()))return toast('Stock item already exists');const btn=$("#addListValue");btn.disabled=true;btn.textContent='Adding…';try{const {data,error}=await sb.from('stock_items').insert({company_id:cid,name:v,unit:'Unit',is_active:true}).select('id,name,unit,is_active').single();if(error)throw error;arr.push({id:data.id,name:data.name,unit:data.unit||'Unit'});$("#newListValue").value='';render();toast('Stock item added to Supabase');}catch(e){toast(e.message||String(e));}finally{btn.disabled=false;btn.textContent='Add';}}else{if(!arr.some(x=>(typeof x==="string"?x:x.name).toLowerCase()===v.toLowerCase()))arr.push(v);$("#newListValue").value="";render();save()}};render()},0)
+ setTimeout(()=>{$("#addListValue").onclick=async()=>{const v=$("#newListValue").value.trim();if(!v)return;if(kind==="stock"){const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;if(!sb||!cid)return toast('Supabase is not connected');if(arr.some(x=>String(x.name||'').toLowerCase()===v.toLowerCase()))return toast('Stock item already exists');const btn=$("#addListValue");btn.disabled=true;btn.textContent='Adding…';try{const {data,error}=await sb.from('stock_items').insert({company_id:cid,name:v,unit:'Unit',is_active:true}).select('id,name,unit,is_active,track_variance').single();if(error)throw error;arr.push({id:data.id,name:data.name,unit:data.unit||'Unit'});$("#newListValue").value='';render();toast('Stock item added to Supabase');}catch(e){toast(e.message||String(e));}finally{btn.disabled=false;btn.textContent='Add';}}else{if(!arr.some(x=>(typeof x==="string"?x:x.name).toLowerCase()===v.toLowerCase()))arr.push(v);$("#newListValue").value="";render();save()}};render()},0)
 }
 $("#managePaymentTypesBtn").onclick=()=>manageSimpleList("payment");
 $("#manageSuppliersBtn").onclick=()=>manageSimpleList("supplier");
@@ -950,7 +950,7 @@ function openAccountForm(existing=null,callback=null){
 $("#addAccountBtn").onclick=()=>openAccountForm();
 
 function openSalesForm(preselectPayment=null){
- openModal("Post Sales","Sales reference number has been removed. Payment Type and Income Account are selectable and extendable.",`<div class="form-grid"><div class="field"><label>Date</label><input id="sDate" class="input" type="date" value="${today()}"></div><div class="field"><label>Payment Type</label><div class="inline-add"><select id="sPayment" class="input">${state.paymentTypes.map(x=>`<option ${x===preselectPayment?"selected":""}>${x}</option>`).join("")}</select><button class="btn" id="quickPayment">+ Add</button></div></div><div class="field"><label>Income Account</label><div class="inline-add"><select id="sIncome" class="input">${accountOpts(["Income"])}</select><button class="btn" id="quickIncome">+ Add</button></div></div><div class="field"><label>Total Sales</label><input id="sAmount" class="input" type="number" min="0" step="0.01"></div><div class="field full"><label>Memo</label><input id="sMemo" class="input"></div></div><div class="small-note" style="margin-top:12px">Item/category analysis is populated from item-level Sales CSV data. This total-sale form does not invent an item mix.</div><div class="modal-actions"><button class="btn primary" id="saveSale">Post Sales</button></div>`);
+ openModal("Post Sales","Sales reference number has been removed. Payment Type and Income Account are selectable and extendable.",`<div class="form-grid"><div class="field"><label>Date</label><input id="sDate" class="input" type="date" value="${today()}"></div><div class="field"><label>Payment Type</label><div class="inline-add"><select id="sPayment" class="input">${state.paymentTypes.map(x=>`<option ${x===preselectPayment?"selected":""}>${x}</option>`).join("")}</select><button class="btn" id="quickPayment">+ Add</button></div></div><div class="field"><label>Income Account</label><div class="inline-add"><select id="sIncome" class="input">${accountOpts(["Income"])}</select><button class="btn" id="quickIncome">+ Add</button></div></div><div class="field"><label>Total Sales</label><input id="sAmount" class="input" type="number" min="0" step="0.01"></div><div class="field full"><label>Memo</label><input id="sMemo" class="input"></div></div><div class="modal-actions"><button class="btn primary" id="saveSale">Post Sales</button></div>`);
  setTimeout(()=>{
   $("#quickPayment").onclick=()=>quickAddPayment("sPayment");
   $("#quickIncome").onclick=()=>{closeModal();openAccountForm(null,()=>openSalesForm(preselectPayment))};
@@ -1528,11 +1528,11 @@ fi.onchange=()=>{
     // STOCK: Item must already exist in Stock Items. CSV import never creates new stock items.
     if(importKind==='stock'){
       const itemIdx=idx('Item');
-      if(itemIdx<0){showCsvErrors('Stock CSV Error',[{label:'Required column missing',column:'Column',items:['Item']}]);return}
+      if(itemIdx<0){showCsvErrors('Purchase / Recipe Items CSV Error',[{label:'Required column missing',column:'Column',items:['Item']}]);return}
       const itemMap=masterMap(state.stockItems||[],x=>x.name);
       const missing=unique(p.rows.map(r=>clean(r[itemIdx])).filter(x=>x&&!itemMap.has(norm(x))));
       const blanks=p.rows.some(r=>!clean(r[itemIdx]))?['Blank Item value']:[];
-      if(showCsvErrors('Stock CSV Error',[
+      if(showCsvErrors('Purchase / Recipe Items CSV Error',[
         {label:'Unavailable Stock Items',column:'Item',items:missing,note:'Stock items must be created in FinSight before opening or closing stock can be uploaded.'},
         {label:'Missing Stock Items',column:'Issue',items:blanks}
       ]))return;
@@ -5853,7 +5853,7 @@ async function manageRecipeItems(){
     try{
       const {data,error}=await sb.from('stock_items')
         .insert({company_id:cid,name,unit:'Unit',is_active:true})
-        .select('id,name,unit,is_active').single();
+        .select('id,name,unit,is_active,track_variance').single();
       if(error)throw error;
       await reloadCloud();
       input.value='';
@@ -6711,7 +6711,7 @@ function showErrors(title,groups){
   const active=groups.filter(g=>g.items?.length);
   if(!active.length)return false;
   openModal(title,'Import blocked',
-    `<div class="insight"><strong>CSV validation failed</strong><p>No rows were posted. Correct the file or add the missing master data, then upload again.</p></div>
+    `<div class="insight"><strong>CSV validation failed</strong></div>
      ${active.map(g=>`<div style="margin-top:14px"><div style="font-weight:800;margin-bottom:7px">${esc(g.label)}</div>
        <table><thead><tr><th>#</th><th>${esc(g.column||'Issue')}</th></tr></thead><tbody>
        ${g.items.map((x,i)=>`<tr><td>${i+1}</td><td><b>${esc(x)}</b></td></tr>`).join('')}
@@ -7693,8 +7693,8 @@ function reconItems(){return state.stockItems||[]}
 function reconQty(v){return v==null?'—':num(v).toLocaleString('en-KE',{maximumFractionDigits:3})}
 function reconUnit(id){return reconItems().find(x=>String(x.id)===String(id))?.unit||'Unit'}
 function reconName(id){return reconItems().find(x=>String(x.id)===String(id))?.name||'Stock Item'}
-function reconInputLines(tb){return qa('tr',tb).map(r=>({stock_item_id:q('.iri',r).value,quantity:num(q('.irq',r).value),explanation:(q('.ire',r)?.value||'').trim()}))}
-function addReconInputLine(tb,line={}){const items=reconItems();if(!items.length)return;const tr=document.createElement('tr');tr.innerHTML=`<td><select class="input iri">${items.map(x=>`<option value="${esc(x.id)}">${esc(x.name)} (${esc(x.unit||'Unit')})</option>`).join('')}</select></td><td><input class="input irq" type="number" min="0" step="0.001" value="${num(line.quantity)}"></td><td><button class="btn stock-remove-v1855" type="button" title="Remove item">×</button><input type="hidden" class="ire" value="${esc(line.explanation||'')}"></td>`;tb.appendChild(tr);if(line.stock_item_id)q('.iri',tr).value=line.stock_item_id;q('.stock-remove-v1855',tr).onclick=e=>{e.preventDefault();e.stopPropagation();tr.remove()}}
+function reconInputLines(tb){return qa('tr',tb).filter(r=>q('.irinclude',r)?.checked!==false).map(r=>({stock_item_id:q('.iri',r).value,quantity:num(q('.irq',r).value),explanation:(q('.ire',r)?.value||'').trim()}))}
+function addReconInputLine(tb,line={}){const items=reconItems();if(!items.length)return;const tr=document.createElement('tr');tr.innerHTML=`<td><select class="input iri">${items.map(x=>`<option value="${esc(x.id)}">${esc(x.name)} (${esc(x.unit||'Unit')})</option>`).join('')}</select></td><td><input class="input irq" type="number" min="0" step="0.001" value="${num(line.quantity)}"></td><td><button class="btn stock-remove-v1855" type="button" title="Remove item">×</button><input type="hidden" class="ire" value="${esc(line.explanation||'')}"></td>`;tb.appendChild(tr);if(line.stock_item_id)q('.iri',tr).value=line.stock_item_id;const sel=q('.iri',tr),unit=q('.irunit',tr),inc=q('.irinclude',tr);const sync=()=>{const it=(state.stockItems||[]).find(x=>String(x.id)===String(sel.value));if(unit)unit.textContent=it?.unit||'Unit';if(line.stock_item_id==null&&inc)inc.checked=it?.track_variance!==false};sel.onchange=sync;sync();q('.stock-remove-v1855',tr).onclick=e=>{e.preventDefault();e.stopPropagation();tr.remove()}}
 async function calculateRecon(date,lines,reconId=null){return await rpc('calculate_inventory_reconciliation',{p_company_id:cid(),p_stock_date:date,p_lines:lines,p_reconciliation_id:reconId})}
 function reconExportRows(rows){return (rows||[]).map(r=>({
  item:reconName(r.stock_item_id),unit:reconUnit(r.stock_item_id),baseline:!!r.is_baseline,opening_date:r.opening_date||'',opening:r.opening_qty,purchases:r.purchases_qty,consumption:r.consumption_qty,cost:r.unit_cost,cost_available:!!r.cost_available,expected:r.expected_closing,actual:r.actual_closing,variance:r.variance_qty,variance_pct:r.variance_pct,variance_value:r.variance_value,explanation:r.explanation||''
@@ -7714,7 +7714,7 @@ function renderReconCalculation(host,rows,viewOnly=false){host.innerHTML=`<div s
 async function openReconciliation(existing=null,viewOnly=false){
  const items=reconItems();if(!items.length)return toast('Add a Purchase / Recipe Item first.');const editing=!!existing;let lines=[];
  if(existing){const {data,error}=await window.finsightSupabase.from('inventory_reconciliation_lines').select('stock_item_id,quantity,explanation').eq('company_id',cid()).eq('reconciliation_id',existing.id).order('created_at');if(error)return toast(error.message);lines=data||[]}
- openModal(viewOnly?'View Inventory Reconciliation':editing?'Edit Inventory Reconciliation':'New Inventory Reconciliation','',`<div class="form-grid"><div class="field"><label>Stock Date</label><input class="input" id="irDate" type="date" value="${esc(existing?.stock_date||iso(new Date()))}" ${viewOnly?'disabled':''}></div><div class="field full"><label>Notes</label><input class="input" id="irNotes" value="${esc(existing?.notes||'')}" placeholder="Optional stock-take note" ${viewOnly?'disabled':''}></div></div><div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Stock Item</th><th>Actual Closing Stock</th><th></th></tr></thead><tbody id="irLines"></tbody></table></div>${viewOnly?'':'<button class="btn" type="button" id="irAdd">+ Add Item</button>'}<div id="irCalculation" style="margin-top:16px"></div><div class="modal-actions">${viewOnly?'<button class="btn" type="button" id="irExportPdf" style="display:none">Export PDF</button><button class="btn" type="button" id="irExportExcel" style="display:none">Export Excel</button>':''}<button class="btn" type="button" id="irCalculate">${viewOnly?'Refresh Calculation':'Calculate Reconciliation'}</button>${viewOnly?'':'<button class="btn primary" type="button" id="irSave" style="display:none">'+(editing?'Save Changes':'Save Reconciliation')+'</button>'}</div>`);
+ openModal(viewOnly?'View Inventory Reconciliation':editing?'Edit Inventory Reconciliation':'New Inventory Reconciliation','',`<div class="form-grid"><div class="field"><label>Stock Date</label><input class="input" id="irDate" type="date" value="${esc(existing?.stock_date||iso(new Date()))}" ${viewOnly?'disabled':''}></div><div class="field full"><label>Notes</label><input class="input" id="irNotes" value="${esc(existing?.notes||'')}" placeholder="Optional stock-take note" ${viewOnly?'disabled':''}></div></div><div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Include</th><th>Stock Item</th><th>Unit</th><th>Physical Quantity</th><th></th></tr></thead><tbody id="irLines"></tbody></table></div>${viewOnly?'':'<button class="btn" type="button" id="irAdd">+ Add Item</button>'}<div id="irCalculation" style="margin-top:16px"></div><div class="modal-actions">${viewOnly?'<button class="btn" type="button" id="irExportPdf" style="display:none">Export PDF</button><button class="btn" type="button" id="irExportExcel" style="display:none">Export Excel</button>':''}<button class="btn" type="button" id="irCalculate">${viewOnly?'Refresh Calculation':'Calculate Reconciliation'}</button>${viewOnly?'':'<button class="btn primary" type="button" id="irSave" style="display:none">'+(editing?'Save Changes':'Save Reconciliation')+'</button>'}</div>`);
  const tb=q('#irLines');(lines.length?lines:[{}]).forEach(x=>addReconInputLine(tb,x));if(viewOnly)qa('input,select,button.stock-remove-v1855',tb).forEach(x=>x.disabled=true);else q('#irAdd').onclick=()=>addReconInputLine(tb);
  let calculated=null;async function doCalc(){const date=q('#irDate').value,rows=reconInputLines(tb);if(!date)return toast('Choose the stock date.');if(!rows.length)return toast('Keep at least one stock item.');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same stock item cannot appear twice.');if(rows.some(x=>x.quantity<0))return toast('Actual closing quantity cannot be negative.');const b=q('#irCalculate');b.disabled=true;b.textContent='Calculating…';try{calculated=await calculateRecon(date,rows,existing?.id||null);calculated=(calculated||[]).map(r=>({...r,explanation:(rows.find(x=>String(x.stock_item_id)===String(r.stock_item_id))?.explanation||'')}));renderReconCalculation(q('#irCalculation'),calculated,viewOnly);if(!viewOnly)q('#irSave').style.display='inline-flex';if(viewOnly){q('#irExportPdf').style.display='inline-flex';q('#irExportExcel').style.display='inline-flex'}}catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent=viewOnly?'Refresh Calculation':'Calculate Reconciliation'}}
  q('#irCalculate').onclick=doCalc;if(viewOnly){q('#irExportPdf').onclick=()=>calculated?exportReconPdf(existing,calculated):toast('Wait for the reconciliation calculation to finish.');q('#irExportExcel').onclick=()=>calculated?exportReconExcel(existing,calculated):toast('Wait for the reconciliation calculation to finish.');setTimeout(doCalc,0);}
@@ -8172,7 +8172,7 @@ async function addSimple(kind,target){
   supplier:{title:'Add Supplier',table:'suppliers',label:'Supplier Name',unit:false},
   stock:{title:'Add Purchase / Recipe Item',table:'stock_items',label:'Item Name',unit:true}
  }[kind]; if(!cfg)return;
- overlay(cfg.title,`<div class="field"><label>${cfg.label}</label><input class="input" id="fsqaName" autocomplete="off"></div>${cfg.unit?'<div class="field" style="margin-top:10px"><label>Unit</label><input class="input" id="fsqaUnit" value="Unit"></div>':''}`,async d=>{
+ overlay(cfg.title,`<div class="field"><label>${cfg.label}</label><input class="input" id="fsqaName" autocomplete="off"></div>${cfg.unit?'<div class="field" style="margin-top:10px"><label>Unit</label><select class="input" id="fsqaUnit"><option>Kg</option><option>g</option><option>Litre</option><option>ml</option><option>Pcs</option><option>Pack</option><option>Box</option><option>Bottle</option><option>Tray</option><option>Other</option></select></div><div class="field" style="margin-top:10px"><label><input type="checkbox" id="fsqaTrack" checked> Track Variance</label></div>':''}`,async d=>{
    const {sb,cid}=cloud();if(!sb||!cid)throw new Error('FinSight cloud connection is not ready.');
    const name=q('#fsqaName',d).value.trim();if(!name)throw new Error(`${cfg.label} is required.`);
    const {data:existing,error:ee}=await sb.from(cfg.table).select('id,name,is_active').eq('company_id',cid);if(ee)throw ee;
@@ -8181,7 +8181,7 @@ async function addSimple(kind,target){
    if(same){
      if(same.is_active===false){const {data,error}=await sb.from(cfg.table).update({is_active:true}).eq('company_id',cid).eq('id',same.id).select().single();if(error)throw error;row=data}
    }else{
-     const payload={company_id:cid,name,is_active:true};if(cfg.unit)payload.unit=q('#fsqaUnit',d).value.trim()||'Unit';
+     const payload={company_id:cid,name,is_active:true};if(cfg.unit){payload.unit=q('#fsqaUnit',d).value.trim()||'Unit';payload.track_variance=!!q('#fsqaTrack',d)?.checked;}
      const {data,error}=await sb.from(cfg.table).insert(payload).select().single();if(error)throw error;row=data;
    }
    await reload();
@@ -8214,4 +8214,79 @@ window.finsightQuickAdd={addSimple,enhance,refreshAllSelects};
 })();
 </script>
 
+
+<script id="finsight-v1859-recon-hide-fix">
+(function(){
+ function q(s,r=document){return r.querySelector(s)}
+ function install(){
+   const history=q('#inventoryReconHistory'); if(!history)return;
+   let btn=q('#toggleReconHistoryV1859');
+   if(!btn){
+     const title=[...document.querySelectorAll('.section-title')].find(x=>x.contains(history)||x.nextElementSibling===history);
+     btn=document.createElement('button');btn.id='toggleReconHistoryV1859';btn.type='button';btn.className='btn';
+     if(title)title.appendChild(btn); else history.parentNode.insertBefore(btn,history);
+   }
+   const hidden=sessionStorage.getItem('finsight_hide_reconciliations')==='1';
+   history.style.display=hidden?'none':'';
+   btn.textContent=hidden?'Show Reconciliations':'Hide Reconciliations';
+   btn.onclick=()=>{const hide=history.style.display!=='none';history.style.display=hide?'none':'';btn.textContent=hide?'Show Reconciliations':'Hide Reconciliations';sessionStorage.setItem('finsight_hide_reconciliations',hide?'1':'0')};
+ }
+ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList:true,subtree:true});
+ setInterval(install,1200);install();
+})();
+</script>
+
+<style id="finsight-v1859-stocktake-style">
+.stocktake-actions{display:flex;gap:8px;flex-wrap:wrap;margin-left:auto}
+@media print{.stocktake-print{font-family:Arial,sans-serif;color:#111}.stocktake-print table{width:100%;border-collapse:collapse}.stocktake-print th,.stocktake-print td{border:1px solid #555;padding:8px}.stocktake-print th{background:#eee}.stocktake-print h1,.stocktake-print h2{text-align:center;margin:4px}}
+</style>
+<script id="finsight-v1859-stocktake">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s),qa=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm=v=>String(v||'').trim().toLowerCase();
+function items(){return (window.state?.stockItems||[]).filter(x=>x.is_active!==false)}
+function company(){return window.finsightOnline?.company?.name||'FinSight'}
+function csvEscape(v){v=String(v??'');return /[,"\n]/.test(v)?'"'+v.replaceAll('"','""')+'"':v}
+function download(name,text,type){const b=new Blob([text],{type}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},100)}
+function stockCsv(){
+ const rows=[['Item','Unit','Physical Quantity'],...items().map(x=>[x.name,x.unit||'Unit',''])];
+ download('FinSight_Stock_Take.csv',rows.map(r=>r.map(csvEscape).join(',')).join('\n'),'text/csv;charset=utf-8');
+}
+function stockPdf(){
+ const rows=items();const w=window.open('','_blank');if(!w)return toast('Please allow pop-ups to print the stock take.');
+ w.document.write(`<!doctype html><html><head><title>Physical Stock Take</title><style>body{font-family:Arial,sans-serif;color:#111;padding:28px}h1,h2{text-align:center;margin:3px}h1{font-size:20px}h2{font-size:15px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:24px 0}.line{border-bottom:1px solid #555;display:inline-block;min-width:180px;height:18px}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #555;padding:8px}th{background:#eee;text-align:left}.qty{height:28px;width:130px}.notes{width:220px}.sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:35px}.sig{border-top:1px solid #555;padding-top:6px;margin-top:28px}@page{size:A4;margin:12mm}</style></head><body><h1>${esc(company())}</h1><h2>PHYSICAL STOCK TAKE SHEET</h2><div class="meta"><div>Stock Date: <span class="line"></span></div><div>Counted By: <span class="line"></span></div><div>Checked By: <span class="line"></span></div><div>Department/Location: <span class="line"></span></div></div><table><thead><tr><th>#</th><th>Stock Item</th><th>Unit</th><th>Physical Quantity</th><th>Notes</th></tr></thead><tbody>${rows.map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.name)}</td><td>${esc(x.unit||'Unit')}</td><td class="qty"></td><td class="notes"></td></tr>`).join('')}</tbody></table><div class="sign"><div class="sig">Counted By / Signature</div><div class="sig">Verified By / Signature</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
+}
+function parseCsv(text){
+ const rows=[];let row=[],cur='',quote=false;
+ for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quote&&text[i+1]==='"'){cur+='"';i++}else quote=!quote}else if(c===','&&!quote){row.push(cur);cur=''}else if((c==='\n'||c==='\r')&&!quote){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cur);if(row.some(x=>String(x).trim()))rows.push(row);row=[];cur=''}else cur+=c}
+ row.push(cur);if(row.some(x=>String(x).trim()))rows.push(row);return rows;
+}
+async function uploadIntoRecon(){
+ const inp=document.createElement('input');inp.type='file';inp.accept='.csv,text/csv';inp.onchange=async()=>{
+  const file=inp.files?.[0];if(!file)return;const rows=parseCsv(await file.text());if(rows.length<2)return toast('The Stock Take CSV has no stock rows.');
+  const hdr=rows[0].map(norm),ii=hdr.indexOf('item'),ui=hdr.indexOf('unit'),qi=hdr.indexOf('physical quantity');
+  if(ii<0||qi<0)return toast('Stock Take CSV must contain Item and Physical Quantity.');
+  const seen=new Set(),data=[];
+  for(let n=1;n<rows.length;n++){const name=String(rows[n][ii]||'').trim();if(!name)continue;const key=norm(name);if(seen.has(key))return toast(`Duplicate stock item in CSV: ${name}`);seen.add(key);
+   const it=items().find(x=>norm(x.name)===key);if(!it)return toast(`Stock item does not exist: ${name}`);
+   if(ui>=0&&String(rows[n][ui]||'').trim()&&norm(rows[n][ui])!==norm(it.unit||'Unit'))return toast(`${name} is registered as ${it.unit||'Unit'}, not ${rows[n][ui]}.`);
+   const raw=String(rows[n][qi]||'').trim();if(raw==='')continue;const qty=Number(raw);if(!Number.isFinite(qty)||qty<0)return toast(`Invalid physical quantity for ${name}.`);data.push({id:it.id,qty});
+  }
+  const tb=q('#irLines');if(!tb)return toast('Open New Reconciliation first.');
+  qa('tr',tb).forEach(r=>{const sel=q('.iri',r),hit=data.find(x=>String(x.id)===String(sel?.value));if(hit){const qty=q('.irq',r),inc=q('.irinclude',r);if(qty)qty.value=hit.qty;if(inc)inc.checked=true}});
+  toast(`${data.length} stock quantities populated`);
+ };inp.click();
+}
+function install(){
+ const inventory=q('#inventory');if(inventory&&!q('#stockTakeTemplateV1859')){
+  const anchor=q('#newReconBtn',inventory);if(anchor){const pdf=document.createElement('button');pdf.id='stockTakeTemplateV1859';pdf.type='button';pdf.className='btn';pdf.textContent='Stock Take Template';pdf.onclick=stockPdf;anchor.insertAdjacentElement('afterend',pdf);
+   const csv=document.createElement('button');csv.id='stockTakeCsvTemplateV1859';csv.type='button';csv.className='btn';csv.textContent='Stock Take CSV';csv.onclick=stockCsv;pdf.insertAdjacentElement('afterend',csv);}
+ }
+ const up=q('#irStockCsv');if(up&&!up.dataset.bound59){up.dataset.bound59='1';up.onclick=uploadIntoRecon}
+}
+new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList:true,subtree:true});setInterval(install,1000);install();
+})();
+</script>
 </body></html>
