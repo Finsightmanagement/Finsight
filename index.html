@@ -4338,7 +4338,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
   window.openSalesForm=function(){
     const payments=(state.paymentTypes||[]).map(x=>`<option>${escOpt(x)}</option>`).join('');
     const categories=(state.categories||[]).map(x=>`<option>${escOpt(x)}</option>`).join('');
-    openModal('Post Sales','Post this sale directly to the FinSight cloud accounting engine.',
+    openModal('Post Sales','',
       `<div class="form-grid">
         <div class="field"><label>Date</label><input id="sDate" class="input" type="date" value="${today()}"></div>
         <div class="field"><label>Payment Type</label><select id="sPayment" class="input">${payments}</select></div>
@@ -4349,7 +4349,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
         <div class="field"><label>Total Sales</label><input id="sAmount" class="input" type="number" min="0.01" step="0.01"></div>
         <div class="field full"><label>Memo</label><input id="sMemo" class="input"></div>
       </div>
-      <div class="small-note" style="margin-top:10px">This posts the sale, item analysis and balanced journal entry to Supabase.</div>
+      
       <div class="modal-actions"><button class="btn primary" id="saveSale">Post Sales</button></div>`);
 
     setTimeout(()=>{
@@ -4630,7 +4630,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     const suppliers=(state.suppliers||[]);
     if(!suppliers.length)return toast('Add a supplier before entering a bill');
     if(!(state.stockItems||[]).length)return toast('Add at least one stock item before entering a supplier bill');
-    openModal('Enter Supplier Bill','This bill will post directly to Supabase and create the Accounts Payable journal.',`
+    openModal('Enter Supplier Bill','',`
       <div class="form-grid">
         <div class="field"><label>Date</label><input id="bDate" class="input" type="date" value="${today()}"></div>
         <div class="field"><label>Supplier</label><select id="bSupplier" class="input">${suppliers.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
@@ -6992,6 +6992,41 @@ async function postStock(p){
   }
 }
 
+
+async function smartResolveMissing(validation){
+  const simple={
+    'Unavailable Payment Types':{table:'payment_types'},
+    'Unavailable Categories':{table:'sales_categories'},
+    'Unavailable Suppliers':{table:'suppliers'},
+    'Unavailable Purchase / Recipe Items':{table:'stock_items',unit:'Unit'},
+    'Unavailable Stock Items':{table:'stock_items',unit:'Unit'}
+  };
+  const missing=[];
+  (validation.errors||[]).forEach(e=>{
+    const cfg=simple[e.label];
+    if(cfg)(e.items||[]).filter(x=>x&&!/^Row \d+$/i.test(x)).forEach(name=>missing.push({name, ...cfg}));
+  });
+  if(!missing.length)return false;
+  const uniqueMissing=[...new Map(missing.map(x=>[x.table+'|'+norm(x.name),x])).values()];
+  return await new Promise(resolve=>{
+    openModal('Missing Setup Records','',`<div style="overflow:auto"><table><thead><tr><th>Type</th><th>Missing Record</th></tr></thead><tbody>${uniqueMissing.map(x=>`<tr><td>${esc(x.table.replaceAll('_',' '))}</td><td><b>${esc(x.name)}</b></td></tr>`).join('')}</tbody></table></div><div class="modal-actions"><button class="btn" id="csvMissingCancel" type="button">Cancel Import</button><button class="btn primary" id="csvMissingAdd" type="button">Add Missing & Continue</button></div>`);
+    q('#csvMissingCancel').onclick=()=>{closeModal();resolve(false)};
+    q('#csvMissingAdd').onclick=async()=>{
+      const b=q('#csvMissingAdd');b.disabled=true;b.textContent='Adding…';
+      try{
+        const {sb,cid}=cloud();
+        for(const x of uniqueMissing){
+          const {data,error}=await sb.from(x.table).select('id,name,is_active').eq('company_id',cid);if(error)throw error;
+          const same=(data||[]).find(r=>norm(r.name)===norm(x.name));
+          if(same){if(same.is_active===false){const u=await sb.from(x.table).update({is_active:true}).eq('company_id',cid).eq('id',same.id);if(u.error)throw u.error}}
+          else{const payload={company_id:cid,name:x.name,is_active:true};if(x.unit)payload.unit=x.unit;const ins=await sb.from(x.table).insert(payload);if(ins.error)throw ins.error}
+        }
+        closeModal();await refreshCloud();resolve(true);
+      }catch(e){toast(e?.message||String(e));b.disabled=false;b.textContent='Add Missing & Continue'}
+    };
+  });
+}
+
 /* ---------------- MAIN UPLOAD FLOW ---------------- */
 let activeKind=null;
 function enableButtons(){
@@ -7024,7 +7059,17 @@ async function handleFile(file){
   else if(activeKind==='stock')validation=await validateStock(p);
   else throw new Error('Unknown CSV import type.');
 
-  if(showErrors(`${activeKind==='bills'?'Supplier Bills':activeKind==='petty'?'Petty Cash':activeKind==='stock'?'Stock':'Sales'} CSV Error`,validation.errors))return;
+  const reportTitle=`${activeKind==='bills'?'Supplier Bills':activeKind==='petty'?'Petty Cash':activeKind==='stock'?'Stock':'Sales'} CSV Error`;
+  if((validation.errors||[]).some(e=>(e.items||[]).length)){
+    const added=await smartResolveMissing(validation);
+    if(added){
+      if(activeKind==='sales')validation=await validateSales(p);
+      else if(activeKind==='bills')validation=await validateBills(p);
+      else if(activeKind==='petty')validation=await validatePetty(p);
+      else if(activeKind==='stock')validation=await validateStock(p);
+    }
+    if(showErrors(reportTitle,validation.errors))return;
+  }
 
   preview('Online CSV Preview',file.name,p,'Post to Supabase');
   q('#cloudCsvAccept').onclick=async()=>{
@@ -7648,40 +7693,42 @@ function reconItems(){return state.stockItems||[]}
 function reconQty(v){return v==null?'—':num(v).toLocaleString('en-KE',{maximumFractionDigits:3})}
 function reconUnit(id){return reconItems().find(x=>String(x.id)===String(id))?.unit||'Unit'}
 function reconName(id){return reconItems().find(x=>String(x.id)===String(id))?.name||'Stock Item'}
-function reconInputLines(tb){return qa('tr',tb).map(r=>({stock_item_id:q('.iri',r).value,quantity:num(q('.irq',r).value)}))}
-function addReconInputLine(tb,line={}){const items=reconItems();if(!items.length)return;const tr=document.createElement('tr');tr.innerHTML=`<td><select class="input iri">${items.map(x=>`<option value="${esc(x.id)}">${esc(x.name)} (${esc(x.unit||'Unit')})</option>`).join('')}</select></td><td><input class="input irq" type="number" min="0" step="0.001" value="${num(line.quantity)}"></td><td><button class="btn stock-remove-v1855" type="button" title="Remove item">×</button></td>`;tb.appendChild(tr);if(line.stock_item_id)q('.iri',tr).value=line.stock_item_id;q('.stock-remove-v1855',tr).onclick=e=>{e.preventDefault();e.stopPropagation();tr.remove()}}
+function reconInputLines(tb){return qa('tr',tb).map(r=>({stock_item_id:q('.iri',r).value,quantity:num(q('.irq',r).value),explanation:(q('.ire',r)?.value||'').trim()}))}
+function addReconInputLine(tb,line={}){const items=reconItems();if(!items.length)return;const tr=document.createElement('tr');tr.innerHTML=`<td><select class="input iri">${items.map(x=>`<option value="${esc(x.id)}">${esc(x.name)} (${esc(x.unit||'Unit')})</option>`).join('')}</select></td><td><input class="input irq" type="number" min="0" step="0.001" value="${num(line.quantity)}"></td><td><button class="btn stock-remove-v1855" type="button" title="Remove item">×</button><input type="hidden" class="ire" value="${esc(line.explanation||'')}"></td>`;tb.appendChild(tr);if(line.stock_item_id)q('.iri',tr).value=line.stock_item_id;q('.stock-remove-v1855',tr).onclick=e=>{e.preventDefault();e.stopPropagation();tr.remove()}}
 async function calculateRecon(date,lines,reconId=null){return await rpc('calculate_inventory_reconciliation',{p_company_id:cid(),p_stock_date:date,p_lines:lines,p_reconciliation_id:reconId})}
 function reconExportRows(rows){return (rows||[]).map(r=>({
- item:reconName(r.stock_item_id),unit:reconUnit(r.stock_item_id),baseline:!!r.is_baseline,opening_date:r.opening_date||'',opening:r.opening_qty,purchases:r.purchases_qty,consumption:r.consumption_qty,cost:r.unit_cost,cost_available:!!r.cost_available,expected:r.expected_closing,actual:r.actual_closing,variance:r.variance_qty,variance_pct:r.variance_pct,variance_value:r.variance_value
+ item:reconName(r.stock_item_id),unit:reconUnit(r.stock_item_id),baseline:!!r.is_baseline,opening_date:r.opening_date||'',opening:r.opening_qty,purchases:r.purchases_qty,consumption:r.consumption_qty,cost:r.unit_cost,cost_available:!!r.cost_available,expected:r.expected_closing,actual:r.actual_closing,variance:r.variance_qty,variance_pct:r.variance_pct,variance_value:r.variance_value,explanation:r.explanation||''
 }))}
 function reconCompanyName(){return window.finsightOnline?.company?.name||window.finsightOnline?.companyName||'FinSight Management Intelligence'}
-function reconReportTable(rows){return `<table><thead><tr><th>Item</th><th>Opening Stock</th><th>Purchases</th><th>Consumption</th><th>Avg. Unit Cost</th><th>Expected Closing</th><th>Actual Closing</th><th>Variance</th><th>Variance %</th><th>Variance Value</th></tr></thead><tbody>${reconExportRows(rows).map(r=>r.baseline?`<tr><td>${esc(r.item)}</td><td colspan="3">First reconciliation — physical baseline</td><td>${r.cost_available?money(r.cost):'Cost unavailable'}</td><td>—</td><td>${reconQty(r.actual)} ${esc(r.unit)}</td><td>—</td><td>—</td><td>—</td></tr>`:`<tr><td>${esc(r.item)}${r.opening_date?`<div class="sub">Opening from ${esc(r.opening_date)}</div>`:''}</td><td>${reconQty(r.opening)} ${esc(r.unit)}</td><td>${reconQty(r.purchases)} ${esc(r.unit)}</td><td>${reconQty(r.consumption)} ${esc(r.unit)}</td><td>${r.cost_available?money(r.cost):'Cost unavailable'}</td><td>${reconQty(r.expected)} ${esc(r.unit)}</td><td>${reconQty(r.actual)} ${esc(r.unit)}</td><td>${reconQty(r.variance)} ${esc(r.unit)}</td><td>${r.variance_pct==null?'—':num(r.variance_pct).toFixed(2)+'%'}</td><td>${r.variance_value==null?'—':money(r.variance_value)}</td></tr>`).join('')}</tbody></table>`}
+function reconReportTable(rows){return `<table><thead><tr><th>Item</th><th>Opening Stock</th><th>Purchases</th><th>Consumption</th><th>Avg. Unit Cost</th><th>Expected Closing</th><th>Actual Closing</th><th>Variance</th><th>Variance %</th><th>Variance Value</th><th>Explanation</th></tr></thead><tbody>${reconExportRows(rows).map(r=>r.baseline?`<tr><td>${esc(r.item)}</td><td colspan="3">First reconciliation — physical baseline</td><td>${r.cost_available?money(r.cost):'Cost unavailable'}</td><td>—</td><td>${reconQty(r.actual)} ${esc(r.unit)}</td><td>—</td><td>—</td><td>—</td><td>${esc(r.explanation||'—')}</td></tr>`:`<tr><td>${esc(r.item)}${r.opening_date?`<div class="sub">Opening from ${esc(r.opening_date)}</div>`:''}</td><td>${reconQty(r.opening)} ${esc(r.unit)}</td><td>${reconQty(r.purchases)} ${esc(r.unit)}</td><td>${reconQty(r.consumption)} ${esc(r.unit)}</td><td>${r.cost_available?money(r.cost):'Cost unavailable'}</td><td>${reconQty(r.expected)} ${esc(r.unit)}</td><td>${reconQty(r.actual)} ${esc(r.unit)}</td><td>${reconQty(r.variance)} ${esc(r.unit)}</td><td>${r.variance_pct==null?'—':num(r.variance_pct).toFixed(2)+'%'}</td><td>${r.variance_value==null?'—':money(r.variance_value)}</td><td>${esc(r.explanation||'—')}</td></tr>`).join('')}</tbody></table>`}
 function exportReconPdf(existing,rows){
  const w=window.open('','_blank');if(!w)return toast('Allow pop-ups to export the PDF.');const title=`Inventory Reconciliation ${existing?.reconciliation_no||''}`.trim(),date=existing?.stock_date||'';
  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:Arial,sans-serif;color:#111827;padding:28px}h1{font-size:22px;margin:0 0 5px}.meta{color:#64748b;margin-bottom:18px}.note{margin:10px 0 18px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px}table{width:100%;border-collapse:collapse;font-size:10px}th,td{border:1px solid #dbe2ea;padding:7px;text-align:right;vertical-align:top}th{background:#f1f5f9}th:first-child,td:first-child{text-align:left}.sub{font-size:8px;color:#64748b;margin-top:3px}@page{size:landscape;margin:10mm}</style></head><body><h1>${esc(reconCompanyName())}</h1><div class="meta"><b>${esc(title)}</b> · Stock Date: ${esc(date)}</div>${existing?.notes?`<div class="note"><b>Notes:</b> ${esc(existing.notes)}</div>`:''}${reconReportTable(rows)}<script>window.onload=()=>setTimeout(()=>window.print(),250)<\/script></body></html>`);w.document.close();
 }
 function exportReconExcel(existing,rows){
- const title=`Inventory Reconciliation ${existing?.reconciliation_no||''}`.trim(),date=existing?.stock_date||'',html=`<!doctype html><html><head><meta charset="utf-8"></head><body><table><tr><th colspan="10">${esc(reconCompanyName())}</th></tr><tr><th colspan="10">${esc(title)} | Stock Date: ${esc(date)}</th></tr>${existing?.notes?`<tr><td colspan="10">Notes: ${esc(existing.notes)}</td></tr>`:''}</table>${reconReportTable(rows)}</body></html>`,blob=new Blob(['\ufeff',html],{type:'application/vnd.ms-excel;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${(existing?.reconciliation_no||'Inventory_Reconciliation').replace(/[^a-z0-9_-]+/gi,'_')}_${date||'Report'}.xls`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),800);
+ const title=`Inventory Reconciliation ${existing?.reconciliation_no||''}`.trim(),date=existing?.stock_date||'',html=`<!doctype html><html><head><meta charset="utf-8"></head><body><table><tr><th colspan="11">${esc(reconCompanyName())}</th></tr><tr><th colspan="11">${esc(title)} | Stock Date: ${esc(date)}</th></tr>${existing?.notes?`<tr><td colspan="11">Notes: ${esc(existing.notes)}</td></tr>`:''}</table>${reconReportTable(rows)}</body></html>`,blob=new Blob(['\ufeff',html],{type:'application/vnd.ms-excel;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`${(existing?.reconciliation_no||'Inventory_Reconciliation').replace(/[^a-z0-9_-]+/gi,'_')}_${date||'Report'}.xls`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),800);
 }
-function renderReconCalculation(host,rows){host.innerHTML=`<div style="overflow:auto"><table class="inventory-recon-table"><thead><tr><th>Item</th><th>Opening Stock</th><th>Purchases</th><th>Consumption</th><th>Avg. Unit Cost</th><th>Expected Closing</th><th>Actual Closing</th><th>Variance</th><th>Variance %</th><th>Variance Value</th></tr></thead><tbody>${(rows||[]).map(r=>{if(r.is_baseline)return `<tr><td><b>${esc(reconName(r.stock_item_id))}</b></td><td colspan="3"><span class="small-note">First reconciliation — physical baseline</span></td><td>${r.cost_available?money(r.unit_cost):'<span class="small-note">Cost unavailable</span>'}</td><td>—</td><td>${reconQty(r.actual_closing)} ${esc(reconUnit(r.stock_item_id))}</td><td>—</td><td>—</td><td>—</td></tr>`;const cls=num(r.variance_qty)<0?'variance-short':num(r.variance_qty)>0?'variance-over':'variance-ok';return `<tr><td><b>${esc(reconName(r.stock_item_id))}</b><div class="small-note">Opening from ${esc(r.opening_date||'—')}</div></td><td>${reconQty(r.opening_qty)}</td><td>${reconQty(r.purchases_qty)}</td><td>${reconQty(r.consumption_qty)}</td><td>${r.cost_available?money(r.unit_cost):'Cost unavailable'}</td><td>${reconQty(r.expected_closing)}</td><td>${reconQty(r.actual_closing)}</td><td class="${cls}">${reconQty(r.variance_qty)}</td><td class="${cls}">${r.variance_pct==null?'—':num(r.variance_pct).toFixed(2)+'%'}</td><td class="${cls}">${r.variance_value==null?'—':money(r.variance_value)}</td></tr>`}).join('')}</tbody></table></div>`}
+function renderReconCalculation(host,rows,viewOnly=false){host.innerHTML=`<div style="overflow:auto"><table class="inventory-recon-table"><thead><tr><th>Item</th><th>Opening Stock</th><th>Purchases</th><th>Consumption</th><th>Avg. Unit Cost</th><th>Expected Closing</th><th>Actual Closing</th><th>Variance</th><th>Variance %</th><th>Variance Value</th><th>Explanation</th></tr></thead><tbody>${(rows||[]).map(r=>{const exp=esc(r.explanation||'');if(r.is_baseline)return `<tr data-calc-item="${esc(r.stock_item_id)}"><td><b>${esc(reconName(r.stock_item_id))}</b></td><td colspan="3">Physical baseline</td><td>${r.cost_available?money(r.unit_cost):'Cost unavailable'}</td><td>—</td><td>${reconQty(r.actual_closing)} ${esc(reconUnit(r.stock_item_id))}</td><td>—</td><td>—</td><td>—</td><td>${viewOnly?(exp||'—'):`<input class="input ire-calc" data-exp-item="${esc(r.stock_item_id)}" value="${exp}" placeholder="Optional">`}</td></tr>`;const cls=num(r.variance_qty)<0?'variance-short':num(r.variance_qty)>0?'variance-over':'variance-ok';return `<tr data-calc-item="${esc(r.stock_item_id)}"><td><b>${esc(reconName(r.stock_item_id))}</b><div class="small-note">Opening from ${esc(r.opening_date||'—')}</div></td><td>${reconQty(r.opening_qty)}</td><td>${reconQty(r.purchases_qty)}</td><td>${reconQty(r.consumption_qty)}</td><td>${r.cost_available?money(r.unit_cost):'Cost unavailable'}</td><td>${reconQty(r.expected_closing)}</td><td>${reconQty(r.actual_closing)}</td><td class="${cls}">${reconQty(r.variance_qty)}</td><td class="${cls}">${r.variance_pct==null?'—':num(r.variance_pct).toFixed(2)+'%'}</td><td class="${cls}">${r.variance_value==null?'—':money(r.variance_value)}</td><td>${viewOnly?(exp||'—'):`<input class="input ire-calc" data-exp-item="${esc(r.stock_item_id)}" value="${exp}" placeholder="Optional">`}</td></tr>`}).join('')}</tbody></table></div>`;
+ if(!viewOnly)qa('.ire-calc',host).forEach(inp=>inp.oninput=()=>{const id=inp.dataset.expItem;const row=qa('tr',q('#irLines')).find(r=>q('.iri',r)?.value===id);if(row){let hidden=q('.ire',row);if(!hidden){hidden=document.createElement('input');hidden.type='hidden';hidden.className='ire';row.appendChild(hidden)}hidden.value=inp.value}const rr=(rows||[]).find(x=>String(x.stock_item_id)===String(id));if(rr)rr.explanation=inp.value;});
+}
 async function openReconciliation(existing=null,viewOnly=false){
  const items=reconItems();if(!items.length)return toast('Add a Purchase / Recipe Item first.');const editing=!!existing;let lines=[];
- if(existing){const {data,error}=await window.finsightSupabase.from('inventory_reconciliation_lines').select('stock_item_id,quantity').eq('company_id',cid()).eq('reconciliation_id',existing.id).order('created_at');if(error)return toast(error.message);lines=data||[]}
- openModal(viewOnly?'View Inventory Reconciliation':editing?'Edit Inventory Reconciliation':'New Inventory Reconciliation',viewOnly?'Review the physical count and calculated stock movement.':'Enter the physical stock count first. FinSight will calculate purchases, recipe consumption, expected closing and variance.',`<div class="form-grid"><div class="field"><label>Stock Date</label><input class="input" id="irDate" type="date" value="${esc(existing?.stock_date||iso(new Date()))}" ${viewOnly?'disabled':''}></div><div class="field full"><label>Notes</label><input class="input" id="irNotes" value="${esc(existing?.notes||'')}" placeholder="Optional stock-take note" ${viewOnly?'disabled':''}></div></div><div class="recon-note">Enter only the physical closing quantity. Prices are calculated by FinSight from supplier purchase invoices.</div><div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Stock Item</th><th>Actual Closing Stock</th><th></th></tr></thead><tbody id="irLines"></tbody></table></div>${viewOnly?'':'<button class="btn" type="button" id="irAdd">+ Add Item</button>'}<div id="irCalculation" style="margin-top:16px"></div><div class="modal-actions">${viewOnly?'<button class="btn" type="button" id="irExportPdf" style="display:none">Export PDF</button><button class="btn" type="button" id="irExportExcel" style="display:none">Export Excel</button>':''}<button class="btn" type="button" id="irCalculate">${viewOnly?'Refresh Calculation':'Calculate Reconciliation'}</button>${viewOnly?'':'<button class="btn primary" type="button" id="irSave" style="display:none">'+(editing?'Save Changes':'Save Reconciliation')+'</button>'}</div>`);
+ if(existing){const {data,error}=await window.finsightSupabase.from('inventory_reconciliation_lines').select('stock_item_id,quantity,explanation').eq('company_id',cid()).eq('reconciliation_id',existing.id).order('created_at');if(error)return toast(error.message);lines=data||[]}
+ openModal(viewOnly?'View Inventory Reconciliation':editing?'Edit Inventory Reconciliation':'New Inventory Reconciliation','',`<div class="form-grid"><div class="field"><label>Stock Date</label><input class="input" id="irDate" type="date" value="${esc(existing?.stock_date||iso(new Date()))}" ${viewOnly?'disabled':''}></div><div class="field full"><label>Notes</label><input class="input" id="irNotes" value="${esc(existing?.notes||'')}" placeholder="Optional stock-take note" ${viewOnly?'disabled':''}></div></div><div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Stock Item</th><th>Actual Closing Stock</th><th></th></tr></thead><tbody id="irLines"></tbody></table></div>${viewOnly?'':'<button class="btn" type="button" id="irAdd">+ Add Item</button>'}<div id="irCalculation" style="margin-top:16px"></div><div class="modal-actions">${viewOnly?'<button class="btn" type="button" id="irExportPdf" style="display:none">Export PDF</button><button class="btn" type="button" id="irExportExcel" style="display:none">Export Excel</button>':''}<button class="btn" type="button" id="irCalculate">${viewOnly?'Refresh Calculation':'Calculate Reconciliation'}</button>${viewOnly?'':'<button class="btn primary" type="button" id="irSave" style="display:none">'+(editing?'Save Changes':'Save Reconciliation')+'</button>'}</div>`);
  const tb=q('#irLines');(lines.length?lines:[{}]).forEach(x=>addReconInputLine(tb,x));if(viewOnly)qa('input,select,button.stock-remove-v1855',tb).forEach(x=>x.disabled=true);else q('#irAdd').onclick=()=>addReconInputLine(tb);
- let calculated=null;async function doCalc(){const date=q('#irDate').value,rows=reconInputLines(tb);if(!date)return toast('Choose the stock date.');if(!rows.length)return toast('Keep at least one stock item.');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same stock item cannot appear twice.');if(rows.some(x=>x.quantity<0))return toast('Actual closing quantity cannot be negative.');const b=q('#irCalculate');b.disabled=true;b.textContent='Calculating…';try{calculated=await calculateRecon(date,rows,existing?.id||null);renderReconCalculation(q('#irCalculation'),calculated);if(!viewOnly)q('#irSave').style.display='inline-flex';if(viewOnly){q('#irExportPdf').style.display='inline-flex';q('#irExportExcel').style.display='inline-flex'}}catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent=viewOnly?'Refresh Calculation':'Calculate Reconciliation'}}
+ let calculated=null;async function doCalc(){const date=q('#irDate').value,rows=reconInputLines(tb);if(!date)return toast('Choose the stock date.');if(!rows.length)return toast('Keep at least one stock item.');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same stock item cannot appear twice.');if(rows.some(x=>x.quantity<0))return toast('Actual closing quantity cannot be negative.');const b=q('#irCalculate');b.disabled=true;b.textContent='Calculating…';try{calculated=await calculateRecon(date,rows,existing?.id||null);calculated=(calculated||[]).map(r=>({...r,explanation:(rows.find(x=>String(x.stock_item_id)===String(r.stock_item_id))?.explanation||'')}));renderReconCalculation(q('#irCalculation'),calculated,viewOnly);if(!viewOnly)q('#irSave').style.display='inline-flex';if(viewOnly){q('#irExportPdf').style.display='inline-flex';q('#irExportExcel').style.display='inline-flex'}}catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent=viewOnly?'Refresh Calculation':'Calculate Reconciliation'}}
  q('#irCalculate').onclick=doCalc;if(viewOnly){q('#irExportPdf').onclick=()=>calculated?exportReconPdf(existing,calculated):toast('Wait for the reconciliation calculation to finish.');q('#irExportExcel').onclick=()=>calculated?exportReconExcel(existing,calculated):toast('Wait for the reconciliation calculation to finish.');setTimeout(doCalc,0);}
  if(!viewOnly)q('#irSave').onclick=async()=>{if(!calculated)return toast('Calculate the reconciliation first.');const rows=reconInputLines(tb),b=q('#irSave');b.disabled=true;b.textContent='Saving…';try{await rpc('save_inventory_reconciliation_v2',{p_company_id:cid(),p_reconciliation_id:existing?.id||null,p_stock_date:q('#irDate').value,p_notes:q('#irNotes').value||null,p_lines:rows});closeModal();await window.finsightReloadCloudState?.();await refreshInventoryV1855();await loadReconciliations();toast(editing?'Reconciliation updated':'Reconciliation saved')}catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent=editing?'Save Changes':'Save Reconciliation'}}
 }
 async function loadReconciliations(){
- const host=q('#inventoryReconHistory');if(!host||!cid())return;const sb=window.finsightSupabase;const {data,error}=await sb.from('inventory_reconciliations').select('id,reconciliation_no,stock_date,notes,created_at,inventory_reconciliation_lines(id,stock_item_id,quantity,unit_cost)').eq('company_id',cid()).order('stock_date',{ascending:false}).order('created_at',{ascending:false});if(error){host.innerHTML=`<div class="empty-state">${esc(error.message)}</div>`;return}const rows=data||[];
+ const host=q('#inventoryReconHistory');if(!host||!cid())return;const sb=window.finsightSupabase;const {data,error}=await sb.from('inventory_reconciliations').select('id,reconciliation_no,stock_date,notes,created_at,inventory_reconciliation_lines(id,stock_item_id,quantity,unit_cost,explanation)').eq('company_id',cid()).order('stock_date',{ascending:false}).order('created_at',{ascending:false});if(error){host.innerHTML=`<div class="empty-state">${esc(error.message)}</div>`;return}const rows=data||[];
  host.innerHTML=rows.length?`<div style="overflow:auto"><table class="inventory-recon-table"><thead><tr><th>Reconciliation No.</th><th>Date</th><th>Items Counted</th><th>Physical Stock Value</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows.map(r=>{const ls=r.inventory_reconciliation_lines||[],total=ls.reduce((a,x)=>a+num(x.quantity)*num(x.unit_cost),0);return `<tr><td><b>${esc(r.reconciliation_no)}</b></td><td>${esc(r.stock_date)}</td><td>${ls.length}</td><td>${money(total)}</td><td>${esc(r.notes||'—')}</td><td><div class="recon-actions"><button class="mini-btn" type="button" data-ir-view="${r.id}">View</button><button class="mini-btn" type="button" data-ir-edit="${r.id}">Edit</button><button class="mini-btn danger" type="button" data-ir-delete="${r.id}">Delete</button></div></td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty-state">No inventory reconciliations posted yet.</div>';
  qa('[data-ir-view]',host).forEach(b=>b.onclick=()=>openReconciliation(rows.find(x=>x.id===b.dataset.irView),true));qa('[data-ir-edit]',host).forEach(b=>b.onclick=()=>openReconciliation(rows.find(x=>x.id===b.dataset.irEdit),false));qa('[data-ir-delete]',host).forEach(b=>b.onclick=async()=>{const r=rows.find(x=>x.id===b.dataset.irDelete);if(!confirm(`Delete ${r?.reconciliation_no||'this reconciliation'}? Later calculations will use the next available earlier physical count.`))return;try{await rpc('delete_inventory_reconciliation_v2',{p_company_id:cid(),p_reconciliation_id:b.dataset.irDelete});await window.finsightReloadCloudState?.();await refreshInventoryV1855();await loadReconciliations();toast('Reconciliation deleted')}catch(e){toast(e.message||String(e))}})
 }
 window.renderInventory=function(){
  const sec=q('#inventory');if(!sec)return;const now=iso(new Date()),start=now.slice(0,8)+'01';
- sec.innerHTML=`<div class="section-title"><div><h3>Inventory & Cost of Sales</h3><div class="small-note">Physical stock reconciliation with automatic variance, plus period Cost of Sales.</div></div><div class="cogs-actions"><button class="btn" id="stockItemsBtn">Purchase / Recipe Items</button><button class="btn" id="recipeManagerBtn">Menu Items & Recipes</button><button class="btn primary" id="newReconBtn">New Reconciliation</button></div></div><div class="card panel"><div class="cogs-v1855-bar"><div class="field"><label>COGS From</label><input class="input" id="cogsFrom" type="date" value="${start}"></div><div class="field"><label>COGS To</label><input class="input" id="cogsTo" type="date" value="${now}"></div><button class="btn" id="refreshCogsBtn">Refresh COGS</button></div></div><div class="grid kpis" style="margin-top:16px"><div class="card kpi"><div class="label">Opening Stock</div><div class="value" id="openingVal">KSh 0</div></div><div class="card kpi"><div class="label">Inventory Purchases</div><div class="value" id="purchVal">KSh 0</div></div><div class="card kpi"><div class="label">Closing Stock</div><div class="value" id="closingVal">KSh 0</div></div><div class="card kpi"><div class="label">Calculated COGS</div><div class="value" id="calcCogs">KSh 0</div></div></div><div class="section-title" style="margin-top:18px"><div><h3>Inventory Reconciliations</h3><div class="small-note">Enter the physical count, calculate, review, then save. Opening stock comes from the previous physical reconciliation.</div></div></div><div class="card table-card" id="inventoryReconHistory"><div class="empty-state">Loading reconciliations…</div></div><table style="display:none"><tbody id="inventoryTable"></tbody></table>`;
- q('#refreshCogsBtn').onclick=refreshInventoryV1855;q('#cogsFrom').onchange=refreshInventoryV1855;q('#cogsTo').onchange=refreshInventoryV1855;q('#newReconBtn').onclick=()=>openReconciliation();q('#stockItemsBtn').onclick=()=>typeof manageSimpleList==='function'?manageSimpleList('stock'):toast('Stock item manager unavailable');q('#recipeManagerBtn').onclick=()=>typeof window.openRecipeManager==='function'?window.openRecipeManager():toast('Recipe manager is unavailable.');refreshInventoryV1855();loadReconciliations();
+ sec.innerHTML=`<div class="section-title"><div><h3>Inventory & Cost of Sales</h3><div class="small-note">Physical stock reconciliation with automatic variance, plus period Cost of Sales.</div></div><div class="cogs-actions"><button class="btn" id="stockItemsBtn">Purchase / Recipe Items</button><button class="btn" id="recipeManagerBtn">Menu Items & Recipes</button><button class="btn primary" id="newReconBtn">New Reconciliation</button></div></div><div class="card panel"><div class="cogs-v1855-bar"><div class="field"><label>COGS From</label><input class="input" id="cogsFrom" type="date" value="${start}"></div><div class="field"><label>COGS To</label><input class="input" id="cogsTo" type="date" value="${now}"></div><button class="btn" id="refreshCogsBtn">Refresh COGS</button></div></div><div class="grid kpis" style="margin-top:16px"><div class="card kpi"><div class="label">Opening Stock</div><div class="value" id="openingVal">KSh 0</div></div><div class="card kpi"><div class="label">Inventory Purchases</div><div class="value" id="purchVal">KSh 0</div></div><div class="card kpi"><div class="label">Closing Stock</div><div class="value" id="closingVal">KSh 0</div></div><div class="card kpi"><div class="label">Calculated COGS</div><div class="value" id="calcCogs">KSh 0</div></div></div><div class="section-title" style="margin-top:18px"><div><h3>Inventory Reconciliations</h3></div><button class="btn" type="button" id="toggleReconHistory">Hide Reconciliations</button></div><div class="card table-card" id="inventoryReconHistory"><div class="empty-state">Loading reconciliations…</div></div><table style="display:none"><tbody id="inventoryTable"></tbody></table>`;
+ q('#refreshCogsBtn').onclick=refreshInventoryV1855;q('#cogsFrom').onchange=refreshInventoryV1855;q('#cogsTo').onchange=refreshInventoryV1855;q('#newReconBtn').onclick=()=>openReconciliation();const trh=q('#toggleReconHistory');if(trh)trh.onclick=()=>{const h=q('#inventoryReconHistory'),hide=h.style.display!=='none';h.style.display=hide?'none':'';trh.textContent=hide?'Show Reconciliations':'Hide Reconciliations';sessionStorage.setItem('finsight_hide_reconciliations',hide?'1':'0')};if(sessionStorage.getItem('finsight_hide_reconciliations')==='1'){q('#inventoryReconHistory').style.display='none';if(trh)trh.textContent='Show Reconciliations'}q('#stockItemsBtn').onclick=()=>typeof manageSimpleList==='function'?manageSimpleList('stock'):toast('Stock item manager unavailable');q('#recipeManagerBtn').onclick=()=>typeof window.openRecipeManager==='function'?window.openRecipeManager():toast('Recipe manager is unavailable.');refreshInventoryV1855();loadReconciliations();
 };
 
 function boot(){stabilizeDashboard();if(activePage('inventory'))setTimeout(()=>window.renderInventory(),120)}
@@ -8094,4 +8141,77 @@ setTimeout(bind,1000);
 window.finsightRenderGeneralJournal=renderJournal;
 })();
 </script>
+
+<style id="finsight-v1858-smart-add-style">
+.quick-add-wrap{display:flex;gap:6px;align-items:center}.quick-add-wrap>select{flex:1;min-width:0}
+.quick-add-btn{border:1px solid var(--soft-primary-border,#ddd7ff);background:var(--soft-primary,#f1efff);color:var(--soft-primary-text,#4f46e5);border-radius:8px;padding:7px 9px;font-weight:700;cursor:pointer;white-space:nowrap}
+#fsQuickAddOverlay{position:fixed;inset:0;background:rgba(15,23,42,.48);z-index:10050;display:flex;align-items:center;justify-content:center;padding:18px}
+#fsQuickAddCard{width:min(430px,100%);background:var(--card,#fff);color:var(--text,#0f172a);border:1px solid var(--border,#e2e8f0);border-radius:16px;box-shadow:0 24px 70px rgba(0,0,0,.25);padding:20px}
+#fsQuickAddCard h3{margin:0 0 14px}.fsqa-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+</style>
+<script id="finsight-v18-5-8-smart-quick-add">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s),qa=(s,r=document)=>[...r.querySelectorAll(s)];
+const norm=v=>String(v||'').trim().toLowerCase();
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function cloud(){return {sb:window.finsightSupabase,cid:window.finsightOnline?.companyId}}
+function canOperate(){return ['owner','admin','accountant','manager'].includes(String(window.finsightOnline?.role||'').toLowerCase())}
+async function reload(){if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState()}
+function overlay(title,body,onSave){
+ const old=q('#fsQuickAddOverlay');if(old)old.remove();
+ const d=document.createElement('div');d.id='fsQuickAddOverlay';d.innerHTML=`<div id="fsQuickAddCard"><h3>${esc(title)}</h3>${body}<div class="fsqa-actions"><button class="btn" id="fsqaCancel" type="button">Cancel</button><button class="btn primary" id="fsqaSave" type="button">Add</button></div></div>`;document.body.appendChild(d);
+ q('#fsqaCancel').onclick=()=>d.remove();d.onclick=e=>{if(e.target===d)d.remove()};
+ q('#fsqaSave').onclick=async()=>{const b=q('#fsqaSave');b.disabled=true;try{await onSave(d);d.remove()}catch(e){toast(e?.message||String(e));b.disabled=false}};
+}
+async function addSimple(kind,target){
+ if(!canOperate())return toast('Your role cannot add setup records.');
+ const cfg={
+  payment:{title:'Add Payment Type',table:'payment_types',label:'Payment Type',unit:false},
+  category:{title:'Add Category',table:'sales_categories',label:'Category',unit:false},
+  supplier:{title:'Add Supplier',table:'suppliers',label:'Supplier Name',unit:false},
+  stock:{title:'Add Purchase / Recipe Item',table:'stock_items',label:'Item Name',unit:true}
+ }[kind]; if(!cfg)return;
+ overlay(cfg.title,`<div class="field"><label>${cfg.label}</label><input class="input" id="fsqaName" autocomplete="off"></div>${cfg.unit?'<div class="field" style="margin-top:10px"><label>Unit</label><input class="input" id="fsqaUnit" value="Unit"></div>':''}`,async d=>{
+   const {sb,cid}=cloud();if(!sb||!cid)throw new Error('FinSight cloud connection is not ready.');
+   const name=q('#fsqaName',d).value.trim();if(!name)throw new Error(`${cfg.label} is required.`);
+   const {data:existing,error:ee}=await sb.from(cfg.table).select('id,name,is_active').eq('company_id',cid);if(ee)throw ee;
+   const same=(existing||[]).find(x=>norm(x.name)===norm(name));
+   let row=same;
+   if(same){
+     if(same.is_active===false){const {data,error}=await sb.from(cfg.table).update({is_active:true}).eq('company_id',cid).eq('id',same.id).select().single();if(error)throw error;row=data}
+   }else{
+     const payload={company_id:cid,name,is_active:true};if(cfg.unit)payload.unit=q('#fsqaUnit',d).value.trim()||'Unit';
+     const {data,error}=await sb.from(cfg.table).insert(payload).select().single();if(error)throw error;row=data;
+   }
+   await reload();
+   refreshAllSelects();
+   if(target){const value=(kind==='stock')?row.id:row.name;target.value=value;target.dispatchEvent(new Event('change',{bubbles:true}))}
+   toast(same?`${name} already exists — selected`:`${name} added`);
+ });
+ setTimeout(()=>q('#fsqaName')?.focus(),0);
+}
+function wrapSelect(sel,kind){
+ if(!sel||sel.dataset.fsqa==='1'||!canOperate())return;sel.dataset.fsqa='1';
+ const wrap=document.createElement('div');wrap.className='quick-add-wrap';sel.parentNode.insertBefore(wrap,sel);wrap.appendChild(sel);
+ const b=document.createElement('button');b.type='button';b.className='quick-add-btn';b.textContent='+ Add';b.title='Quick Add';b.onclick=e=>{e.preventDefault();e.stopPropagation();addSimple(kind,sel)};wrap.appendChild(b);
+}
+function refreshAllSelects(){
+ const setOpts=(sel,rows,valueKey='name')=>{if(!sel)return;const cur=sel.value;sel.innerHTML=rows.map(x=>`<option value="${esc(x[valueKey]??x)}">${esc(x.name??x)}</option>`).join('');if([...sel.options].some(o=>o.value===cur))sel.value=cur};
+ setOpts(q('#sPayment'),state.paymentTypes||[]);
+ setOpts(q('#sCategory'),state.categories||[]);
+ setOpts(q('#bSupplier'),state.suppliers||[]);
+ qa('.purchase-item-select,.recipeStock,.iri').forEach(sel=>setOpts(sel,state.stockItems||[],'id'));
+}
+function enhance(){
+ wrapSelect(q('#sPayment'),'payment');wrapSelect(q('#sCategory'),'category');wrapSelect(q('#bSupplier'),'supplier');
+ qa('.purchase-item-select,.recipeStock,.iri').forEach(s=>wrapSelect(s,'stock'));
+}
+const mo=new MutationObserver(()=>setTimeout(enhance,0));mo.observe(document.body,{childList:true,subtree:true});
+document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(()=>{refreshAllSelects();enhance()},300));
+setInterval(enhance,1200);
+window.finsightQuickAdd={addSimple,enhance,refreshAllSelects};
+})();
+</script>
+
 </body></html>
