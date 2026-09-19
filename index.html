@@ -7143,125 +7143,36 @@ function recipeFor(menuId){return recipeData.lines.filter(x=>x.menu_item_id===me
 function activeMenu(){return recipeData.menu.filter(x=>x.is_active!==false)}
 
 window.openRecipeManager=async function(){
-  try{await loadRecipes()}catch(e){return toast(e.message||'Unable to load Menu Items & Recipes.');}
-  openModal('Menu Items & Recipes','',`<div class="recipe-grid">
-    <div>
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <button class="btn primary" id="newMenuRecipe" type="button">+ Add Menu Item</button>
-      </div>
-      <div class="recipe-list" id="recipeMenuList"></div>
-    </div>
-    <div id="recipeEditor"><div class="empty-state">Select a menu item or click Add Menu Item.</div></div>
-  </div>`);
-  renderRecipeList();
-  const add=q('#newMenuRecipe'); if(add)add.onclick=()=>editRecipe(null);
+  try{await loadRecipes()}catch(e){return toast(e.message||'Run the V18.5.4 recipe SQL setup first.');}
+  openModal('Menu Items & Recipes','Create each sellable menu item and connect it to the purchase / recipe items it consumes.',`<div class="recipe-grid"><div><div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn primary" id="newMenuRecipe">+ New Menu Item</button></div><div class="recipe-list" id="recipeMenuList"></div></div><div id="recipeEditor"><div class="empty-state">Select a menu item or create a new one.</div></div></div>`);
+  renderRecipeList();q('#newMenuRecipe').onclick=()=>editRecipe(null);
 };
 function renderRecipeList(selected=''){
   const box=q('#recipeMenuList');if(!box)return;
-  const rows=recipeData.menu||[];
-  box.innerHTML=rows.length?rows.map(m=>`<div class="recipe-item ${m.id===selected?'active':''}" data-id="${m.id}">
-    <b>${html(m.name)}</b>
-    <div class="small-note">${html(catName(m.category_id))} · ${recipeFor(m.id).length} ingredient(s) · ${m.is_active===false?'Inactive':'Active'}</div>
-  </div>`).join(''):'<div class="empty-state">No menu items registered.</div>';
+  box.innerHTML=recipeData.menu.length?recipeData.menu.map(m=>`<div class="recipe-item ${m.id===selected?'active':''}" data-id="${m.id}"><b>${html(m.name)}</b><div class="small-note">${html(catName(m.category_id))} · ${recipeFor(m.id).length} ingredient(s) · ${m.is_active===false?'Inactive':'Active'}</div></div>`).join(''):'<div class="empty-state">No menu items yet.</div>';
   qa('.recipe-item',box).forEach(x=>x.onclick=()=>editRecipe(x.dataset.id));
 }
-function lineHtml(line={}){
-  const opts=(state.stockItems||[]).filter(x=>x.is_active!==false).map(x=>`<option value="${x.id}" ${x.id===line.stock_item_id?'selected':''}>${html(x.name)} (${html(x.unit||'Unit')})</option>`).join('');
-  return `<div class="recipe-line-row">
-    <div class="field"><label>Purchase / Recipe Item</label><select class="input recipeStock">${opts}</select></div>
-    <div class="field"><label>Qty per 1 Sale</label><input class="input recipeQty" type="number" min="0.000001" step="0.001" value="${num(line.quantity_per_sale)||''}"></div>
-    <button class="btn recipeRemove" type="button">×</button>
-  </div>`;
-}
+function lineHtml(line={}){const opts=(state.stockItems||[]).map(x=>`<option value="${x.id}" ${x.id===line.stock_item_id?'selected':''}>${html(x.name)} (${html(x.unit||'Unit')})</option>`).join('');return `<div class="recipe-line-row"><div class="field"><label>Purchase / Recipe Item</label><select class="input recipeStock">${opts}</select></div><div class="field"><label>Qty per 1 Sale</label><input class="input recipeQty" type="number" min="0.000001" step="0.001" value="${num(line.quantity_per_sale)||''}"></div><button class="btn recipeRemove" type="button">×</button></div>`}
 function editRecipe(id){
-  const m=recipeData.menu.find(x=>x.id===id)||null;
-  renderRecipeList(id||'');
+  const m=recipeData.menu.find(x=>x.id===id)||null;renderRecipeList(id||'');
   const box=q('#recipeEditor');if(!box)return;
-
-  const cats=(recipeData.categories||[]).filter(x=>x.is_active!==false);
-  const incomes=(state.accounts||[]).filter(a=>a.active!==false&&String(a.type||'').toLowerCase()==='income');
-  const stocks=(state.stockItems||[]).filter(x=>x.is_active!==false);
-
-  box.innerHTML=`<div class="form-grid">
-    <div class="field"><label>Menu / Sales Item</label><input class="input" id="recipeMenuName" value="${html(m?.name||'')}" placeholder="e.g. Double Smash Burger"></div>
-    <div class="field"><label>Sales Category</label><div class="quick-add-wrap"><select class="input" id="recipeCategory">${cats.map(x=>`<option value="${x.id}" ${x.id===m?.category_id?'selected':''}>${html(x.name)}</option>`).join('')}</select><button class="quick-add-btn" id="recipeAddCategory" type="button">+ Add</button></div></div>
-    <div class="field"><label>Income Account</label><select class="input" id="recipeIncome">${incomes.map(a=>`<option value="${a.id}" ${a.id===m?.income_account_id?'selected':''}>${html(a.name)}</option>`).join('')}</select></div>
-    <div class="field"><label>Status</label><select class="input" id="recipeActive"><option value="true" ${m?.is_active!==false?'selected':''}>Active</option><option value="false" ${m?.is_active===false?'selected':''}>Inactive</option></select></div>
-  </div>
-  ${!cats.length?'<div class="empty-state" style="margin-top:10px">Add a Sales Category to continue.</div>':''}
-  ${!incomes.length?'<div class="empty-state" style="margin-top:10px">No active Income Account is available. Add one in Chart of Accounts first.</div>':''}
-  <div style="margin-top:14px">
-    <div style="display:flex;justify-content:space-between;align-items:center"><b>Recipe</b><button class="btn" id="addRecipeLine" type="button" ${stocks.length?'':'disabled'}>+ Ingredient</button></div>
-    <div id="recipeLines" style="margin-top:8px">${(m?recipeFor(m.id):[]).map(lineHtml).join('')}</div>
-    ${!stocks.length?'<div class="empty-state">Add a Purchase / Recipe Item first.</div>':''}
-  </div>
-  <div class="modal-actions"><button class="btn primary" id="saveRecipe" type="button">Save Menu Item & Recipe</button></div>`;
-
-  // Category quick-add uses the existing Smart Quick Add and then reloads this editor.
-  const addCat=q('#recipeAddCategory');
-  if(addCat)addCat.onclick=async()=>{
-    const api=window.finsightQuickAdd;
-    if(!api?.addSimple)return toast('Quick Add is unavailable.');
-    const target=q('#recipeCategory');
-    await api.addSimple('category',target);
-    // Quick Add is modal/async; its normal cloud refresh keeps category data current.
-  };
-
-  const lines=q('#recipeLines');
-  if(stocks.length && !lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());
-  const bindLines=()=>qa('.recipeRemove',lines).forEach(b=>b.onclick=()=>{
-    b.closest('.recipe-line-row')?.remove();
-    if(stocks.length&&!lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());
-    bindLines();
-    window.finsightQuickAdd?.enhance?.();
-  });
-  bindLines();
-  const addLine=q('#addRecipeLine');
-  if(addLine)addLine.onclick=()=>{lines.insertAdjacentHTML('beforeend',lineHtml());bindLines();window.finsightQuickAdd?.enhance?.()};
-  setTimeout(()=>window.finsightQuickAdd?.enhance?.(),0);
-
+  const cats=(recipeData.categories||[]).map(x=>`<option value="${x.id}" ${x.id===m?.category_id?'selected':''}>${html(x.name)}</option>`).join('');
+  const incomes=(state.accounts||[]).filter(a=>a.active!==false&&a.type==='Income').map(a=>`<option value="${a.id}" ${a.id===m?.income_account_id?'selected':''}>${html(a.name)}</option>`).join('');
+  box.innerHTML=`<div class="form-grid"><div class="field"><label>Menu / Sales Item</label><input class="input" id="recipeMenuName" value="${html(m?.name||'')}" placeholder="e.g. Double Smash Burger"></div><div class="field"><label>Sales Category</label><select class="input" id="recipeCategory">${cats}</select></div><div class="field"><label>Income Account</label><select class="input" id="recipeIncome">${incomes}</select></div><div class="field"><label>Status</label><select class="input" id="recipeActive"><option value="true" ${m?.is_active!==false?'selected':''}>Active</option><option value="false" ${m?.is_active===false?'selected':''}>Inactive</option></select></div></div><div style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center"><b>Recipe</b><button class="btn" id="addRecipeLine" type="button">+ Ingredient</button></div><div id="recipeLines" style="margin-top:8px">${(m?recipeFor(m.id):[]).map(lineHtml).join('')}</div></div><div class="small-note">Quantities must use the same units as the Purchase / Recipe Items. Example: if Chicken Breast is stored in KG, 0.18 means 180g per menu item.</div><div class="modal-actions"><button class="btn primary" id="saveRecipe">Save Menu Item & Recipe</button></div>`;
+  const lines=q('#recipeLines');if(!lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());
+  const bindLines=()=>qa('.recipeRemove',lines).forEach(b=>b.onclick=()=>{b.closest('.recipe-line-row').remove();if(!lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());bindLines()});bindLines();
+  q('#addRecipeLine').onclick=()=>{lines.insertAdjacentHTML('beforeend',lineHtml());bindLines()};
   q('#saveRecipe').onclick=async()=>{
-    const name=clean(q('#recipeMenuName').value);
-    const category=q('#recipeCategory')?.value||'';
-    const income=q('#recipeIncome')?.value||'';
-    const active=q('#recipeActive').value==='true';
-    const rows=qa('.recipe-line-row',lines).map(r=>({
-      stock_item_id:q('.recipeStock',r)?.value||'',
-      quantity_per_sale:num(q('.recipeQty',r)?.value)
-    })).filter(x=>x.stock_item_id&&x.quantity_per_sale>0);
-
-    if(!name)return toast('Enter the Menu / Sales Item name.');
-    if(!category)return toast('Add or select a Sales Category.');
-    if(!income)return toast('Add or select an Income Account.');
-    if(!rows.length)return toast('Add at least one recipe ingredient.');
-    if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same recipe item cannot appear twice.');
-
-    const duplicate=(recipeData.menu||[]).find(x=>x.id!==m?.id&&norm(x.name)===norm(name));
-    if(duplicate)return toast('A Menu Item with this name already exists.');
-
+    const name=clean(q('#recipeMenuName').value),category=q('#recipeCategory').value,income=q('#recipeIncome').value,active=q('#recipeActive').value==='true';
+    const rows=qa('.recipe-line-row',lines).map(r=>({stock_item_id:q('.recipeStock',r).value,quantity_per_sale:num(q('.recipeQty',r).value)})).filter(x=>x.stock_item_id&&x.quantity_per_sale>0);
+    if(!name||!category||!income)return toast('Complete the menu item fields');if(!rows.length)return toast('Add at least one recipe ingredient');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same recipe item cannot appear twice');
     const btn=q('#saveRecipe');btn.disabled=true;btn.textContent='Saving…';
-    try{
-      const {sb,cid}=cloud();let menuId=m?.id;
-      if(menuId){
-        const u=await sb.from('menu_items').update({name,category_id:category,income_account_id:income,is_active:active}).eq('id',menuId).eq('company_id',cid);
-        if(u.error)throw u.error;
-        const d=await sb.from('recipe_lines').delete().eq('company_id',cid).eq('menu_item_id',menuId);
-        if(d.error)throw d.error;
-      }else{
-        const ins=await sb.from('menu_items').insert({company_id:cid,name,category_id:category,income_account_id:income,is_active:active}).select('id').single();
-        if(ins.error)throw ins.error;menuId=ins.data.id;
-      }
-      const insLines=await sb.from('recipe_lines').insert(rows.map(x=>({company_id:cid,menu_item_id:menuId,...x})));
-      if(insLines.error)throw insLines.error;
-      await loadRecipes();
-      renderRecipeList(menuId);
-      editRecipe(menuId);
-      toast('Menu item and recipe saved');
-    }catch(e){
-      toast(e.message||String(e));
-    }finally{
-      const b=q('#saveRecipe');if(b){b.disabled=false;b.textContent='Save Menu Item & Recipe'}
-    }
+    try{const {sb,cid}=cloud();let menuId=m?.id;
+      if(menuId){const {error}=await sb.from('menu_items').update({name,category_id:category,income_account_id:income,is_active:active}).eq('id',menuId).eq('company_id',cid);if(error)throw error;const d=await sb.from('recipe_lines').delete().eq('company_id',cid).eq('menu_item_id',menuId);if(d.error)throw d.error;}
+      else{const ins=await sb.from('menu_items').insert({company_id:cid,name,category_id:category,income_account_id:income,is_active:active}).select('id').single();if(ins.error)throw ins.error;menuId=ins.data.id;}
+      const insLines=await sb.from('recipe_lines').insert(rows.map(x=>({company_id:cid,menu_item_id:menuId,...x})));if(insLines.error)throw insLines.error;
+      await loadRecipes();renderRecipeList(menuId);editRecipe(menuId);toast('Menu item and recipe saved');
+    }catch(e){toast(e.message||String(e));}finally{btn.disabled=false;btn.textContent='Save Menu Item & Recipe'}
   };
 }
 
@@ -7421,7 +7332,7 @@ function ensureInventoryExtensions(){
     sec.insertAdjacentHTML('beforeend',`
       <div id="recipeVarianceExtension">
         <div class="section-title variance-head">
-          <div><h3>Stock Variance Report</h3></div>
+          <div><h3>Stock Variance Report</h3><div class="small-note">Actual closing stock compared with expected closing stock after recipe-based theoretical usage.</div></div>
           <div class="variance-filters">
             <div class="field"><label>From</label><input class="input" id="varianceFromFix" type="date"></div>
             <div class="field"><label>To</label><input class="input" id="varianceToFix" type="date"></div>
@@ -7435,7 +7346,7 @@ function ensureInventoryExtensions(){
             <tbody id="stockVarianceRowsFix"></tbody>
           </table>
         </div>
-        
+        <div class="small-note" style="margin-top:10px">Variance Qty = Actual Closing − Expected Closing. Negative means shortage / usage above recipe expectation; positive means stock above theoretical expectation.</div>
       </div>`);
     q('#applyVarianceFix').onclick=renderVisibleVariance;
   }
@@ -7783,7 +7694,7 @@ function reconQty(v){return v==null?'—':num(v).toLocaleString('en-KE',{maximum
 function reconUnit(id){return reconItems().find(x=>String(x.id)===String(id))?.unit||'Unit'}
 function reconName(id){return reconItems().find(x=>String(x.id)===String(id))?.name||'Stock Item'}
 function reconInputLines(tb){return qa('tr',tb).filter(r=>q('.irinclude',r)?.checked!==false).map(r=>({stock_item_id:q('.iri',r).value,quantity:num(q('.irq',r).value),explanation:(q('.ire',r)?.value||'').trim()}))}
-function addReconInputLine(tb,line={}){const items=reconItems();if(!items.length)return;const tr=document.createElement('tr');tr.innerHTML=`<td style="text-align:center"><input class="irinclude" type="checkbox" ${line.include===false?'':'checked'}></td><td><select class="input iri">${items.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></td><td class="irunit">—</td><td><input class="input irq" type="number" min="0" step="0.001" value="${line.quantity==null?'':esc(line.quantity)}"></td><td><button class="btn stock-remove-v1855" type="button" title="Remove item">×</button><input type="hidden" class="ire" value="${esc(line.explanation||'')}"></td>`;tb.appendChild(tr);if(line.stock_item_id)q('.iri',tr).value=line.stock_item_id;const sel=q('.iri',tr),unit=q('.irunit',tr),inc=q('.irinclude',tr);const sync=()=>{const it=(state.stockItems||[]).find(x=>String(x.id)===String(sel.value));if(unit)unit.textContent=it?.unit||'Unit';if(line.stock_item_id==null&&inc)inc.checked=it?.track_variance!==false};sel.onchange=sync;sync();q('.stock-remove-v1855',tr).onclick=e=>{e.preventDefault();e.stopPropagation();tr.remove()}}
+function addReconInputLine(tb,line={}){const items=reconItems();if(!items.length)return;const tr=document.createElement('tr');tr.innerHTML=`<td><select class="input iri">${items.map(x=>`<option value="${esc(x.id)}">${esc(x.name)} (${esc(x.unit||'Unit')})</option>`).join('')}</select></td><td><input class="input irq" type="number" min="0" step="0.001" value="${num(line.quantity)}"></td><td><button class="btn stock-remove-v1855" type="button" title="Remove item">×</button><input type="hidden" class="ire" value="${esc(line.explanation||'')}"></td>`;tb.appendChild(tr);if(line.stock_item_id)q('.iri',tr).value=line.stock_item_id;const sel=q('.iri',tr),unit=q('.irunit',tr),inc=q('.irinclude',tr);const sync=()=>{const it=(state.stockItems||[]).find(x=>String(x.id)===String(sel.value));if(unit)unit.textContent=it?.unit||'Unit';if(line.stock_item_id==null&&inc)inc.checked=it?.track_variance!==false};sel.onchange=sync;sync();q('.stock-remove-v1855',tr).onclick=e=>{e.preventDefault();e.stopPropagation();tr.remove()}}
 async function calculateRecon(date,lines,reconId=null){return await rpc('calculate_inventory_reconciliation',{p_company_id:cid(),p_stock_date:date,p_lines:lines,p_reconciliation_id:reconId})}
 function reconExportRows(rows){return (rows||[]).map(r=>({
  item:reconName(r.stock_item_id),unit:reconUnit(r.stock_item_id),baseline:!!r.is_baseline,opening_date:r.opening_date||'',opening:r.opening_qty,purchases:r.purchases_qty,consumption:r.consumption_qty,cost:r.unit_cost,cost_available:!!r.cost_available,expected:r.expected_closing,actual:r.actual_closing,variance:r.variance_qty,variance_pct:r.variance_pct,variance_value:r.variance_value,explanation:r.explanation||''
@@ -7803,8 +7714,8 @@ function renderReconCalculation(host,rows,viewOnly=false){host.innerHTML=`<div s
 async function openReconciliation(existing=null,viewOnly=false){
  const items=reconItems();if(!items.length)return toast('Add a Purchase / Recipe Item first.');const editing=!!existing;let lines=[];
  if(existing){const {data,error}=await window.finsightSupabase.from('inventory_reconciliation_lines').select('stock_item_id,quantity,explanation').eq('company_id',cid()).eq('reconciliation_id',existing.id).order('created_at');if(error)return toast(error.message);lines=data||[]}
- openModal(viewOnly?'View Inventory Reconciliation':editing?'Edit Inventory Reconciliation':'New Inventory Reconciliation','',`<div class="form-grid"><div class="field"><label>Stock Date</label><input class="input" id="irDate" type="date" value="${esc(existing?.stock_date||iso(new Date()))}" ${viewOnly?'disabled':''}></div><div class="field full"><label>Notes</label><input class="input" id="irNotes" value="${esc(existing?.notes||'')}" placeholder="Optional stock-take note" ${viewOnly?'disabled':''}></div></div><div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Include</th><th>Stock Item</th><th>Unit</th><th>Physical Quantity</th><th></th></tr></thead><tbody id="irLines"></tbody></table></div>${viewOnly?'':'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px"><button class="btn" type="button" id="irAdd">+ Add Item</button><button class="btn" type="button" id="irStockCsv">Upload Stock Take CSV</button></div>'}<div id="irCalculation" style="margin-top:16px"></div><div class="modal-actions">${viewOnly?'<button class="btn" type="button" id="irExportPdf" style="display:none">Export PDF</button><button class="btn" type="button" id="irExportExcel" style="display:none">Export Excel</button>':''}<button class="btn" type="button" id="irCalculate">${viewOnly?'Refresh Calculation':'Calculate Reconciliation'}</button>${viewOnly?'':'<button class="btn primary" type="button" id="irSave" style="display:none">'+(editing?'Save Changes':'Save Reconciliation')+'</button>'}</div>`);
- const tb=q('#irLines');(lines.length?lines:(editing?[]:items.filter(x=>x.is_active!==false).map(x=>({stock_item_id:x.id,quantity:null,include:x.track_variance!==false})))).forEach(x=>addReconInputLine(tb,x));if(viewOnly)qa('input,select,button.stock-remove-v1855',tb).forEach(x=>x.disabled=true);else q('#irAdd').onclick=()=>addReconInputLine(tb);
+ openModal(viewOnly?'View Inventory Reconciliation':editing?'Edit Inventory Reconciliation':'New Inventory Reconciliation','',`<div class="form-grid"><div class="field"><label>Stock Date</label><input class="input" id="irDate" type="date" value="${esc(existing?.stock_date||iso(new Date()))}" ${viewOnly?'disabled':''}></div><div class="field full"><label>Notes</label><input class="input" id="irNotes" value="${esc(existing?.notes||'')}" placeholder="Optional stock-take note" ${viewOnly?'disabled':''}></div></div><div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Include</th><th>Stock Item</th><th>Unit</th><th>Physical Quantity</th><th></th></tr></thead><tbody id="irLines"></tbody></table></div>${viewOnly?'':'<button class="btn" type="button" id="irAdd">+ Add Item</button>'}<div id="irCalculation" style="margin-top:16px"></div><div class="modal-actions">${viewOnly?'<button class="btn" type="button" id="irExportPdf" style="display:none">Export PDF</button><button class="btn" type="button" id="irExportExcel" style="display:none">Export Excel</button>':''}<button class="btn" type="button" id="irCalculate">${viewOnly?'Refresh Calculation':'Calculate Reconciliation'}</button>${viewOnly?'':'<button class="btn primary" type="button" id="irSave" style="display:none">'+(editing?'Save Changes':'Save Reconciliation')+'</button>'}</div>`);
+ const tb=q('#irLines');(lines.length?lines:[{}]).forEach(x=>addReconInputLine(tb,x));if(viewOnly)qa('input,select,button.stock-remove-v1855',tb).forEach(x=>x.disabled=true);else q('#irAdd').onclick=()=>addReconInputLine(tb);
  let calculated=null;async function doCalc(){const date=q('#irDate').value,rows=reconInputLines(tb);if(!date)return toast('Choose the stock date.');if(!rows.length)return toast('Keep at least one stock item.');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same stock item cannot appear twice.');if(rows.some(x=>x.quantity<0))return toast('Actual closing quantity cannot be negative.');const b=q('#irCalculate');b.disabled=true;b.textContent='Calculating…';try{calculated=await calculateRecon(date,rows,existing?.id||null);calculated=(calculated||[]).map(r=>({...r,explanation:(rows.find(x=>String(x.stock_item_id)===String(r.stock_item_id))?.explanation||'')}));renderReconCalculation(q('#irCalculation'),calculated,viewOnly);if(!viewOnly)q('#irSave').style.display='inline-flex';if(viewOnly){q('#irExportPdf').style.display='inline-flex';q('#irExportExcel').style.display='inline-flex'}}catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent=viewOnly?'Refresh Calculation':'Calculate Reconciliation'}}
  q('#irCalculate').onclick=doCalc;if(viewOnly){q('#irExportPdf').onclick=()=>calculated?exportReconPdf(existing,calculated):toast('Wait for the reconciliation calculation to finish.');q('#irExportExcel').onclick=()=>calculated?exportReconExcel(existing,calculated):toast('Wait for the reconciliation calculation to finish.');setTimeout(doCalc,0);}
  if(!viewOnly)q('#irSave').onclick=async()=>{if(!calculated)return toast('Calculate the reconciliation first.');const rows=reconInputLines(tb),b=q('#irSave');b.disabled=true;b.textContent='Saving…';try{await rpc('save_inventory_reconciliation_v2',{p_company_id:cid(),p_reconciliation_id:existing?.id||null,p_stock_date:q('#irDate').value,p_notes:q('#irNotes').value||null,p_lines:rows});closeModal();await window.finsightReloadCloudState?.();await refreshInventoryV1855();await loadReconciliations();toast(editing?'Reconciliation updated':'Reconciliation saved')}catch(e){toast(e.message||String(e))}finally{b.disabled=false;b.textContent=editing?'Save Changes':'Save Reconciliation'}}
@@ -7816,7 +7727,7 @@ async function loadReconciliations(){
 }
 window.renderInventory=function(){
  const sec=q('#inventory');if(!sec)return;const now=iso(new Date()),start=now.slice(0,8)+'01';
- sec.innerHTML=`<div class="section-title"><div><h3>Inventory & Cost of Sales</h3></div><div class="cogs-actions"><button class="btn" id="stockItemsBtn">Purchase / Recipe Items</button><button class="btn" id="recipeManagerBtn">Menu Items & Recipes</button><button class="btn" id="stockTakeTemplateV1859" type="button">Stock Take Template</button><button class="btn" id="stockTakeCsvTemplateV1859" type="button">Stock Take CSV</button><button class="btn primary" id="newReconBtn">New Reconciliation</button></div></div><div class="card panel"><div class="cogs-v1855-bar"><div class="field"><label>COGS From</label><input class="input" id="cogsFrom" type="date" value="${start}"></div><div class="field"><label>COGS To</label><input class="input" id="cogsTo" type="date" value="${now}"></div><button class="btn" id="refreshCogsBtn">Refresh COGS</button></div></div><div class="grid kpis" style="margin-top:16px"><div class="card kpi"><div class="label">Opening Stock</div><div class="value" id="openingVal">KSh 0</div></div><div class="card kpi"><div class="label">Inventory Purchases</div><div class="value" id="purchVal">KSh 0</div></div><div class="card kpi"><div class="label">Closing Stock</div><div class="value" id="closingVal">KSh 0</div></div><div class="card kpi"><div class="label">Calculated COGS</div><div class="value" id="calcCogs">KSh 0</div></div></div><div class="section-title" style="margin-top:18px"><div><h3>Inventory Reconciliations</h3></div><button class="btn" type="button" id="toggleReconHistory">Hide Reconciliations</button></div><div class="card table-card" id="inventoryReconHistory"><div class="empty-state">Loading reconciliations…</div></div><table style="display:none"><tbody id="inventoryTable"></tbody></table>`;
+ sec.innerHTML=`<div class="section-title"><div><h3>Inventory & Cost of Sales</h3><div class="small-note">Physical stock reconciliation with automatic variance, plus period Cost of Sales.</div></div><div class="cogs-actions"><button class="btn" id="stockItemsBtn">Purchase / Recipe Items</button><button class="btn" id="recipeManagerBtn">Menu Items & Recipes</button><button class="btn primary" id="newReconBtn">New Reconciliation</button></div></div><div class="card panel"><div class="cogs-v1855-bar"><div class="field"><label>COGS From</label><input class="input" id="cogsFrom" type="date" value="${start}"></div><div class="field"><label>COGS To</label><input class="input" id="cogsTo" type="date" value="${now}"></div><button class="btn" id="refreshCogsBtn">Refresh COGS</button></div></div><div class="grid kpis" style="margin-top:16px"><div class="card kpi"><div class="label">Opening Stock</div><div class="value" id="openingVal">KSh 0</div></div><div class="card kpi"><div class="label">Inventory Purchases</div><div class="value" id="purchVal">KSh 0</div></div><div class="card kpi"><div class="label">Closing Stock</div><div class="value" id="closingVal">KSh 0</div></div><div class="card kpi"><div class="label">Calculated COGS</div><div class="value" id="calcCogs">KSh 0</div></div></div><div class="section-title" style="margin-top:18px"><div><h3>Inventory Reconciliations</h3></div><button class="btn" type="button" id="toggleReconHistory">Hide Reconciliations</button></div><div class="card table-card" id="inventoryReconHistory"><div class="empty-state">Loading reconciliations…</div></div><table style="display:none"><tbody id="inventoryTable"></tbody></table>`;
  q('#refreshCogsBtn').onclick=refreshInventoryV1855;q('#cogsFrom').onchange=refreshInventoryV1855;q('#cogsTo').onchange=refreshInventoryV1855;q('#newReconBtn').onclick=()=>openReconciliation();const trh=q('#toggleReconHistory');if(trh)trh.onclick=()=>{const h=q('#inventoryReconHistory'),hide=h.style.display!=='none';h.style.display=hide?'none':'';trh.textContent=hide?'Show Reconciliations':'Hide Reconciliations';sessionStorage.setItem('finsight_hide_reconciliations',hide?'1':'0')};if(sessionStorage.getItem('finsight_hide_reconciliations')==='1'){q('#inventoryReconHistory').style.display='none';if(trh)trh.textContent='Show Reconciliations'}q('#stockItemsBtn').onclick=()=>typeof manageSimpleList==='function'?manageSimpleList('stock'):toast('Stock item manager unavailable');q('#recipeManagerBtn').onclick=()=>typeof window.openRecipeManager==='function'?window.openRecipeManager():toast('Recipe manager is unavailable.');refreshInventoryV1855();loadReconciliations();
 };
 
@@ -8335,7 +8246,7 @@ window.finsightQuickAdd={addSimple,enhance,refreshAllSelects};
 const q=(s,r=document)=>r.querySelector(s),qa=(s,r=document)=>[...r.querySelectorAll(s)];
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=v=>String(v||'').trim().toLowerCase();
-function items(){return ((typeof state!=='undefined'&&state.stockItems)||[]).filter(x=>x.is_active!==false)}
+function items(){return (window.state?.stockItems||[]).filter(x=>x.is_active!==false)}
 function company(){return window.finsightOnline?.company?.name||'FinSight'}
 function csvEscape(v){v=String(v??'');return /[,"\n]/.test(v)?'"'+v.replaceAll('"','""')+'"':v}
 function download(name,text,type){const b=new Blob([text],{type}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},100)}
@@ -8369,29 +8280,171 @@ async function uploadIntoRecon(){
  };inp.click();
 }
 function install(){
- const inventory=q('#inventory');
- const pdf=q('#stockTakeTemplateV1859',inventory||document);if(pdf&&!pdf.dataset.bound59){pdf.dataset.bound59='1';pdf.onclick=stockPdf}
- const csv=q('#stockTakeCsvTemplateV1859',inventory||document);if(csv&&!csv.dataset.bound59){csv.dataset.bound59='1';csv.onclick=stockCsv}
+ const inventory=q('#inventory');if(inventory&&!q('#stockTakeTemplateV1859')){
+  const anchor=q('#newReconBtn',inventory);if(anchor){const pdf=document.createElement('button');pdf.id='stockTakeTemplateV1859';pdf.type='button';pdf.className='btn';pdf.textContent='Stock Take Template';pdf.onclick=stockPdf;anchor.insertAdjacentElement('afterend',pdf);
+   const csv=document.createElement('button');csv.id='stockTakeCsvTemplateV1859';csv.type='button';csv.className='btn';csv.textContent='Stock Take CSV';csv.onclick=stockCsv;pdf.insertAdjacentElement('afterend',csv);}
+ }
  const up=q('#irStockCsv');if(up&&!up.dataset.bound59){up.dataset.bound59='1';up.onclick=uploadIntoRecon}
 }
 new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList:true,subtree:true});setInterval(install,1000);install();
 })();
 </script>
-\n<script id="finsight-v1859-stock-manager-fix">
+
+<style id="finsight-v18591-menu-manager-style">
+#fsMenuManagerGrid{display:grid;grid-template-columns:minmax(260px,.75fr) minmax(420px,1.25fr);gap:16px}
+#fsMenuManagerList{display:grid;gap:8px;max-height:58vh;overflow:auto}
+.fs-menu-row{border:1px solid var(--line);border-radius:11px;padding:11px 12px;cursor:pointer;background:var(--card)}
+.fs-menu-row:hover,.fs-menu-row.active{border-color:#a5b4fc;background:var(--soft-primary,#f5f3ff)}
+.fs-menu-row b{display:block;font-size:12px}
+.fs-menu-row small{display:block;color:var(--muted);font-size:10px;margin-top:4px}
+.fs-recipe-line{display:grid;grid-template-columns:minmax(210px,1fr) 150px auto;gap:8px;align-items:end;margin-bottom:8px}
+.fs-menu-toolbar{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:10px}
+.fs-menu-toolbar .input{max-width:260px}
+body.fs-dark .fs-menu-row{background:var(--card);color:var(--text);border-color:var(--line)}
+body.fs-dark .fs-menu-row:hover,body.fs-dark .fs-menu-row.active{background:#1b2232}
+@media(max-width:900px){#fsMenuManagerGrid{grid-template-columns:1fr}.fs-recipe-line{grid-template-columns:1fr 120px auto}}
+</style>
+<script id="finsight-v18-5-9-1-menu-item-manager-fix">
 (function(){
- const oldManage=manageSimpleList;
- manageSimpleList=async function(kind){
-  if(kind!=='stock')return oldManage(kind);
-  const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;if(!sb||!cid)return toast('Supabase is not connected');
-  const {data,error}=await sb.from('stock_items').select('id,name,unit,is_active,track_variance').eq('company_id',cid).order('name');if(error)return toast(error.message);
-  openModal('Purchase / Recipe Items','',`<div class="form-grid"><div class="field"><label>Item Name</label><input class="input" id="smName"></div><div class="field"><label>Unit</label><select class="input" id="smUnit"><option>Kg</option><option>g</option><option>Litre</option><option>ml</option><option>Pcs</option><option>Pack</option><option>Box</option><option>Bottle</option><option>Tray</option><option>Other</option></select></div><div class="field"><label>Track Variance</label><select class="input" id="smTrack"><option value="true">Yes</option><option value="false">No</option></select></div></div><div class="modal-actions"><button class="btn primary" id="smAdd" type="button">Add Item</button></div><div id="smRows" style="margin-top:14px"></div>`);
-  const rows=data||[];
-  const render=()=>{q('#smRows').innerHTML=rows.length?`<div style="overflow:auto"><table><thead><tr><th>Item</th><th>Unit</th><th>Track Variance</th><th></th></tr></thead><tbody>${rows.map((x,i)=>`<tr><td>${esc(x.name)}</td><td>${esc(x.unit||'Unit')}</td><td>${x.track_variance!==false?'Yes':'No'}</td><td><button class="btn smEdit" data-i="${i}" type="button">Edit</button> <button class="btn danger smDel" data-i="${i}" type="button">Delete</button></td></tr>`).join('')}</tbody></table></div>`:'<div class="empty-state">No items yet.</div>';
-   qa('.smEdit').forEach(b=>b.onclick=()=>{const x=rows[+b.dataset.i];q('#smName').value=x.name;q('#smUnit').value=[...q('#smUnit').options].some(o=>o.value===x.unit)?x.unit:'Other';q('#smTrack').value=String(x.track_variance!==false);q('#smAdd').dataset.edit=x.id;q('#smAdd').textContent='Save Changes'});
-   qa('.smDel').forEach(b=>b.onclick=async()=>{const x=rows[+b.dataset.i],r=await sb.from('stock_items').delete().eq('company_id',cid).eq('id',x.id);if(r.error)return toast(r.error.message);rows.splice(+b.dataset.i,1);render();await window.finsightReloadCloudState?.();toast('Item deleted')});
-  };
-  q('#smAdd').onclick=async()=>{const name=q('#smName').value.trim(),unit=q('#smUnit').value,track=q('#smTrack').value==='true';if(!name)return toast('Item Name is required.');const edit=q('#smAdd').dataset.edit;if(!edit&&rows.some(x=>x.name.toLowerCase()===name.toLowerCase()))return toast('Item already exists.');const payload={company_id:cid,name,unit,track_variance:track,is_active:true};const r=edit?await sb.from('stock_items').update(payload).eq('company_id',cid).eq('id',edit).select('id,name,unit,is_active,track_variance').single():await sb.from('stock_items').insert(payload).select('id,name,unit,is_active,track_variance').single();if(r.error)return toast(r.error.message);if(edit){const i=rows.findIndex(x=>x.id===edit);if(i>=0)rows[i]=r.data}else rows.push(r.data);q('#smName').value='';q('#smAdd').dataset.edit='';q('#smAdd').textContent='Add Item';render();await window.finsightReloadCloudState?.();toast(edit?'Item updated':'Item added')};
-  render();
+'use strict';
+const q=(s,r=document)=>r.querySelector(s), qa=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm=v=>String(v??'').trim().toLowerCase();
+const n=v=>Number(v||0);
+
+function ctx(){
+ const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+ if(!sb||!cid)throw new Error('FinSight cloud connection is not ready.');
+ return {sb,cid};
+}
+async function getData(){
+ const {sb,cid}=ctx();
+ const [m,l,c,a,st]=await Promise.all([
+   sb.from('menu_items').select('*').eq('company_id',cid).order('name'),
+   sb.from('recipe_lines').select('*').eq('company_id',cid),
+   sb.from('sales_categories').select('id,name,is_active').eq('company_id',cid).eq('is_active',true).order('name'),
+   sb.from('accounts').select('id,name,account_type,is_active').eq('company_id',cid).eq('is_active',true).order('name'),
+   sb.from('stock_items').select('id,name,unit,is_active').eq('company_id',cid).eq('is_active',true).order('name')
+ ]);
+ for(const r of [m,l,c,a,st])if(r.error)throw r.error;
+ return {
+   menu:m.data||[], lines:l.data||[], categories:c.data||[],
+   accounts:(a.data||[]).filter(x=>String(x.account_type||'').toLowerCase()==='income'),
+   stock:st.data||[]
  };
+}
+function lineHTML(data,line={}){
+ const opts=data.stock.map(x=>`<option value="${esc(x.id)}" ${x.id===line.stock_item_id?'selected':''}>${esc(x.name)} (${esc(x.unit||'Unit')})</option>`).join('');
+ return `<div class="fs-recipe-line">
+   <div class="field"><label>Purchase / Recipe Item</label><select class="input fsRecipeStock">${opts}</select></div>
+   <div class="field"><label>Qty per 1 Sale</label><input class="input fsRecipeQty" type="number" min="0.000001" step="0.001" value="${line.quantity_per_sale??''}"></div>
+   <button type="button" class="btn fsRemoveRecipeLine">×</button>
+ </div>`;
+}
+function renderList(data,selected){
+ const box=q('#fsMenuManagerList'); if(!box)return;
+ const search=norm(q('#fsMenuSearch')?.value);
+ const rows=data.menu.filter(x=>!search||norm(x.name).includes(search));
+ box.innerHTML=rows.length?rows.map(m=>{
+   const cat=data.categories.find(x=>x.id===m.category_id)?.name||'No category';
+   const count=data.lines.filter(x=>x.menu_item_id===m.id).length;
+   return `<div class="fs-menu-row ${m.id===selected?'active':''}" data-menu-id="${esc(m.id)}">
+     <b>${esc(m.name)}</b><small>${esc(cat)} · ${count} ingredient${count===1?'':'s'} · ${m.is_active===false?'Inactive':'Active'}</small>
+   </div>`;
+ }).join(''):'<div class="empty-state">No menu items found.</div>';
+ qa('.fs-menu-row',box).forEach(r=>r.onclick=()=>renderEditor(data,r.dataset.menuId));
+}
+function bindRecipeLines(data){
+ const host=q('#fsRecipeLines'); if(!host)return;
+ qa('.fsRemoveRecipeLine',host).forEach(b=>b.onclick=()=>{
+   b.closest('.fs-recipe-line')?.remove();
+   if(!q('.fs-recipe-line',host))host.insertAdjacentHTML('beforeend',lineHTML(data));
+   bindRecipeLines(data);
+ });
+}
+function renderEditor(data,id=null){
+ const m=id?data.menu.find(x=>x.id===id):null;
+ renderList(data,m?.id||'');
+ const editor=q('#fsMenuEditor'); if(!editor)return;
+ const cats=data.categories.map(x=>`<option value="${esc(x.id)}" ${x.id===m?.category_id?'selected':''}>${esc(x.name)}</option>`).join('');
+ const incomes=data.accounts.map(x=>`<option value="${esc(x.id)}" ${x.id===m?.income_account_id?'selected':''}>${esc(x.name)}</option>`).join('');
+ const lines=m?data.lines.filter(x=>x.menu_item_id===m.id):[];
+ editor.innerHTML=`<div class="form-grid">
+   <div class="field"><label>Menu / Sales Item</label><input class="input" id="fsMenuName" value="${esc(m?.name||'')}"></div>
+   <div class="field"><label>Sales Category</label><select class="input" id="fsMenuCategory">${cats}</select></div>
+   <div class="field"><label>Income Account</label><select class="input" id="fsMenuIncome">${incomes}</select></div>
+   <div class="field"><label>Status</label><select class="input" id="fsMenuActive"><option value="true" ${m?.is_active!==false?'selected':''}>Active</option><option value="false" ${m?.is_active===false?'selected':''}>Inactive</option></select></div>
+ </div>
+ <div style="margin-top:16px">
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b>Recipe</b><button type="button" class="btn" id="fsAddIngredient">+ Ingredient</button></div>
+   <div id="fsRecipeLines">${(lines.length?lines:[{}]).map(x=>lineHTML(data,x)).join('')}</div>
+ </div>
+ <div class="modal-actions">
+   ${m?'<button type="button" class="btn" id="fsNewFromEditor">+ New Menu Item</button>':''}
+   <button type="button" class="btn primary" id="fsSaveMenuRecipe">Save Menu Item & Recipe</button>
+ </div>`;
+ if(!data.categories.length)q('#fsMenuCategory').innerHTML='<option value="">No sales categories available</option>';
+ if(!data.accounts.length)q('#fsMenuIncome').innerHTML='<option value="">No income accounts available</option>';
+ if(!data.stock.length)q('#fsRecipeLines').innerHTML='<div class="empty-state">No Purchase / Recipe Items available.</div>';
+ bindRecipeLines(data);
+ q('#fsAddIngredient').onclick=()=>{
+   if(!data.stock.length)return toast('Add a Purchase / Recipe Item first.');
+   q('#fsRecipeLines').insertAdjacentHTML('beforeend',lineHTML(data));
+   bindRecipeLines(data);
+ };
+ q('#fsNewFromEditor')&&(q('#fsNewFromEditor').onclick=()=>renderEditor(data,null));
+ q('#fsSaveMenuRecipe').onclick=async()=>{
+   const name=q('#fsMenuName').value.trim(),category=q('#fsMenuCategory').value,income=q('#fsMenuIncome').value,active=q('#fsMenuActive').value==='true';
+   if(!name)return toast('Enter the Menu / Sales Item name.');
+   if(!category)return toast('Add a Sales Category first.');
+   if(!income)return toast('Add an Income account first.');
+   const rows=qa('.fs-recipe-line').map(r=>({stock_item_id:q('.fsRecipeStock',r)?.value,quantity_per_sale:n(q('.fsRecipeQty',r)?.value)})).filter(x=>x.stock_item_id&&x.quantity_per_sale>0);
+   if(!rows.length)return toast('Add at least one recipe ingredient and quantity.');
+   if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same Purchase / Recipe Item cannot appear twice.');
+   const btn=q('#fsSaveMenuRecipe');btn.disabled=true;btn.textContent='Saving…';
+   try{
+     const {sb,cid}=ctx(); let menuId=m?.id;
+     const duplicate=data.menu.find(x=>x.id!==menuId&&norm(x.name)===norm(name));
+     if(duplicate)throw new Error('A Menu Item with this name already exists.');
+     if(menuId){
+       const u=await sb.from('menu_items').update({name,category_id:category,income_account_id:income,is_active:active}).eq('company_id',cid).eq('id',menuId);
+       if(u.error)throw u.error;
+       const d=await sb.from('recipe_lines').delete().eq('company_id',cid).eq('menu_item_id',menuId);if(d.error)throw d.error;
+     }else{
+       const ins=await sb.from('menu_items').insert({company_id:cid,name,category_id:category,income_account_id:income,is_active:active}).select('id').single();
+       if(ins.error)throw ins.error;menuId=ins.data.id;
+     }
+     const ri=await sb.from('recipe_lines').insert(rows.map(x=>({company_id:cid,menu_item_id:menuId,stock_item_id:x.stock_item_id,quantity_per_sale:x.quantity_per_sale})));
+     if(ri.error)throw ri.error;
+     if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
+     const fresh=await getData(); window.finsightRecipeData={menu:fresh.menu,lines:fresh.lines,categories:fresh.categories};
+     data.menu=fresh.menu;data.lines=fresh.lines;data.categories=fresh.categories;data.accounts=fresh.accounts;data.stock=fresh.stock;
+     renderEditor(data,menuId);toast('Menu item and recipe saved');
+   }catch(e){toast(e.message||String(e))}
+   finally{btn.disabled=false;btn.textContent='Save Menu Item & Recipe'}
+ };
+}
+window.openRecipeManager=async function(){
+ try{
+   const data=await getData();
+   openModal('Menu Items & Recipes','',`<div id="fsMenuManagerGrid">
+     <div><div class="fs-menu-toolbar"><input class="input" id="fsMenuSearch" placeholder="Search menu items"><button type="button" class="btn primary" id="fsAddMenuItem">+ Add Menu Item</button></div><div id="fsMenuManagerList"></div></div>
+     <div id="fsMenuEditor"><div class="empty-state">Select a menu item or add a new one.</div></div>
+   </div>`);
+   renderList(data,'');
+   q('#fsMenuSearch').oninput=()=>renderList(data,'');
+   q('#fsAddMenuItem').onclick=()=>renderEditor(data,null);
+ }catch(e){toast(e.message||String(e))}
+};
+function rebind(){
+ const b=q('#recipeManagerBtn');if(b)b.onclick=()=>window.openRecipeManager();
+}
+document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(rebind,250));
+document.addEventListener('click',e=>{if(e.target.closest('[data-page="inventory"]'))setTimeout(rebind,650)});
+new MutationObserver(()=>setTimeout(rebind,0)).observe(document.body,{childList:true,subtree:true});
+setInterval(rebind,1200);
+rebind();
 })();
-</script>\n</body></html>
+</script>
+
+</body></html>
