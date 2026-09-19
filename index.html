@@ -7143,39 +7143,7 @@ async function loadRecipes(){
 function recipeFor(menuId){return recipeData.lines.filter(x=>x.menu_item_id===menuId)}
 function activeMenu(){return recipeData.menu.filter(x=>x.is_active!==false)}
 
-window.openRecipeManager=async function(){
-  try{await loadRecipes()}catch(e){return toast(e.message||'Run the V18.5.4 recipe SQL setup first.');}
-  openModal('Menu Items & Recipes','Create each sellable menu item and connect it to the purchase / recipe items it consumes.',`<div class="recipe-grid"><div><div style="display:flex;gap:8px;margin-bottom:10px"><button class="btn primary" id="newMenuRecipe">+ New Menu Item</button></div><div class="recipe-list" id="recipeMenuList"></div></div><div id="recipeEditor"><div class="empty-state">Select a menu item or create a new one.</div></div></div>`);
-  renderRecipeList();q('#newMenuRecipe').onclick=()=>editRecipe(null);
-};
-function renderRecipeList(selected=''){
-  const box=q('#recipeMenuList');if(!box)return;
-  box.innerHTML=recipeData.menu.length?recipeData.menu.map(m=>`<div class="recipe-item ${m.id===selected?'active':''}" data-id="${m.id}"><b>${html(m.name)}</b><div class="small-note">${html(catName(m.category_id))} · ${recipeFor(m.id).length} ingredient(s) · ${m.is_active===false?'Inactive':'Active'}</div></div>`).join(''):'<div class="empty-state">No menu items yet.</div>';
-  qa('.recipe-item',box).forEach(x=>x.onclick=()=>editRecipe(x.dataset.id));
-}
-function lineHtml(line={}){const opts=(state.stockItems||[]).map(x=>`<option value="${x.id}" ${x.id===line.stock_item_id?'selected':''}>${html(x.name)} (${html(x.unit||'Unit')})</option>`).join('');return `<div class="recipe-line-row"><div class="field"><label>Purchase / Recipe Item</label><select class="input recipeStock">${opts}</select></div><div class="field"><label>Qty per 1 Sale</label><input class="input recipeQty" type="number" min="0.000001" step="0.001" value="${num(line.quantity_per_sale)||''}"></div><button class="btn recipeRemove" type="button">×</button></div>`}
-function editRecipe(id){
-  const m=recipeData.menu.find(x=>x.id===id)||null;renderRecipeList(id||'');
-  const box=q('#recipeEditor');if(!box)return;
-  const cats=(recipeData.categories||[]).map(x=>`<option value="${x.id}" ${x.id===m?.category_id?'selected':''}>${html(x.name)}</option>`).join('');
-  const incomes=(state.accounts||[]).filter(a=>a.active!==false&&a.type==='Income').map(a=>`<option value="${a.id}" ${a.id===m?.income_account_id?'selected':''}>${html(a.name)}</option>`).join('');
-  box.innerHTML=`<div class="form-grid"><div class="field"><label>Menu / Sales Item</label><input class="input" id="recipeMenuName" value="${html(m?.name||'')}" placeholder="e.g. Double Smash Burger"></div><div class="field"><label>Sales Category</label><select class="input" id="recipeCategory">${cats}</select></div><div class="field"><label>Income Account</label><select class="input" id="recipeIncome">${incomes}</select></div><div class="field"><label>Status</label><select class="input" id="recipeActive"><option value="true" ${m?.is_active!==false?'selected':''}>Active</option><option value="false" ${m?.is_active===false?'selected':''}>Inactive</option></select></div></div><div style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center"><b>Recipe</b><button class="btn" id="addRecipeLine" type="button">+ Ingredient</button></div><div id="recipeLines" style="margin-top:8px">${(m?recipeFor(m.id):[]).map(lineHtml).join('')}</div></div><div class="small-note">Quantities must use the same units as the Purchase / Recipe Items. Example: if Chicken Breast is stored in KG, 0.18 means 180g per menu item.</div><div class="modal-actions"><button class="btn primary" id="saveRecipe">Save Menu Item & Recipe</button></div>`;
-  const lines=q('#recipeLines');if(!lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());
-  const bindLines=()=>qa('.recipeRemove',lines).forEach(b=>b.onclick=()=>{b.closest('.recipe-line-row').remove();if(!lines.children.length)lines.insertAdjacentHTML('beforeend',lineHtml());bindLines()});bindLines();
-  q('#addRecipeLine').onclick=()=>{lines.insertAdjacentHTML('beforeend',lineHtml());bindLines()};
-  q('#saveRecipe').onclick=async()=>{
-    const name=clean(q('#recipeMenuName').value),category=q('#recipeCategory').value,income=q('#recipeIncome').value,active=q('#recipeActive').value==='true';
-    const rows=qa('.recipe-line-row',lines).map(r=>({stock_item_id:q('.recipeStock',r).value,quantity_per_sale:num(q('.recipeQty',r).value)})).filter(x=>x.stock_item_id&&x.quantity_per_sale>0);
-    if(!name||!category||!income)return toast('Complete the menu item fields');if(!rows.length)return toast('Add at least one recipe ingredient');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same recipe item cannot appear twice');
-    const btn=q('#saveRecipe');btn.disabled=true;btn.textContent='Saving…';
-    try{const {sb,cid}=cloud();let menuId=m?.id;
-      if(menuId){const {error}=await sb.from('menu_items').update({name,category_id:category,income_account_id:income,is_active:active}).eq('id',menuId).eq('company_id',cid);if(error)throw error;const d=await sb.from('recipe_lines').delete().eq('company_id',cid).eq('menu_item_id',menuId);if(d.error)throw d.error;}
-      else{const ins=await sb.from('menu_items').insert({company_id:cid,name,category_id:category,income_account_id:income,is_active:active}).select('id').single();if(ins.error)throw ins.error;menuId=ins.data.id;}
-      const insLines=await sb.from('recipe_lines').insert(rows.map(x=>({company_id:cid,menu_item_id:menuId,...x})));if(insLines.error)throw insLines.error;
-      await loadRecipes();renderRecipeList(menuId);editRecipe(menuId);toast('Menu item and recipe saved');
-    }catch(e){toast(e.message||String(e));}finally{btn.disabled=false;btn.textContent='Save Menu Item & Recipe'}
-  };
-}
+/* Menu Item manager supplied by V18.5.9.3 production manager below. */
 
 /* New sales must use an active menu item with a recipe. */
 window.openSalesForm=async function(){
@@ -8385,7 +8353,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
  window.openStockItemManagerV18593=async function(){
    try{
      let rows=await fetchItems();
-     openModal('Purchase / Recipe Items','',`<div class="fs-stock-manager-toolbar"><input class="input" id="fsStockSearch" placeholder="Search items"><button class="btn primary" id="fsStockNew">+ Add Item</button></div><div id="fsStockList"></div>`);
+     openModal('Purchase / Recipe Items','',`<div class="fs-stock-manager-toolbar"><input class="input" id="fsStockSearch" placeholder="Search items"><button class="btn" id="fsStockSetupTemplate">Setup CSV</button><button class="btn" id="fsStockSetupUpload">Upload Setup CSV</button><button class="btn primary" id="fsStockNew">+ Add Item</button></div><div id="fsStockList"></div>`);
      const render=()=>{
        const term=norm(q('#fsStockSearch').value),show=rows.filter(x=>!term||norm(x.name).includes(term));
        q('#fsStockList').innerHTML=show.length?show.map(x=>`<div class="manage-row" style="grid-template-columns:1fr auto"><div><b>${esc(x.name)}</b><div class="small-note">${esc(x.unit||'Unit')} · Track Variance: ${x.track_variance===false?'No':'Yes'} · ${x.is_active===false?'Inactive':'Active'}</div></div><button class="mini-btn" data-stock-edit="${x.id}">Edit</button></div>`).join(''):'<div class="empty-state">No Purchase / Recipe Items.</div>';
@@ -8413,6 +8381,37 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
          }catch(e){toast(e.message||String(e))}
          finally{btn.disabled=false;btn.textContent='Save'}
        };
+     };
+     q('#fsStockSetupTemplate').onclick=()=>{
+       const csv='Item Name,Unit,Track Variance\n';
+       const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FinSight_Purchase_Recipe_Item_Setup.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},100);
+     };
+     q('#fsStockSetupUpload').onclick=()=>{
+       const inp=document.createElement('input');inp.type='file';inp.accept='.csv,text/csv';inp.onchange=async()=>{
+         const f=inp.files?.[0];if(!f)return;
+         try{
+           const text=await f.text(),lines=text.replace(/\r/g,'').split('\n').filter(x=>x.trim());
+           if(lines.length<2)return toast('The setup CSV has no item rows.');
+           const parse=line=>{let a=[],cur='',quote=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(quote&&line[i+1]==='"'){cur+='"';i++}else quote=!quote}else if(c===','&&!quote){a.push(cur);cur=''}else cur+=c}a.push(cur);return a.map(x=>x.trim())};
+           const h=parse(lines[0]).map(norm),ni=h.indexOf('item name'),ui=h.indexOf('unit'),ti=h.indexOf('track variance');
+           if(ni<0||ui<0||ti<0)return toast('Setup CSV must contain Item Name, Unit and Track Variance.');
+           const allowed=new Set(units.map(norm)),seen=new Set(),payload=[];
+           for(let i=1;i<lines.length;i++){const r=parse(lines[i]),name=(r[ni]||'').trim(),unit=(r[ui]||'').trim(),tv=norm(r[ti]);if(!name)continue;
+             if(seen.has(norm(name)))throw new Error(`Duplicate item in setup CSV: ${name}`);seen.add(norm(name));
+             if(!allowed.has(norm(unit)))throw new Error(`${name}: invalid Unit "${unit}".`);
+             if(!['yes','no','true','false'].includes(tv))throw new Error(`${name}: Track Variance must be Yes or No.`);
+             const canonical=units.find(x=>norm(x)===norm(unit))||unit;
+             payload.push({name,unit:canonical,track_variance:tv==='yes'||tv==='true',is_active:true});
+           }
+           const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+           for(const p of payload){
+             const ex=rows.find(x=>norm(x.name)===norm(p.name));
+             let r=ex?await sb.from('stock_items').update(p).eq('company_id',cid).eq('id',ex.id):await sb.from('stock_items').insert({company_id:cid,...p});
+             if(r.error)throw r.error;
+           }
+           await window.finsightReloadCloudState?.();toast(`${payload.length} Purchase / Recipe Item(s) imported`);closeModal();setTimeout(()=>window.openStockItemManagerV18593(),100);
+         }catch(e){toast(e.message||String(e))}
+       };inp.click();
      };
      q('#fsStockSearch').oninput=render;q('#fsStockNew').onclick=()=>editor(null);render();
    }catch(e){toast(e.message||String(e))}
@@ -8493,6 +8492,80 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
  };
  function bind(){const b=q('#recipeManagerBtn');if(b)b.onclick=()=>window.openRecipeManager()}
  new MutationObserver(()=>setTimeout(bind,0)).observe(document.body,{childList:true,subtree:true});setInterval(bind,1000);bind();
+})();
+</script>
+
+
+<style id="finsight-v18594-searchable-select-css">
+.fs-search-select{position:relative}
+.fs-search-select-menu{position:fixed;z-index:10050;background:var(--card);border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 30px rgba(0,0,0,.18);padding:8px;max-height:300px;overflow:auto}
+.fs-search-select-menu .input{width:100%;margin-bottom:6px}
+.fs-search-option{padding:8px 10px;border-radius:7px;cursor:pointer;font-size:12px}
+.fs-search-option:hover{background:var(--soft-primary,#f5f3ff)}
+body.fs-dark .fs-search-select-menu{background:var(--card);color:var(--text)}
+body.fs-dark .fs-search-option:hover{background:#1b2232}
+</style>
+<script id="finsight-v18594-searchable-select">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s),qa=(s,r=document)=>[...r.querySelectorAll(s)];
+const norm=v=>String(v??'').trim().toLowerCase();
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let menu=null,owner=null;
+function close(){menu?.remove();menu=null;owner=null}
+function eligible(sel){
+ if(sel.disabled||sel.multiple||sel.size>1||sel.dataset.noSearch==='1')return false;
+ if(sel.options.length<5)return false;
+ // Search only business-data dropdowns, not small Yes/No/status/type selectors.
+ return !!sel.closest('.modal-card,.page,.content');
+}
+function open(sel){
+ close();owner=sel;
+ const r=sel.getBoundingClientRect();
+ menu=document.createElement('div');menu.className='fs-search-select-menu';
+ menu.style.left=Math.max(8,r.left)+'px';menu.style.top=Math.min(innerHeight-320,r.bottom+4)+'px';menu.style.width=Math.max(220,r.width)+'px';
+ menu.innerHTML='<input class="input" type="search" placeholder="Search..."><div class="fs-search-options"></div>';
+ document.body.appendChild(menu);
+ const inp=q('input',menu),box=q('.fs-search-options',menu);
+ const render=()=>{
+   const term=norm(inp.value);
+   const opts=[...sel.options].filter(o=>!o.disabled&&(!term||norm(o.textContent).includes(term)));
+   box.innerHTML=opts.length?opts.map(o=>`<div class="fs-search-option" data-v="${esc(o.value)}">${esc(o.textContent)}</div>`).join(''):'<div class="empty-state">No matches.</div>';
+   qa('.fs-search-option',box).forEach(x=>x.onclick=()=>{
+     sel.value=x.dataset.v;sel.dispatchEvent(new Event('change',{bubbles:true}));close();
+   });
+ };
+ inp.oninput=render;render();setTimeout(()=>inp.focus(),0);
+}
+document.addEventListener('keydown',e=>{if(e.altKey&&e.key==='ArrowDown'&&e.target instanceof HTMLSelectElement&&eligible(e.target)){e.preventDefault();open(e.target)}else if(e.key==='Escape'&&menu)close()});
+document.addEventListener('dblclick',e=>{const sel=e.target.closest?.('select');if(sel&&eligible(sel)){e.preventDefault();open(sel)}});
+document.addEventListener('click',e=>{if(menu&&!menu.contains(e.target)&&e.target!==owner)close()},true);
+window.finsightOpenSelectSearch=sel=>eligible(sel)&&open(sel);
+})();
+</script>
+
+<style id="finsight-v18594-select-search-buttons-css">
+.fs-select-search-btn{margin-left:6px;min-width:36px;padding:7px 9px}
+.fs-select-search-wrap{display:flex;align-items:center;width:100%}
+.fs-select-search-wrap>select{flex:1;min-width:0}
+</style>
+<script id="finsight-v18594-select-search-buttons">
+(function(){
+ function enhance(root=document){
+   root.querySelectorAll('select.input').forEach(sel=>{
+     if(sel.dataset.searchEnhanced==='1'||sel.options.length<5||sel.multiple||sel.disabled)return;
+     // Exclude small fixed-control dropdowns.
+     const labels=(sel.closest('.field')?.querySelector('label')?.textContent||'').toLowerCase();
+     if(/status|track variance|type$|active/.test(labels)&&sel.options.length<=10)return;
+     sel.dataset.searchEnhanced='1';
+     const wrap=document.createElement('div');wrap.className='fs-select-search-wrap';
+     sel.parentNode.insertBefore(wrap,sel);wrap.appendChild(sel);
+     const b=document.createElement('button');b.type='button';b.className='btn fs-select-search-btn';b.textContent='⌕';b.title='Search list';
+     b.onclick=()=>window.finsightOpenSelectSearch?.(sel);wrap.appendChild(b);
+   });
+ }
+ new MutationObserver(m=>m.forEach(x=>x.addedNodes.forEach(n=>{if(n.nodeType===1)enhance(n)}))).observe(document.body,{childList:true,subtree:true});
+ setInterval(()=>enhance(),1200);enhance();
 })();
 </script>
 
