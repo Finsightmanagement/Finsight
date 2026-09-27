@@ -8569,4 +8569,165 @@ window.finsightOpenSelectSearch=sel=>eligible(sel)&&open(sel);
 })();
 </script>
 
+
+<style id="finsight-v18510-reporting-css">
+.fs510-toolbar{display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin:10px 0 14px}
+.fs510-toolbar .field{min-width:145px;margin:0}.fs510-toolbar .btn{white-space:nowrap}
+.fs510-summary{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:10px;margin:10px 0 14px}
+.fs510-summary>div{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--card)}
+.fs510-summary span{display:block;color:var(--muted);font-size:11px}.fs510-summary b{display:block;margin-top:3px}
+.fs510-actions{display:flex;gap:5px;flex-wrap:wrap}
+@media(max-width:760px){.fs510-summary{grid-template-columns:1fr 1fr}}
+@media print{.fs510-no-print{display:none!important}}
+</style>
+<script id="finsight-v18510-reporting-controls">
+(function(){
+'use strict';
+const q=(s,r=document)=>r.querySelector(s),qa=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const n=v=>Number(v||0),money=v=>'KSh '+n(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const cid=()=>window.finsightOnline?.companyId,sb=()=>window.finsightSupabase;
+const company=()=>window.finsightOnline?.company?.name||'FinSight';
+const iso=d=>{const x=new Date(d);return x.toISOString().slice(0,10)};
+const firstDay=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`};
+const today=()=>iso(new Date());
+const inRange=(d,f,t)=>(!f||String(d)>=f)&&(!t||String(d)<=t);
+function csvCell(v){v=String(v??'');return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+function download(name,text,type='text/csv;charset=utf-8'){const b=new Blob([text],{type}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},100)}
+function csv(name,headers,rows){download(name,[headers,...rows].map(r=>r.map(csvCell).join(',')).join('\n'))}
+function excel(name,headers,rows){const table=`<table><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;download(name,`<!doctype html><html><head><meta charset="utf-8"></head><body>${table}</body></html>`,'application/vnd.ms-excel;charset=utf-8')}
+function printReport(title,meta,html){const w=window.open('','_blank');if(!w)return toast('Allow pop-ups to export PDF.');w.document.write(`<!doctype html><html><head><title>${esc(title)}</title><style>body{font:12px Arial;padding:28px;color:#111}h1{font-size:20px;margin:0}p{color:#555}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #bbb;padding:7px;text-align:left}th{background:#eee}.right{text-align:right}.total{font-weight:bold}</style></head><body><h1>${esc(company())}</h1><h2>${esc(title)}</h2><p>${esc(meta)}</p>${html}<script>onload=()=>setTimeout(()=>print(),150)<\/script></body></html>`);w.document.close()}
+function periodToolbar(id,onApply,onPdf,onExcel,extra=''){return `<div class="fs510-toolbar fs510-no-print" id="${id}"><div class="field"><label>From</label><input class="input fs510-from" type="date" value="${firstDay()}"></div><div class="field"><label>To</label><input class="input fs510-to" type="date" value="${today()}"></div>${extra}<button class="btn fs510-apply">Apply</button><button class="btn fs510-pdf">Export PDF</button><button class="btn fs510-xls">Export Excel</button></div>`}
+function bindToolbar(host,onApply,onPdf,onExcel){q('.fs510-apply',host).onclick=onApply;q('.fs510-pdf',host).onclick=onPdf;q('.fs510-xls',host).onclick=onExcel}
+function dates(host){return{f:q('.fs510-from',host)?.value||'',t:q('.fs510-to',host)?.value||''}}
+function addToolbarBefore(table,id,callbacks){
+ if(!table||q('#'+id))return null;const box=document.createElement('div');box.innerHTML=periodToolbar(id);table.parentNode.insertBefore(box.firstElementChild,table);const host=q('#'+id);bindToolbar(host,callbacks.apply,callbacks.pdf,callbacks.xls);return host;
+}
+function findTableByHeaders(words){
+ return qa('table').find(t=>{const h=(q('thead',t)?.textContent||'').toLowerCase();return words.every(w=>h.includes(w))});
+}
+function rowsToHtml(headers,rows){return `<table><thead><tr>${headers.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map(x=>`<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</tbody></table>`}
+
+/* SALES REPORT: date filter + PDF/Excel, preserving original table renderer/data. */
+function salesRows(f,t){return (state.sales||[]).filter(x=>inRange(x.date,f,t)).sort((a,b)=>String(a.date).localeCompare(String(b.date)))}
+function installSales(){
+ const page=q('#sales');if(!page||q('#fs510Sales'))return;
+ const table=findTableByHeaders(['date','item','amount'])||q('table',page);if(!table)return;
+ const host=addToolbarBefore(table,'fs510Sales',{apply:render,pdf:()=>exportSales('pdf'),xls:()=>exportSales('xls')});if(!host)return;
+ function render(){const {f,t}=dates(host),ids=new Set(salesRows(f,t).map(x=>String(x.id)));qa('tbody tr',table).forEach(tr=>{const id=q('[data-id]',tr)?.dataset.id;const date=q('td',tr)?.textContent?.trim();tr.style.display=(id?ids.has(String(id)):inRange(date,f,t))?'':'none'})}
+ function exportSales(kind){const {f,t}=dates(host),r=salesRows(f,t),headers=['Date','Payment Type','Item','Category','Quantity','Amount','Memo'],rows=r.map(x=>[x.date,x.paymentType,x.item,x.category,x.qty,n(x.amount).toFixed(2),x.memo||'']);if(kind==='xls')excel(`Sales_Report_${f}_to_${t}.xls`,headers,rows);else printReport('Sales Report',`${f} to ${t}`,`<p><b>Total Sales:</b> ${money(r.reduce((a,x)=>a+n(x.amount),0))} &nbsp; <b>Transactions:</b> ${r.length} &nbsp; <b>Average Sale:</b> ${money(r.length?r.reduce((a,x)=>a+n(x.amount),0)/r.length:0)}</p>${rowsToHtml(headers,rows)}`)}
+}
+
+/* SUPPLIER BALANCES: Reports Centre panel, as-at date + Outstanding Only. */
+async function supplierBalanceData(asAt){
+ const [sup,bills,pays]=await Promise.all([
+   sb().from('suppliers').select('id,name,is_active').eq('company_id',cid()).order('name'),
+   sb().from('supplier_bills').select('id,supplier_id,bill_date,total_amount').eq('company_id',cid()).lte('bill_date',asAt),
+   sb().from('supplier_bill_payments').select('bill_id,payment_date,amount').eq('company_id',cid()).lte('payment_date',asAt)
+ ]);for(const r of [sup,bills,pays])if(r.error)throw r.error;
+ const payMap=new Map();(pays.data||[]).forEach(x=>payMap.set(x.bill_id,(payMap.get(x.bill_id)||0)+n(x.amount)));
+ return (sup.data||[]).map(s=>{const bs=(bills.data||[]).filter(b=>b.supplier_id===s.id),total=bs.reduce((a,b)=>a+n(b.total_amount),0),paid=bs.reduce((a,b)=>a+(payMap.get(b.id)||0),0);return{name:s.name,bills:total,paid,balance:total-paid}}).sort((a,b)=>b.balance-a.balance);
+}
+function ensureSupplierBalances(){
+ const reports=q('#reports');if(!reports||q('#reportSupplierBalances'))return;
+ const tabs=q('.report-tabs',reports)||q('.tabs',reports);const panels=q('.report-panel',reports)?.parentNode||reports;
+ if(tabs){const b=document.createElement('button');b.className='report-tab';b.dataset.report='supplierbalances';b.textContent='Supplier Balances';tabs.appendChild(b);b.onclick=()=>{qa('.report-tab',reports).forEach(x=>x.classList.remove('active'));b.classList.add('active');qa('.report-panel',reports).forEach(x=>{x.classList.add('hidden');x.classList.remove('active')});const p=q('#reportSupplierBalances');p.classList.remove('hidden');p.classList.add('active');renderSupplierBalances()}}
+ const p=document.createElement('div');p.id='reportSupplierBalances';p.className='report-panel hidden';p.innerHTML=`<div class="fs510-toolbar"><div class="field"><label>As at Date</label><input class="input" id="fs510SupAsAt" type="date" value="${today()}"></div><label style="display:flex;align-items:center;gap:6px;padding-bottom:8px"><input type="checkbox" id="fs510SupOutstanding"> Outstanding Only</label><button class="btn" id="fs510SupApply">Apply</button><button class="btn" id="fs510SupPdf">Export PDF</button><button class="btn" id="fs510SupXls">Export Excel</button></div><div id="fs510SupBody"></div>`;panels.appendChild(p);
+ q('#fs510SupApply').onclick=renderSupplierBalances;q('#fs510SupOutstanding').onchange=renderSupplierBalances;q('#fs510SupPdf').onclick=()=>exportSupplierBalances('pdf');q('#fs510SupXls').onclick=()=>exportSupplierBalances('xls');
+}
+async function currentSupplierBalances(){const asAt=q('#fs510SupAsAt')?.value||today(),only=q('#fs510SupOutstanding')?.checked;let rows=await supplierBalanceData(asAt);if(only)rows=rows.filter(x=>Math.abs(x.balance)>0.005);return{asAt,rows}}
+async function renderSupplierBalances(){try{const {asAt,rows}=await currentSupplierBalances(),tot=rows.reduce((a,x)=>a+x.balance,0);q('#fs510SupBody').innerHTML=`<div class="fs510-summary"><div><span>Suppliers</span><b>${rows.length}</b></div><div><span>Total Bills</span><b>${money(rows.reduce((a,x)=>a+x.bills,0))}</b></div><div><span>Total Payments</span><b>${money(rows.reduce((a,x)=>a+x.paid,0))}</b></div><div><span>Total Supplier Balance</span><b>${money(tot)}</b></div></div>${rowsToHtml(['Supplier','Total Bills','Total Payments','Outstanding Balance'],rows.map(x=>[x.name,money(x.bills),money(x.paid),money(x.balance)]))}`}catch(e){toast(e.message||String(e))}}
+async function exportSupplierBalances(kind){const {asAt,rows}=await currentSupplierBalances(),headers=['Supplier','Total Bills','Total Payments','Outstanding Balance'],data=rows.map(x=>[x.name,x.bills.toFixed(2),x.paid.toFixed(2),x.balance.toFixed(2)]);if(kind==='xls')excel(`Supplier_Balances_${asAt}.xls`,headers,data);else printReport('Supplier Balances',`As at ${asAt}`,`${rowsToHtml(headers,data)}<p><b>Total Supplier Balance: ${money(rows.reduce((a,x)=>a+x.balance,0))}</b></p>`)}
+
+/* SUPPLIER BILLS: period filter, view, period export, individual export.
+   Financial mutation buttons deliberately use accounting-safe backend RPC names;
+   if the SQL has not been installed, the action fails without changing data. */
+function billPaid(id){return (state.billPayments||[]).filter(x=>x.billId===id).reduce((a,x)=>a+n(x.amount),0)}
+function billView(b){
+ const paid=billPaid(b.id),bal=n(b.total)-paid,headers=['Description','Account','Qty','Rate','VAT','Amount'];
+ const rows=(b.lines||[]).map(l=>[l.item||l.desc||'',(state.accounts||[]).find(a=>a.id===l.accountId)?.name||'',l.qty,l.rate,(n(l.vatRate)*100).toFixed(2)+'%',money(l.gross||n(l.qty)*n(l.rate))]);
+ openModal('Supplier Bill','',`<div class="fs510-summary"><div><span>Supplier</span><b>${esc(b.supplier)}</b></div><div><span>Invoice</span><b>${esc(b.invoice)}</b></div><div><span>Date</span><b>${esc(b.date)}</b></div><div><span>Balance</span><b>${money(bal)}</b></div></div>${rowsToHtml(headers,rows)}<div class="total-bar"><span>Total</span><strong>${money(b.total)}</strong></div><div class="modal-actions"><button class="btn" id="fs510BillPdf">Export PDF</button><button class="btn" id="fs510BillXls">Export Excel</button>${paid>0?'':'<button class="btn" id="fs510BillEdit">Edit</button><button class="btn danger" id="fs510BillVoid">Void</button>'}</div>`);
+ q('#fs510BillPdf').onclick=()=>printReport('Supplier Bill',`${b.supplier} · Invoice ${b.invoice} · ${b.date}`,`${rowsToHtml(headers,rows)}<p><b>Total: ${money(b.total)}</b></p>`);
+ q('#fs510BillXls').onclick=()=>excel(`Supplier_Bill_${b.invoice}.xls`,headers,rows);
+ if(!paid){q('#fs510BillEdit').onclick=()=>editBillSafe(b);q('#fs510BillVoid').onclick=()=>voidBillSafe(b)}
+}
+async function voidBillSafe(b){
+ if(billPaid(b.id)>0)return toast('Reverse the associated payment before voiding this bill.');
+ const reason=prompt('Reason for voiding this supplier bill:');if(!reason)return;
+ if(!confirm(`Void supplier bill ${b.invoice}? The accounting entry will be reversed.`))return;
+ const {error}=await sb().rpc('void_supplier_bill',{p_company_id:cid(),p_bill_id:b.id,p_reason:reason});if(error)return toast(error.message);closeModal();await window.finsightReloadCloudState?.();toast('Supplier bill voided');
+}
+async function editBillSafe(b){
+ if(billPaid(b.id)>0)return toast('Reverse the associated payment before editing this bill.');
+ openModal('Edit Supplier Bill','',`<div class="form-grid"><div class="field"><label>Date</label><input class="input" id="fs510EBDate" type="date" value="${esc(b.date)}"></div><div class="field"><label>Invoice No.</label><input class="input" id="fs510EBInv" value="${esc(b.invoice)}"></div><div class="field"><label>Due Date</label><input class="input" id="fs510EBDue" type="date" value="${esc(b.due||'')}"></div><div class="field full"><label>Memo</label><input class="input" id="fs510EBMemo" value="${esc(b.memo||'')}"></div></div><div class="modal-actions"><button class="btn primary" id="fs510EBSave">Save Changes</button></div>`);
+ q('#fs510EBSave').onclick=async()=>{const reason=prompt('Reason for editing this supplier bill:');if(!reason)return;const payload={bill_date:q('#fs510EBDate').value,invoice_no:q('#fs510EBInv').value.trim(),due_date:q('#fs510EBDue').value||null,memo:q('#fs510EBMemo').value||null};const {error}=await sb().rpc('edit_supplier_bill_header',{p_company_id:cid(),p_bill_id:b.id,p_changes:payload,p_reason:reason});if(error)return toast(error.message);closeModal();await window.finsightReloadCloudState?.();toast('Supplier bill updated')};
+}
+function installBills(){
+ const table=findTableByHeaders(['supplier','invoice']);if(!table||q('#fs510Bills'))return;
+ const host=addToolbarBefore(table,'fs510Bills',{apply:render,pdf:()=>exportBills('pdf'),xls:()=>exportBills('xls')});if(!host)return;
+ function filtered(){const {f,t}=dates(host);return (state.bills||[]).filter(x=>inRange(x.date,f,t))}
+ function render(){const {f,t}=dates(host);qa('tbody tr',table).forEach(tr=>{const d=q('td',tr)?.textContent?.trim();tr.style.display=inRange(d,f,t)?'':'none'});enhance()}
+ function enhance(){qa('tbody tr',table).forEach(tr=>{if(q('.fs510-view-bill',tr))return;const cells=qa('td',tr),inv=cells.find(c=>(state.bills||[]).some(b=>String(b.invoice)===c.textContent.trim()));if(!inv)return;const b=(state.bills||[]).find(x=>String(x.invoice)===inv.textContent.trim());if(!b)return;let action=cells[cells.length-1];if(action){const v=document.createElement('button');v.className='mini-btn fs510-view-bill';v.textContent='View';v.onclick=()=>billView(b);action.prepend(v)} })}
+ function exportBills(kind){const {f,t}=dates(host),r=filtered(),headers=['Date','Supplier','Invoice','Due Date','Total','Paid','Balance','Memo'],rows=r.map(b=>[b.date,b.supplier,b.invoice,b.due||'',n(b.total).toFixed(2),billPaid(b.id).toFixed(2),(n(b.total)-billPaid(b.id)).toFixed(2),b.memo||'']);if(kind==='xls')excel(`Supplier_Bills_${f}_to_${t}.xls`,headers,rows);else printReport('Supplier Bills',`${f} to ${t}`,rowsToHtml(headers,rows))}
+ setTimeout(enhance,0);
+}
+
+/* CHEQUES: requested date filter + report exports. */
+function installCheques(){
+ const table=findTableByHeaders(['cheque','payee']);if(!table||q('#fs510Cheques'))return;
+ const host=addToolbarBefore(table,'fs510Cheques',{apply:render,pdf:()=>ex('pdf'),xls:()=>ex('xls')});if(!host)return;
+ const filtered=()=>{const {f,t}=dates(host);return (state.cheques||[]).filter(x=>inRange(x.date,f,t))};
+ function render(){const {f,t}=dates(host);qa('tbody tr',table).forEach(tr=>{const d=q('td',tr)?.textContent?.trim();tr.style.display=inRange(d,f,t)?'':'none'})}
+ function ex(kind){const {f,t}=dates(host),headers=['Date','Cheque No.','Payee','Payment Account','Memo','Amount'],rows=filtered().map(x=>[x.date,x.no,x.payee,(state.accounts||[]).find(a=>a.id===x.bankId)?.name||'',x.memo||'',n(x.total).toFixed(2)]);if(kind==='xls')excel(`Cheque_Register_${f}_to_${t}.xls`,headers,rows);else printReport('Cheque Register',`${f} to ${t}`,rowsToHtml(headers,rows))}
+}
+
+/* TRANSFERS / DEPOSITS: date filters, view and period exports.
+   Edit/Void invoke safe backend RPCs; no direct deletion is performed. */
+function financeView(kind,x){
+ const transfer=kind==='transfer',acct=id=>(state.accounts||[]).find(a=>a.id===id)?.name||'';
+ const rows=transfer?[['Date',x.date],['From',acct(x.fromId)],['To',acct(x.toId)],['Reference',x.reference||''],['Memo',x.memo||''],['Amount',money(x.amount)]]
+ :[['Date',x.date],['Deposit To',acct(x.toId)],['Source',acct(x.sourceId)],['Reference',x.reference||''],['Memo',x.memo||''],['Amount',money(x.amount)]];
+ openModal(transfer?'Fund Transfer':'Fund Deposit','',rowsToHtml(['Field','Value'],rows)+`<div class="modal-actions"><button class="btn" id="fs510FinEdit">Edit</button><button class="btn danger" id="fs510FinVoid">Void</button></div>`);
+ q('#fs510FinEdit').onclick=()=>editFinance(kind,x);q('#fs510FinVoid').onclick=()=>voidFinance(kind,x);
+}
+async function voidFinance(kind,x){const reason=prompt(`Reason for voiding this ${kind}:`);if(!reason)return;if(!confirm('Void this transaction? The accounting entry will be reversed.'))return;const fn=kind==='transfer'?'void_fund_transfer':'void_fund_deposit',key=kind==='transfer'?'p_transfer_id':'p_deposit_id';const args={p_company_id:cid(),p_reason:reason};args[key]=x.id;const {error}=await sb().rpc(fn,args);if(error)return toast(error.message);closeModal();await window.finsightReloadCloudState?.();toast('Transaction voided')}
+function editFinance(kind,x){
+ const accounts=(state.accounts||[]).filter(a=>a.active!==false&&a.type==='Asset'&&(a.sub==='Bank'||a.sub==='Cash'));
+ const source=(state.accounts||[]).filter(a=>a.active!==false);
+ const opts=(arr,val)=>arr.map(a=>`<option value="${a.id}" ${a.id===val?'selected':''}>${esc(a.name)}</option>`).join('');
+ const transfer=kind==='transfer';
+ openModal(transfer?'Edit Fund Transfer':'Edit Fund Deposit','',`<div class="form-grid"><div class="field"><label>Date</label><input class="input" id="fs510FDate" type="date" value="${esc(x.date)}"></div><div class="field"><label>Amount</label><input class="input" id="fs510FAmt" type="number" min="0.01" step="0.01" value="${n(x.amount)}"></div>${transfer?`<div class="field"><label>From</label><select class="input" id="fs510FFrom">${opts(accounts,x.fromId)}</select></div><div class="field"><label>To</label><select class="input" id="fs510FTo">${opts(accounts,x.toId)}</select></div>`:`<div class="field"><label>Deposit To</label><select class="input" id="fs510FTo">${opts(accounts,x.toId)}</select></div><div class="field"><label>Source</label><select class="input" id="fs510FSource">${opts(source,x.sourceId)}</select></div>`}<div class="field"><label>Reference</label><input class="input" id="fs510FRef" value="${esc(x.reference||'')}"></div><div class="field"><label>Memo</label><input class="input" id="fs510FMemo" value="${esc(x.memo||'')}"></div></div><div class="modal-actions"><button class="btn primary" id="fs510FSave">Save Changes</button></div>`);
+ q('#fs510FSave').onclick=async()=>{const reason=prompt('Reason for editing this transaction:');if(!reason)return;const transfer=kind==='transfer',fn=transfer?'edit_fund_transfer':'edit_fund_deposit';const args={p_company_id:cid(),p_reason:reason,p_transaction_date:q('#fs510FDate').value,p_amount:n(q('#fs510FAmt').value),p_reference:q('#fs510FRef').value||null,p_memo:q('#fs510FMemo').value||null};if(transfer){args.p_transfer_id=x.id;args.p_from_account_id=q('#fs510FFrom').value;args.p_to_account_id=q('#fs510FTo').value}else{args.p_deposit_id=x.id;args.p_deposit_to_account_id=q('#fs510FTo').value;args.p_source_account_id=q('#fs510FSource').value}const {error}=await sb().rpc(fn,args);if(error)return toast(error.message);closeModal();await window.finsightReloadCloudState?.();toast('Transaction updated')};
+}
+function installFinance(kind){
+ const transfer=kind==='transfer',table=q(transfer?'#fundTransferTable':'#fundDepositTable');if(!table||q(transfer?'#fs510Transfers':'#fs510Deposits'))return;
+ const id=transfer?'fs510Transfers':'fs510Deposits',arr=()=>transfer?(state.fundTransfers||[]):(state.fundDeposits||[]);
+ const host=addToolbarBefore(table,id,{apply:render,pdf:()=>ex('pdf'),xls:()=>ex('xls')});if(!host)return;
+ function filtered(){const {f,t}=dates(host);return arr().filter(x=>inRange(x.date,f,t))}
+ function render(){const {f,t}=dates(host);qa('tbody tr',table).forEach(tr=>{const d=q('td',tr)?.textContent?.trim();tr.style.display=inRange(d,f,t)?'':'none'});enhance()}
+ function enhance(){qa('tbody tr',table).forEach(tr=>{if(q('.fs510-fin-view',tr))return;const d=q('td',tr)?.textContent?.trim(),x=arr().find(v=>String(v.date)===String(d)&&!qa('td',tr).every(td=>!td.textContent.includes(String(v.amount))));if(!x)return;const td=qa('td',tr).at(-1);if(!td)return;td.querySelectorAll('.deleteFundTransfer,.deleteFundDeposit').forEach(b=>b.style.display='none');const b=document.createElement('button');b.className='mini-btn fs510-fin-view';b.textContent='View';b.onclick=()=>financeView(kind,x);td.prepend(b)})}
+ function ex(fmt){const {f,t}=dates(host),acct=id=>(state.accounts||[]).find(a=>a.id===id)?.name||'',headers=transfer?['Date','From','To','Reference','Memo','Amount']:['Date','Deposit To','Source','Reference','Memo','Amount'],rows=filtered().map(x=>transfer?[x.date,acct(x.fromId),acct(x.toId),x.reference||'',x.memo||'',n(x.amount).toFixed(2)]:[x.date,acct(x.toId),acct(x.sourceId),x.reference||'',x.memo||'',n(x.amount).toFixed(2)]);if(fmt==='xls')excel(`${transfer?'Fund_Transfers':'Fund_Deposits'}_${f}_to_${t}.xls`,headers,rows);else printReport(transfer?'Fund Transfers':'Fund Deposits',`${f} to ${t}`,rowsToHtml(headers,rows))}
+ setTimeout(enhance,0);
+}
+
+/* CASH FLOW SUMMARY: export exact selected report period. */
+function installCashFlowExport(){
+ const p=q('#reportCashFlow');if(!p||q('#fs510CashExport'))return;
+ const b=document.createElement('div');b.id='fs510CashExport';b.className='fs510-toolbar fs510-no-print';b.innerHTML='<button class="btn" id="fs510CashPdf">Export PDF</button><button class="btn" id="fs510CashXls">Export Excel</button>';p.prepend(b);
+ async function data(){const start=q('#reportFrom')?.value||firstDay(),end=q('#reportTo')?.value||today();const [rows,summary]=await Promise.all([sb().rpc('get_cash_flow',{p_company_id:cid(),p_start_date:start,p_end_date:end}),sb().rpc('get_cash_flow_summary',{p_company_id:cid(),p_start_date:start,p_end_date:end})]);if(rows.error)throw rows.error;if(summary.error)throw summary.error;return{start,end,rows:rows.data||[],summary:(summary.data||[])[0]||{}}}
+ q('#fs510CashXls').onclick=async()=>{try{const d=await data(),h=['Date','Activity','Transaction','Reference','Money In','Money Out','Net'],r=d.rows.map(x=>[x.entry_date||'',x.activity||x.cash_flow_class||'',x.source_type||x.description||'',x.reference||x.memo||'',n(x.inflow||x.money_in).toFixed(2),n(x.outflow||x.money_out).toFixed(2),n(x.net_cash_flow||x.net_effect).toFixed(2)]);excel(`Cash_Flow_${d.start}_to_${d.end}.xls`,h,r)}catch(e){toast(e.message||String(e))}};
+ q('#fs510CashPdf').onclick=async()=>{try{const d=await data(),s=d.summary;printReport('Cash Flow Statement',`${d.start} to ${d.end}`,`<table><tr><th>Operating Activities</th><td>${money(s.operating_cash_flow||s.operating_cashflow)}</td></tr><tr><th>Investing Activities</th><td>${money(s.investing_cash_flow||s.investing_cashflow)}</td></tr><tr><th>Financing Activities</th><td>${money(s.financing_cash_flow||s.financing_cashflow)}</td></tr><tr class="total"><th>Net Cash Flow</th><td>${money(s.net_cash_flow||s.net_cashflow)}</td></tr></table>`)}catch(e){toast(e.message||String(e))}};
+}
+
+/* Petty Cash: remove only duplicated report title. */
+function cleanPettyTitle(){const page=q('#petty')||q('#pettyCash');if(!page)return;const hs=qa('h1,h2,h3',page).filter(x=>/petty cash report/i.test(x.textContent||''));hs.slice(1).forEach(x=>x.remove())}
+
+/* Re-run scoped installers after legacy renderers refresh their tables. */
+function install(){try{installSales();installBills();installCheques();installFinance('transfer');installFinance('deposit');ensureSupplierBalances();installCashFlowExport();cleanPettyTitle()}catch(e){console.error('[FinSight V18.5.10]',e)}}
+new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList:true,subtree:true});
+document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(install,100));
+setInterval(install,1800);setTimeout(install,100);
+})();
+</script>
+
 </body></html>
