@@ -4273,6 +4273,17 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     const {data:company,error:companyErr}=await sb.from('companies').select('id,name').eq('id',cid).single(); if(companyErr||!company)throw companyErr||new Error('FinSight company not found');
     const access={...profile,company_id:cid,role:membership.role,company_name:company.name};
     window.finsightOnline.profile=access;window.finsightOnline.companyId=cid;window.finsightOnline.company=company;window.finsightOnline.role=membership.role;
+    // V18.5.11: Clerk sessions never hydrate financial modules, dashboards or stored financial state.
+    if(membership.role==='clerk'){
+      state=newState();
+      const {data:clerkTypes,error:clerkTypesError}=await sb.from('payment_types').select('name,is_active').eq('company_id',cid);
+      if(clerkTypesError)throw clerkTypesError;
+      state.paymentTypes=(clerkTypes||[]).filter(x=>x.is_active!==false).map(x=>x.name);
+      document.body.classList.remove('online-loading');gate.classList.add('hidden');
+      setStatus((profile.full_name||user.email||'Clerk')+' · '+company.name+' · Clerk','ok');
+      document.dispatchEvent(new CustomEvent('finsight:cloud-state-loaded',{detail:{companyId:cid,role:'clerk'}}));
+      return;
+    }
     setupUsersRoles(access);
     const [accounts,paymentTypes,categories,suppliers,stockItems,sales,saleItems,receipts,bills,billLines,billPayments,cheques,chequeLines,transfers,deposits,opening,closing,pettyTx]=await Promise.all([
       q('accounts','name'),q('payment_types','name'),q('sales_categories','name'),q('suppliers','name'),q('stock_items','name'),q('sales','sale_date'),q('sale_items'),q('sales_receipts','receipt_date'),q('supplier_bills','bill_date'),q('supplier_bill_lines'),q('supplier_bill_payments','payment_date'),q('cheques'),q('cheque_lines'),q('fund_transfers'),q('fund_deposits'),q('opening_stock','stock_date'),q('closing_stock','stock_date'),q('petty_cash_transactions','transaction_date')]);
@@ -8730,4 +8741,127 @@ setInterval(install,1800);setTimeout(install,100);
 })();
 </script>
 
+<style id="finsight-511-recon-styling">/* V18.5.11 — strict Sales Reconciliation styling; no changes to financial calculations */
+#sales-recon-workspace{max-width:1250px;margin:0 auto}
+#sales-recon-workspace .sr-toolbar{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:18px}
+#sales-recon-workspace .sr-tab,#sales-recon-workspace .sr-btn{border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:9px;padding:10px 15px;cursor:pointer;font-weight:650;font-size:12px}
+#sales-recon-workspace .sr-tab.on{background:#172554;color:white;border-color:#172554}
+#sales-recon-workspace .sr-btn.primary{background:#4f46e5;border-color:#4f46e5;color:white}
+#sales-recon-workspace .sr-btn.success{background:#059669;color:white;border-color:#059669}
+#sales-recon-workspace .sr-btn.remove{font-size:19px;padding:7px 11px}
+#sales-recon-workspace .sr-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(280px,.75fr);gap:16px}
+#sales-recon-workspace .sr-card{border:1px solid #e2e8f0;background:var(--card,#fff);border-radius:15px;padding:20px;margin-bottom:15px;box-shadow:0 5px 22px rgba(15,23,42,.035)}
+#sales-recon-workspace .sr-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+#sales-recon-workspace h3{font-size:15px;margin:0 0 13px}#sales-recon-workspace .sr-head h3{margin:0}
+#sales-recon-workspace .sr-row{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:8px 0}
+#sales-recon-workspace .sr-field{flex:1;min-width:150px;margin:7px 0}
+#sales-recon-workspace .sr-field.grow{flex:2}
+#sales-recon-workspace label{display:block;font-size:11px;font-weight:750;margin-bottom:7px}
+#sales-recon-workspace input,#sales-recon-workspace textarea,#sales-recon-workspace select{width:100%;box-sizing:border-box;background:var(--card,#fff);color:var(--text,#172033);border:1px solid #cbd5e1;border-radius:9px;padding:10px 11px;font:inherit;font-size:12px}
+#sales-recon-workspace .sr-stat{display:flex;justify-content:space-between;gap:15px;padding:10px 0;font-size:12px}
+#sales-recon-workspace .sr-stat strong{font-size:16px}
+#sales-recon-workspace .sr-status{display:inline-block;padding:6px 10px;border-radius:99px;background:#e0e7ff;color:#3730a3;font-size:10px;font-weight:750}
+#sales-recon-workspace .sr-actions{display:flex;gap:10px;flex-wrap:wrap}
+#sales-recon-workspace .sr-table-wrap{overflow-x:auto;border:1px solid #e2e8f0;border-radius:11px;margin-top:14px}
+#sales-recon-workspace .sr-table{width:100%;border-collapse:collapse;min-width:770px}
+#sales-recon-workspace .sr-table th{background:#f1f5f9;color:#334155;padding:13px 15px;white-space:nowrap;font-size:11px}
+#sales-recon-workspace .sr-table td{padding:13px 15px;border-top:1px solid #e2e8f0;font-size:12px}
+#sales-recon-workspace .sr-table tr:hover td{background:#f8fafc}
+#sales-recon-workspace .sr-alert{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:12px;border-radius:10px;margin-top:12px}
+#sales-recon-workspace .sr-ok{color:#047857;font-size:12px;margin-top:12px}
+#sales-recon-workspace .sr-identify{max-width:450px;margin:40px auto}
+body.sr-clerk-session .sidebar .nav-item:not([data-page="sales-recon-workspace"]),body.sr-clerk-session .sidebar .nav-section{display:none!important}
+/* Petty Cash table readability only; no change to transaction rendering or totals */
+#petty .petty-lot-body,#petty #pettyBatchReport{overflow-x:auto}
+#petty .petty-lot-body table{min-width:760px;width:100%;table-layout:auto}
+#petty .petty-lot-body th,#petty .petty-lot-body td{white-space:normal;overflow-wrap:break-word;vertical-align:top;line-height:1.45;min-width:95px}
+#petty .petty-lot-head{grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:10px;overflow-wrap:anywhere}
+@media(max-width:900px){#sales-recon-workspace .sr-layout{grid-template-columns:1fr}#petty .petty-lot-head{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+<script id="finsight-511-recon-production">(()=>{'use strict';
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>'KSh '+Number(n||0).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+const nowDate=()=>new Date().toLocaleDateString('en-CA');
+const platform=()=>window.finsightOnline||{}, cloud=()=>window.finsightSupabase;
+const role=()=>String(platform().role||'').toLowerCase(), cid=()=>platform().companyId;
+const isClerk=()=>role()==='clerk', canReview=()=>['owner','admin','accountant'].includes(role()), isAdmin=()=>['owner','admin'].includes(role());
+let staff=[],records=[],mode='form',selectedId=null,viewerStaff=null,viewerPin='',loading=false;
+let form=fresh(); function fresh(){return {date:nowDate(),staffId:'',pos:'',payments:{},details:[{id:crypto.randomUUID(),label:'',amount:''}],note:'',reviewNote:''}}
+const methods=()=>[...new Set((typeof state!=='undefined' && state && Array.isArray(state.paymentTypes) ? state.paymentTypes : []).map(x=>typeof x==='string'?x:x?.name).filter(Boolean))];
+function rowTotal(){return methods().reduce((s,k)=>s+(Number(form.payments[k])||0),0)}
+function difference(){return Number(form.pos||0)-rowTotal()}
+function explained(){return form.details.reduce((s,x)=>s+(Number(x.amount)||0),0)}
+function msg(s,bad=false){const n=$('#rc-msg');if(n){n.textContent=s||'';n.className=bad?'rc-alert':'rc-ok'}else if(s)alert(s)}
+async function rpc(name,args){const sb=cloud();if(!sb||!cid())throw Error('Sign in to FinSight first.');const {data,error}=await sb.rpc(name,args);if(error)throw Error(error.message);return data}
+function payload(){return {date:form.date,pos:Number(form.pos),payments:Object.fromEntries(methods().map(m=>[m,Number(form.payments[m]||0)])),details:form.details.filter(x=>x.label.trim()||x.amount!=='').map(x=>({label:x.label.trim(),amount:Number(x.amount)})),note:form.note,staff:staff.find(x=>x.id===form.staffId)?.full_name||platform().profile?.full_name||'',actual:rowTotal(),variance:difference(),unexplained:difference()-explained()}}
+function validate(action){if(!form.date||form.pos===''||!Number.isFinite(Number(form.pos))||Number(form.pos)<0)return 'Enter a valid sales date and POS total.';
+ if(!methods().length)return 'Set up payment types in FinSight before continuing.';
+ if(methods().some(m=>form.payments[m]!==undefined && (!Number.isFinite(Number(form.payments[m]))||Number(form.payments[m])<0)))return 'Enter valid collection amounts.';
+ if(form.details.some(x=>(x.label.trim()==='')!==(x.amount==='')||x.amount!==''&&!Number.isFinite(Number(x.amount))))return 'Complete both columns in each explanation row.';
+ if(Math.abs(difference())>.005&&!form.details.some(x=>x.label.trim()&&Number(x.amount)!==0))return 'Explain the sales variance before submitting.';
+ if(isClerk()&&!form.staffId)return 'Select your name.';
+ if(['submit','approve','return'].includes(action)&&selectedId&&records.find(x=>x.id===selectedId)?.status==='Approved')return 'Reopen this reconciliation before changing its approval.';
+ return ''}
+async function refresh(){if(!cid())return;try{
+ const s=await rpc('recon_staff_list',{p_company:cid()});staff=s||[];
+ if(isClerk()&&!viewerStaff){records=[];}else{
+ records=await rpc('recon_list',{p_company:cid(),p_staff_id:isClerk()?viewerStaff:null,p_pin:isClerk()?viewerPin:null})||[];
+ }render();
+ }catch(e){msg(e.message,true)}}
+function init(){if($('#sales-recon-workspace'))return;const nav=$('.sidebar .nav-item[data-page="sales"]'), main=$('main.main');if(!nav||!main)return;
+ const item=document.createElement('div');item.className='nav-item';item.dataset.page='sales-recon-workspace';item.innerHTML='<div class="dot"></div><span>Sales Reconciliation</span>';nav.parentNode.insertBefore(item,nav);
+ const page=document.createElement('section');page.id='sales-recon-workspace';page.className='page';page.innerHTML=`<div class="sr-toolbar"><button class="sr-tab on" data-rt="form">Reconciliation</button><button class="sr-tab" data-rt="history">History</button><button class="sr-tab" data-rt="staff">Staff & PINs</button><button class="sr-btn" id="sr-refresh">Refresh</button></div><div id="sr-root"></div>`;main.appendChild(page);
+ item.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();open();},true);
+ $$('[data-rt]',page).forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.rt;render()}));$('#sr-refresh').onclick=refresh;
+ document.addEventListener('finsight:cloud-state-loaded',async()=>{if(isClerk())lockClerk();await refresh();if(isClerk())open()});
+ if(platform().companyId){refresh();if(isClerk()){lockClerk();open()}}
+ }
+function lockClerk(){document.body.classList.toggle('sr-clerk-session',isClerk());if(!isClerk())return;$$('.sidebar .nav-item').forEach(n=>{if(n.dataset.page!=='sales-recon-workspace')n.style.display='none'});$$('.sidebar .nav-section').forEach(n=>n.style.display='none');const menu=$('#sr-refresh');if(menu)menu.style.display='none';}
+function open(){$$('.page').forEach(p=>p.classList.toggle('active',p.id==='sales-recon-workspace'));$$('.sidebar .nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page==='sales-recon-workspace'));$('#pageTitle').textContent='Sales Reconciliation';if($('#pageSub'))$('#pageSub').textContent='';render()}
+function render(){const root=$('#sr-root');if(!root)return;const clerk=isClerk();$$('[data-rt]').forEach(b=>{b.classList.toggle('on',b.dataset.rt===mode);b.hidden=(b.dataset.rt==='staff'&&!isAdmin())});if(mode==='staff'&&!isAdmin())mode='form';
+ if(clerk&&!viewerStaff){root.innerHTML=`<div class="sr-card sr-identify"><h3>Clerk Identification</h3><div class="sr-field"><label>Clerk Name</label><select id="sr-identity"><option value="">Select Clerk</option>${staff.filter(s=>s.is_active).map(s=>`<option value="${s.id}">${esc(s.full_name)}</option>`).join('')}</select></div><div class="sr-field"><label>Personal PIN</label><input id="sr-identity-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8"></div><button class="sr-btn primary" id="sr-identify">Continue</button><div id="rc-msg"></div></div>`;
+ $('#sr-identify').onclick=async()=>{const staffId=$('#sr-identity').value,pin=$('#sr-identity-pin').value;if(!staffId||!pin)return msg('Select your name and enter your PIN.',true);try{const valid=await rpc('recon_check_pin',{p_company:cid(),p_staff_id:staffId,p_pin:pin});if(!valid)throw Error('Incorrect PIN');viewerStaff=staffId;viewerPin=pin;form.staffId=staffId;await refresh();}catch(e){msg(e.message,true)}};return;}
+ if(mode==='form')drawForm(root);else if(mode==='history')drawHistory(root);else drawStaff(root);
+ }
+function drawForm(root){const rec=records.find(x=>x.id===selectedId),review=rec&&canReview()&&rec.status!=='Approved';
+ const methodHtml=methods().map(m=>`<div class="sr-field"><label>${esc(m)}</label><input type="number" min="0" step="0.01" class="sr-pay" data-pay="${esc(m)}" value="${esc(form.payments[m]??'')}"></div>`).join('');
+ root.innerHTML=`<div class="sr-layout"><div>
+ <div class="sr-card"><div class="sr-head"><h3>${rec?(review?'Review Reconciliation':'Edit Reconciliation'):'Daily Sales Reconciliation'}</h3><span class="sr-status">${esc(rec?.status||'Draft')}</span></div><div class="sr-row"><div class="sr-field"><label>Sales Date</label><input id="sr-date" type="date" value="${esc(form.date)}"></div><div class="sr-field"><label>Prepared By</label>${isClerk()?`<input readonly value="${esc(staff.find(s=>s.id===viewerStaff)?.full_name||'')}">`:`<input id="sr-preparer" value="${esc(form.staffName||platform().profile?.full_name||'')}">`}</div></div><div class="sr-field"><label>Total POS Sales (KSh)</label><input id="sr-pos" type="number" min="0" step="0.01" value="${esc(form.pos)}"></div></div>
+ <div class="sr-card"><h3>Actual Collections</h3><div class="sr-row">${methodHtml}</div></div>
+ <div class="sr-card"><div class="sr-head"><h3>Variance Explanation</h3><button class="sr-btn" id="sr-add">+ Add Row</button></div><div id="sr-lines">${form.details.map(x=>`<div class="sr-row sr-line" data-line="${x.id}"><div class="sr-field grow"><label>Item / Description</label><input class="sr-label" value="${esc(x.label)}"></div><div class="sr-field"><label>Amount (KSh)</label><input class="sr-amount" type="number" step="0.01" value="${esc(x.amount)}"></div><button class="sr-btn remove" data-remove="${x.id}">×</button></div>`).join('')}</div><div class="sr-field"><label>Additional Notes</label><textarea rows="3" id="sr-notes">${esc(form.note)}</textarea></div></div>
+ <div class="sr-card">${review?`<h3>Accountant / Admin Review</h3><div class="sr-field"><label>Review Notes</label><textarea rows="3" id="sr-review">${esc(form.reviewNote||'')}</textarea></div><div class="sr-actions"><button class="sr-btn" data-act="save_review">Save Changes</button><button class="sr-btn" data-act="return">Return to Clerk</button><button class="sr-btn success" data-act="approve">Approve</button></div>`:rec?.status==='Approved'&&canReview()?`<div class="sr-actions"><button class="sr-btn" data-act="reopen">Reopen for Correction</button></div>`:`<div class="sr-actions"><button class="sr-btn" data-act="draft">Save Draft</button><button class="sr-btn primary" data-act="submit">Submit for Review</button></div>`}<div id="rc-msg"></div></div>
+ </div><div><div class="sr-card"><h3>Reconciliation Summary</h3><div class="sr-stat"><span>POS Sales</span><b id="sr-sum-pos"></b></div><div class="sr-stat"><span>Actual Collections</span><b id="sr-sum-actual"></b></div><hr><div class="sr-stat"><b>Variance</b><strong id="sr-sum-var"></strong></div><div class="sr-stat"><span>Explained</span><b id="sr-sum-explained"></b></div><div class="sr-stat"><b>Unexplained Variance</b><strong id="sr-sum-extra"></strong></div></div></div></div>`;
+ const b=(s,fn)=>$(s)?.addEventListener('input',fn);
+ b('#sr-date',e=>form.date=e.target.value);b('#sr-pos',e=>{form.pos=e.target.value;update()});b('#sr-preparer',e=>form.staffName=e.target.value);b('#sr-notes',e=>form.note=e.target.value);b('#sr-review',e=>form.reviewNote=e.target.value);
+ $$('.sr-pay').forEach(n=>n.oninput=()=>{form.payments[n.dataset.pay]=n.value;update()});
+ $$('.sr-line').forEach(el=>{const d=form.details.find(x=>x.id===el.dataset.line);$('.sr-label',el).oninput=e=>d.label=e.target.value;$('.sr-amount',el).oninput=e=>{d.amount=e.target.value;update()}});
+ $$('[data-remove]').forEach(b=>b.onclick=()=>{form.details=form.details.filter(x=>x.id!==b.dataset.remove);drawForm(root)});
+ $('#sr-add').onclick=()=>{form.details.push({id:crypto.randomUUID(),label:'',amount:''});drawForm(root)};
+ $$('[data-act]').forEach(b=>b.onclick=()=>save(b.dataset.act));update();}
+function update(){const fields={'#sr-sum-pos':Number(form.pos||0),'#sr-sum-actual':rowTotal(),'#sr-sum-var':difference(),'#sr-sum-explained':explained(),'#sr-sum-extra':difference()-explained()};for(const [sel,n]of Object.entries(fields)){const el=$(sel);if(el)el.textContent=money(n)}const v=$('#sr-sum-var');if(v)v.style.color=Math.abs(difference())<.005?'#159260':'#b45309';}
+async function save(action){if(loading)return;let error=validate(action);if(error)return msg(error,true);
+ if(isClerk()&&action==='approve')return msg('Not authorized.',true);
+ if(isClerk()&&selectedId&& !viewerPin)return msg('PIN is required for existing records.',true);
+ if(action==='approve'&&selectedId){const r=records.find(x=>x.id===selectedId);const {data:{user}}=await cloud().auth.getUser();if(r?.preparer_user_id===user?.id)return msg('You cannot approve your own submission.',true)}
+ const note=form.reviewNote||'';if(action==='return'&&!note.trim())return msg('Enter a reason for returning.',true);
+ if(action==='approve'&&Math.abs(difference()-explained())>.005&&!note.trim())return msg('Document the unresolved variance before approval.',true);
+ try{loading=true;await rpc('recon_save',{p_company:cid(),p_data:payload(),p_action:action,p_id:selectedId,p_staff_id:isClerk()?viewerStaff:null,p_pin:isClerk()?viewerPin:null,p_review_note:note});selectedId=null;form=fresh();if(isClerk())form.staffId=viewerStaff;mode='history';await refresh();}catch(e){msg(e.message,true)}finally{loading=false}}
+function editRecord(id){const r=records.find(x=>x.id===id);if(!r)return;if(isClerk()&&!['Draft','Returned'].includes(r.status))return;selectedId=id;form={...fresh(),date:r.data?.date||r.sales_date,pos:String(r.data?.pos??''),staffId:r.preparer_staff_id||'',staffName:r.data?.staff||'',payments:Object.fromEntries(Object.entries(r.data?.payments||{}).map(([k,v])=>[k,String(v)])),details:(r.data?.details||[]).map(x=>({id:crypto.randomUUID(),label:x.label,amount:String(x.amount)})),note:r.data?.note||'',reviewNote:r.review_note||''};mode='form';render()}
+function drawHistory(root){const f=records;root.innerHTML=`<div class="sr-card"><div class="sr-head"><h3>Reconciliation History</h3><div class="sr-actions"><button class="sr-btn" id="sr-csv">Export CSV</button><button class="sr-btn" id="sr-print">Print / PDF</button><button class="sr-btn" id="sr-new">+ New</button></div></div><div class="sr-row sr-filters"><div class="sr-field"><label>From</label><input type="date" id="sr-from"></div><div class="sr-field"><label>To</label><input type="date" id="sr-to"></div><div class="sr-field"><label>Status</label><select id="sr-status"><option value="">All</option>${['Draft','Pending Review','Returned','Approved'].map(v=>`<option>${v}</option>`).join('')}</select></div></div><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Date</th><th>Prepared By</th><th>POS Sales</th><th>Actual</th><th>Variance</th><th>Status</th><th></th></tr></thead><tbody id="sr-history-rows"></tbody></table></div><div id="rc-msg"></div></div>`;
+ $('#sr-new').onclick=()=>{selectedId=null;form=fresh();if(isClerk())form.staffId=viewerStaff;mode='form';render()};
+ function fill(){const from=$('#sr-from').value,to=$('#sr-to').value,status=$('#sr-status').value;$('#sr-history-rows').innerHTML=f.filter(x=>(!from||x.sales_date>=from)&&(!to||x.sales_date<=to)&&(!status||x.status===status)).map(r=>`<tr><td>${esc(r.sales_date)}</td><td>${esc(r.data?.staff||'')}</td><td>${money(r.data?.pos)}</td><td>${money(r.data?.actual)}</td><td>${money(r.data?.variance)}</td><td><span class="sr-status">${esc(r.status)}</span></td><td><button class="sr-btn" data-edit="${r.id}">${isClerk()&& !['Draft','Returned'].includes(r.status)?'View':'Open'}</button> <button class="sr-btn" data-audit="${r.id}">Changes</button></td></tr>`).join('')||'<tr><td colspan="7">No reconciliations</td></tr>';
+ $$('[data-edit]').forEach(b=>b.onclick=()=>{const rec=records.find(x=>x.id===b.dataset.edit);if(isClerk()&&!['Draft','Returned'].includes(rec.status))return alert(JSON.stringify(rec.data,null,2));editRecord(b.dataset.edit)});$$('[data-audit]').forEach(b=>b.onclick=()=>auditRecord(b.dataset.audit))}
+ ['sr-from','sr-to','sr-status'].forEach(k=>$('#'+k).onchange=fill);
+ const visibleRows=()=>f.filter(x=>(!$('#sr-from').value||x.sales_date>=$('#sr-from').value)&&(!$('#sr-to').value||x.sales_date<=$('#sr-to').value)&&(!$('#sr-status').value||x.status===$('#sr-status').value));
+ $('#sr-csv').onclick=()=>{const csv=[['Date','Prepared By','POS Sales','Actual Collections','Variance','Status','Review Note'],...visibleRows().map(r=>[r.sales_date,r.data?.staff,r.data?.pos,r.data?.actual,r.data?.variance,r.status,r.review_note])].map(row=>row.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='FinSight_Sales_Reconciliations.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),2000)};
+ $('#sr-print').onclick=()=>{const html='<h2>FinSight Sales Reconciliation History</h2><table border="1" cellspacing="0" cellpadding="7"><tr><th>Date</th><th>Prepared By</th><th>POS</th><th>Actual</th><th>Variance</th><th>Status</th></tr>'+visibleRows().map(r=>'<tr><td>'+esc(r.sales_date)+'</td><td>'+esc(r.data?.staff)+'</td><td>'+money(r.data?.pos)+'</td><td>'+money(r.data?.actual)+'</td><td>'+money(r.data?.variance)+'</td><td>'+esc(r.status)+'</td></tr>').join('')+'</table>';const w=window.open('','_blank');if(!w)return alert('Allow pop-ups to print.');w.document.write('<!DOCTYPE html><title>FinSight Sales Reconciliation</title><body style="font-family:Arial,sans-serif">'+html+'</body>');w.document.close();w.focus();w.print()};
+ fill()}
+async function auditRecord(id){try{const rows=await rpc('recon_history',{p_company:cid(),p_recon_id:id,p_staff_id:isClerk()?viewerStaff:null,p_pin:isClerk()?viewerPin:null});const details=(rows||[]).map(r=>r.revision+' · '+r.action+' · '+new Date(r.created_at).toLocaleString()+(r.review_note?' · '+r.review_note:'')).join('\n');alert(details||'No changes recorded.')}catch(e){alert(e.message)}}
+function drawStaff(root){root.innerHTML=`<div class="sr-card"><h3>Staff & PINs</h3><div class="sr-row"><div class="sr-field"><label>Full Name</label><input id="sr-staff-name"></div><div class="sr-field"><label>Personal PIN</label><input id="sr-staff-pin" type="password" inputmode="numeric" maxlength="8"></div><button class="sr-btn primary" id="sr-add-staff">Save Clerk</button></div><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Clerk</th><th>Status</th><th></th></tr></thead><tbody>${staff.map(s=>`<tr><td>${esc(s.full_name)}</td><td>${s.is_active?'Active':'Inactive'}</td><td><button class="sr-btn" data-staff="${s.id}">Change PIN</button></td></tr>`).join('')}</tbody></table></div><div id="rc-msg"></div></div>`;
+ $('#sr-add-staff').onclick=async()=>{const name=$('#sr-staff-name').value.trim(),pin=$('#sr-staff-pin').value;if(!name||!/^[0-9]{4,8}$/.test(pin))return msg('Enter a name and a 4–8 digit PIN.',true);try{await rpc('recon_staff_manage',{p_company:cid(),p_name:name,p_pin:pin});await refresh();msg('Clerk saved.')}catch(e){msg(e.message,true)}};
+ $$('[data-staff]').forEach(b=>b.onclick=async()=>{const s=staff.find(x=>x.id===b.dataset.staff),pin=prompt('New 4–8 digit PIN for '+s.full_name);if(pin===null)return;if(!/^[0-9]{4,8}$/.test(pin))return msg('Use 4–8 digits.',true);try{await rpc('recon_staff_manage',{p_company:cid(),p_staff_id:s.id,p_name:s.full_name,p_pin:pin,p_active:s.is_active});msg('PIN updated.')}catch(e){msg(e.message,true)}})}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+</script>
 </body></html>
