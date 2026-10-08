@@ -708,7 +708,7 @@ body.online-loading .app{visibility:hidden}
       <h3>Users & Roles</h3>
       <div class="small-note">Company access is enforced by Supabase Auth, memberships and row-level security.</div>
     </div>
-    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="createClerkLoginBtn">+ Clerk Account</button><button class="btn primary" id="inviteFinSightUserBtn">+ Invite User</button></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn primary" id="inviteFinSightUserBtn">+ Invite User</button></div>
   </div>
 
   <div class="users-notice">
@@ -4208,22 +4208,37 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
         <div class="field"><label>Role</label><select class="input" id="fuInviteRole">${roles.map(r=>`<option value="${r}" ${r===defaultRole?'selected':''}>${prettyRole(r)}</option>`).join('')}</select></div>
         
       </div>
-      <div class="modal-actions"><button class="btn primary" id="fuSendInviteBtn">Send Invitation</button></div>`);
+      <div id="fuInviteError" role="alert" style="display:none;margin-top:12px;padding:12px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#991b1b;font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere"></div><div class="modal-actions"><button class="btn primary" id="fuSendInviteBtn">Send Invitation</button></div>`);
     document.getElementById('fuSendInviteBtn').onclick=sendFinSightInvite;
   }
 
   async function sendFinSightInvite(){
     const btn=document.getElementById('fuSendInviteBtn'), email=document.getElementById('fuInviteEmail').value.trim(), full_name=document.getElementById('fuInviteName').value.trim(), role=document.getElementById('fuInviteRole').value;
     if(!email||!full_name){toast('Enter the user name and email.');return}
+    const errorBox=document.getElementById('fuInviteError');
+    if(errorBox){errorBox.style.display='none';errorBox.textContent='';}
     btn.disabled=true;btn.textContent='Sending…';
     try{
       const {data,error}=await sb.functions.invoke('invite-finsight-user',{body:{email,full_name,company_id:window.finsightOnline.companyId,role}});
-      if(error)throw error;
-      if(!data?.success)throw new Error(data?.error||'Invitation was not completed.');
+      if(error){
+        let detail='';
+        const response=error.context;
+        if(response && typeof response.json==='function'){
+          try{
+            const body=await response.clone().json();
+            detail=body?.error||body?.message||body?.details||JSON.stringify(body);
+          }catch(_){try{detail=await response.clone().text()}catch(__){}}
+        }
+        const status=response?.status ? 'HTTP '+response.status+': ' : '';
+        throw new Error(status+(detail||error.message||'Invitation request failed.'));
+      }
+      if(!data?.success)throw new Error(data?.error||data?.message||'Invitation was not completed.');
       closeModal();toast('Invitation sent to '+email);setTimeout(loadCompanyUsers,500);
     }catch(e){
       console.error('[FinSight Users] Invite failed',e);
-      toast(e?.message||'Invitation failed. Check Edge Function logs.');
+      const message=e?.message||'Invitation failed. Check Edge Function logs.';
+      if(errorBox){errorBox.textContent=message;errorBox.style.display='block';}
+      else toast(message);
     }finally{btn.disabled=false;btn.textContent='Send Invitation'}
   }
 
@@ -4259,7 +4274,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
   function setupUsersRoles(access){
     const allowed=['owner','admin'].includes(String(access.role||'').toLowerCase());
     const nav=document.getElementById('usersNavItem'), sec=document.getElementById('usersNavSection'), invite=document.getElementById('inviteFinSightUserBtn');
-    if(allowed){nav?.classList.remove('hidden');sec?.classList.remove('hidden');if(invite)invite.onclick=()=>openInviteUser('viewer');const clerkBtn=document.getElementById('createClerkLoginBtn');if(clerkBtn)clerkBtn.onclick=()=>openInviteUser('clerk');loadCompanyUsers();}
+    if(allowed){nav?.classList.remove('hidden');sec?.classList.remove('hidden');if(invite)invite.onclick=()=>openInviteUser('viewer');loadCompanyUsers();}
     else{nav?.classList.add('hidden');sec?.classList.add('hidden');}
   }
   async function q(table,orderCol=null){let req=sb.from(table).select('*');if(orderCol)req=req.order(orderCol,{ascending:true});const {data,error}=await req;if(error){console.warn('[FinSight Online] '+table,error.message);return []}return data||[]}
