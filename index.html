@@ -8852,13 +8852,28 @@ function render(){const root=$('#sr-root');if(!root)return;const clerk=isClerk()
  if(mode==='form')drawForm(root);else if(mode==='history')drawHistory(root);else drawStaff(root);
  }
 /* V18.5.12: saved individual reconciliation report, restricted to reviewers. */
+/* Display-only sequential numbering for submitted reconciliations in this company.
+   The UUID remains unchanged for database operations and audit history. */
+function reconDisplayNumber(rec){
+ const posted=records.filter(r=>r.status!=='Draft').slice().sort((a,b)=>{
+  const at=String(a.created_at||a.submitted_at||a.sales_date||'');
+  const bt=String(b.created_at||b.submitted_at||b.sales_date||'');
+  return at.localeCompare(bt)||String(a.id||'').localeCompare(String(b.id||''));
+ });
+ const index=posted.findIndex(r=>r.id===rec?.id);
+ return index>=0?String(index+1):'—';
+}
+function reconRegisteredCompanyName(){
+ const info=platform();
+ return info.company?.name||info.companyName||info.profile?.company_name||'Company name unavailable';
+}
 function reconReportHtml(rec){
  const data=rec?.data||{}, payments=data.payments||{}, details=Array.isArray(data.details)?data.details:[];
  const pos=Number(data.pos||0), actual=Object.values(payments).reduce((n,v)=>n+Number(v||0),0), variance=pos-actual;
  const explained=details.reduce((n,v)=>n+Number(v.amount||0),0);
  const rows=Object.entries(payments).map(([name,amount])=>`<tr><td>${esc(name)}</td><td class="sr-number">${money(amount)}</td></tr>`).join('');
  const reasons=details.filter(x=>String(x.label||'').trim()||Number(x.amount||0)!==0).map(x=>`<tr><td>${esc(x.label)}</td><td class="sr-number">${money(x.amount)}</td></tr>`).join('');
- return `<div class="sr-report-content"><div class="sr-report-meta"><div><b>Sales Date</b><span>${esc(rec.sales_date||data.date||'')}</span></div><div><b>Prepared By</b><span>${esc(data.staff||'Not recorded')}</span></div><div><b>Status</b><span>${esc(rec.status||'')}</span></div><div><b>Reference</b><span>${esc(rec.id||'')}</span></div></div>
+ return `<div class="sr-report-content"><div class="sr-report-meta"><div><b>Sales Date</b><span>${esc(rec.sales_date||data.date||'')}</span></div><div><b>Prepared By</b><span>${esc(data.staff||'Not recorded')}</span></div><div><b>Status</b><span>${esc(rec.status||'')}</span></div><div><b>Reconciliation No.</b><span>${esc(reconDisplayNumber(rec))}</span></div></div>
  <h4>Sales Summary</h4><table class="sr-report-table"><tbody><tr><th>Total POS Sales</th><td class="sr-number">${money(pos)}</td></tr><tr><th>Actual Collections</th><td class="sr-number">${money(actual)}</td></tr><tr class="sr-report-emphasis"><th>Variance (POS − Actual)</th><td class="sr-number">${money(variance)}</td></tr></tbody></table>
  <h4>Sales Allocation by Payment Type</h4><table class="sr-report-table"><thead><tr><th>Payment Method</th><th class="sr-number">Collected (KSh)</th></tr></thead><tbody>${rows||'<tr><td colspan="2">No payment allocations recorded</td></tr>'}<tr class="sr-report-emphasis"><th>Total Actual Collections</th><td class="sr-number">${money(actual)}</td></tr></tbody></table>
  <h4>Variance Explanations</h4><table class="sr-report-table"><thead><tr><th>Explanation</th><th class="sr-number">Amount (KSh)</th></tr></thead><tbody>${reasons||'<tr><td colspan="2">No explanations recorded</td></tr>'}<tr><th>Total Explained</th><td class="sr-number">${money(explained)}</td></tr><tr class="sr-report-emphasis"><th>Unexplained Variance</th><td class="sr-number">${money(variance-explained)}</td></tr></tbody></table>
@@ -8869,7 +8884,7 @@ function exportSingleReconPdf(rec){
  if(!canReview()||!rec||rec.status==='Draft')return;
  const w=window.open('','_blank');if(!w){alert('Please allow pop-ups to export this reconciliation.');return;}
  const styles=document.querySelector('#finsight-512-recon-report-css')?.textContent||'';
- w.document.open();w.document.write(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>FinSight Reconciliation ${esc(rec.sales_date||'')}</title><style>body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:30px auto;max-width:850px;padding:0 25px}h1{font-size:23px;margin:0 0 6px}.print-sub{color:#64748b;font-size:12px;margin-bottom:22px}${styles}@page{size:A4;margin:15mm}@media print{body{margin:0;padding:0}.sr-report-content{border:0!important;padding:0!important}h4{break-after:avoid}tr{break-inside:avoid}}</style></head><body><h1>FinSight Sales Reconciliation Report</h1><div class="print-sub">Individual submitted reconciliation · ${esc(rec.sales_date||'')}</div>${reconReportHtml(rec)}</body></html>`);w.document.close();
+ w.document.open();w.document.write(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${esc(reconRegisteredCompanyName())} - Reconciliation ${esc(reconDisplayNumber(rec))}</title><style>body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:30px auto;max-width:850px;padding:0 25px}h1{font-size:23px;margin:0 0 6px}.print-sub{color:#64748b;font-size:12px;margin-bottom:22px}${styles}@page{size:A4;margin:15mm}@media print{body{margin:0;padding:0}.sr-report-content{border:0!important;padding:0!important}h4{break-after:avoid}tr{break-inside:avoid}}</style></head><body><h1>${esc(reconRegisteredCompanyName())}</h1><div class="print-sub">Sales Reconciliation Report · No. ${esc(reconDisplayNumber(rec))} · ${esc(rec.sales_date||'')}</div>${reconReportHtml(rec)}</body></html>`);w.document.close();
  w.onload=()=>{w.focus();w.print()};
 }
 function drawForm(root){const rec=records.find(x=>x.id===selectedId),review=rec&&canReview()&&rec.status!=='Approved';
@@ -8878,7 +8893,7 @@ function drawForm(root){const rec=records.find(x=>x.id===selectedId),review=rec&
  <div class="sr-card"><div class="sr-head"><h3>${rec?(review?'Review Reconciliation':'Edit Reconciliation'):'Daily Sales Reconciliation'}</h3><span class="sr-status">${esc(rec?.status||'Draft')}</span></div><div class="sr-row"><div class="sr-field"><label>Sales Date</label><input id="sr-date" type="date" value="${esc(form.date)}"></div><div class="sr-field"><label>Prepared By</label>${isClerk()?`<input readonly value="${esc(staff.find(s=>s.id===viewerStaff)?.full_name||'')}">`:`<select id="sr-preparer"><option value="">Select preparer</option>${staff.filter(s=>s.is_active||s.id===form.staffId).map(s=>`<option value="${s.id}" ${form.staffId===s.id?'selected':''}>${esc(s.full_name)}</option>`).join('')}</select>`}</div></div><div class="sr-field"><label>Total POS Sales (KSh)</label><input id="sr-pos" type="number" min="0" step="0.01" value="${esc(form.pos)}"></div></div>
  <div class="sr-card"><h3>Actual Collections</h3><div class="sr-row">${methodHtml}</div></div>
  <div class="sr-card"><div class="sr-head"><h3>Variance Explanation</h3><button class="sr-btn" id="sr-add">+ Add Row</button></div><div id="sr-lines">${form.details.map(x=>`<div class="sr-row sr-line" data-line="${x.id}"><div class="sr-field grow"><label>Item / Description</label><input class="sr-label" value="${esc(x.label)}"></div><div class="sr-field"><label>Amount (KSh)</label><input class="sr-amount" type="number" step="0.01" value="${esc(x.amount)}"></div><button class="sr-btn remove" data-remove="${x.id}">×</button></div>`).join('')}</div><div class="sr-field"><label>Additional Notes</label><textarea rows="3" id="sr-notes">${esc(form.note)}</textarea></div></div>
- ${rec&&canReview()&&rec.status!=='Draft'?`<div class="sr-card"><div class="sr-head"><h3>Reconciliation Report</h3><button class="sr-btn primary" id="sr-export-individual-pdf">Export PDF</button></div>${reconReportHtml(rec)}</div>`:''}
+ ${rec&&canReview()&&rec.status!=='Draft'?`<div class="sr-card"><div class="sr-head"><h3>${esc(reconRegisteredCompanyName())} — Reconciliation Report</h3><button class="sr-btn primary" id="sr-export-individual-pdf">Export PDF</button></div>${reconReportHtml(rec)}</div>`:''}
  <div class="sr-card">${review?`<h3>Accountant / Admin Review</h3><div class="sr-field"><label>Review Notes</label><textarea rows="3" id="sr-review">${esc(form.reviewNote||'')}</textarea></div><div class="sr-actions"><button class="sr-btn" data-act="save_review">Save Changes</button><button class="sr-btn" data-act="return">Return to Clerk</button><button class="sr-btn success" data-act="approve">Approve</button></div>`:rec?.status==='Approved'&&canReview()?`<div class="sr-actions"><button class="sr-btn" data-act="reopen">Reopen for Correction</button></div>`:`<div class="sr-actions"><button class="sr-btn" data-act="draft">Save Draft</button><button class="sr-btn primary" data-act="submit">Submit for Review</button></div>`}<div id="rc-msg"></div></div>
  </div><div><div class="sr-card"><h3>Reconciliation Summary</h3><div class="sr-stat"><span>POS Sales</span><b id="sr-sum-pos"></b></div><div class="sr-stat"><span>Actual Collections</span><b id="sr-sum-actual"></b></div><hr><div class="sr-stat"><b>Variance</b><strong id="sr-sum-var"></strong></div><div class="sr-stat"><span>Explained</span><b id="sr-sum-explained"></b></div><div class="sr-stat"><b>Unexplained Variance</b><strong id="sr-sum-extra"></strong></div></div></div></div>`;
  const b=(s,fn)=>$(s)?.addEventListener('input',fn);
