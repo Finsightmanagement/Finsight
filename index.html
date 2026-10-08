@@ -8793,6 +8793,18 @@ body.sr-clerk-session .sidebar .nav-item:not([data-page="sales-recon-workspace"]
 #petty .petty-lot-head{grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:10px;overflow-wrap:anywhere}
 @media(max-width:900px){#sales-recon-workspace .sr-layout{grid-template-columns:1fr}#petty .petty-lot-head{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
+<style id="finsight-512-recon-report-css">
+.sr-report-content{border:1px solid #e2e8f0;border-radius:11px;padding:17px;background:#fff;font-size:12px}
+.sr-report-content h4{font-size:12px;color:#172554;margin:22px 0 10px;text-transform:uppercase;letter-spacing:.4px}
+.sr-report-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin:6px 0 18px}
+.sr-report-meta div{min-width:0}.sr-report-meta b{display:block;font-size:10px;color:#64748b;margin-bottom:5px}
+.sr-report-meta span{display:block;overflow-wrap:anywhere;white-space:pre-wrap}
+.sr-report-table{width:100%;border-collapse:collapse;font-size:12px}
+.sr-report-table th,.sr-report-table td{border-bottom:1px solid #e2e8f0;text-align:left;padding:10px}
+.sr-report-table thead th{background:#f1f5f9}.sr-report-table .sr-number{text-align:right;white-space:nowrap}
+.sr-report-emphasis{background:#eff6ff;font-weight:bold}.sr-report-notes{white-space:pre-wrap;overflow-wrap:anywhere;padding:10px;border:1px solid #e2e8f0;border-radius:8px}
+@media(max-width:650px){.sr-report-meta{grid-template-columns:1fr}}
+</style>
 <script id="finsight-511-recon-production">(()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -8839,12 +8851,34 @@ function render(){const root=$('#sr-root');if(!root)return;const clerk=isClerk()
  $('#sr-identify').onclick=async()=>{const staffId=$('#sr-identity').value,pin=$('#sr-identity-pin').value;if(!staffId||!pin)return msg('Select your name and enter your PIN.',true);try{const valid=await rpc('recon_check_pin',{p_company:cid(),p_staff_id:staffId,p_pin:pin});if(!valid)throw Error('Incorrect PIN');viewerStaff=staffId;viewerPin=pin;form.staffId=staffId;await refresh();}catch(e){msg(e.message,true)}};return;}
  if(mode==='form')drawForm(root);else if(mode==='history')drawHistory(root);else drawStaff(root);
  }
+/* V18.5.12: saved individual reconciliation report, restricted to reviewers. */
+function reconReportHtml(rec){
+ const data=rec?.data||{}, payments=data.payments||{}, details=Array.isArray(data.details)?data.details:[];
+ const pos=Number(data.pos||0), actual=Object.values(payments).reduce((n,v)=>n+Number(v||0),0), variance=pos-actual;
+ const explained=details.reduce((n,v)=>n+Number(v.amount||0),0);
+ const rows=Object.entries(payments).map(([name,amount])=>`<tr><td>${esc(name)}</td><td class="sr-number">${money(amount)}</td></tr>`).join('');
+ const reasons=details.filter(x=>String(x.label||'').trim()||Number(x.amount||0)!==0).map(x=>`<tr><td>${esc(x.label)}</td><td class="sr-number">${money(x.amount)}</td></tr>`).join('');
+ return `<div class="sr-report-content"><div class="sr-report-meta"><div><b>Sales Date</b><span>${esc(rec.sales_date||data.date||'')}</span></div><div><b>Prepared By</b><span>${esc(data.staff||'Not recorded')}</span></div><div><b>Status</b><span>${esc(rec.status||'')}</span></div><div><b>Reference</b><span>${esc(rec.id||'')}</span></div></div>
+ <h4>Sales Summary</h4><table class="sr-report-table"><tbody><tr><th>Total POS Sales</th><td class="sr-number">${money(pos)}</td></tr><tr><th>Actual Collections</th><td class="sr-number">${money(actual)}</td></tr><tr class="sr-report-emphasis"><th>Variance (POS − Actual)</th><td class="sr-number">${money(variance)}</td></tr></tbody></table>
+ <h4>Sales Allocation by Payment Type</h4><table class="sr-report-table"><thead><tr><th>Payment Method</th><th class="sr-number">Collected (KSh)</th></tr></thead><tbody>${rows||'<tr><td colspan="2">No payment allocations recorded</td></tr>'}<tr class="sr-report-emphasis"><th>Total Actual Collections</th><td class="sr-number">${money(actual)}</td></tr></tbody></table>
+ <h4>Variance Explanations</h4><table class="sr-report-table"><thead><tr><th>Explanation</th><th class="sr-number">Amount (KSh)</th></tr></thead><tbody>${reasons||'<tr><td colspan="2">No explanations recorded</td></tr>'}<tr><th>Total Explained</th><td class="sr-number">${money(explained)}</td></tr><tr class="sr-report-emphasis"><th>Unexplained Variance</th><td class="sr-number">${money(variance-explained)}</td></tr></tbody></table>
+ <h4>Additional Notes</h4><div class="sr-report-notes">${esc(data.note||'None recorded')}</div>
+ <h4>Review</h4><div class="sr-report-meta"><div><b>Review Status</b><span>${esc(rec.status||'')}</span></div><div><b>Review Notes</b><span>${esc(rec.review_note||'None recorded')}</span></div></div></div>`;
+}
+function exportSingleReconPdf(rec){
+ if(!canReview()||!rec||rec.status==='Draft')return;
+ const w=window.open('','_blank');if(!w){alert('Please allow pop-ups to export this reconciliation.');return;}
+ const styles=document.querySelector('#finsight-512-recon-report-css')?.textContent||'';
+ w.document.open();w.document.write(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>FinSight Reconciliation ${esc(rec.sales_date||'')}</title><style>body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:30px auto;max-width:850px;padding:0 25px}h1{font-size:23px;margin:0 0 6px}.print-sub{color:#64748b;font-size:12px;margin-bottom:22px}${styles}@page{size:A4;margin:15mm}@media print{body{margin:0;padding:0}.sr-report-content{border:0!important;padding:0!important}h4{break-after:avoid}tr{break-inside:avoid}}</style></head><body><h1>FinSight Sales Reconciliation Report</h1><div class="print-sub">Individual submitted reconciliation · ${esc(rec.sales_date||'')}</div>${reconReportHtml(rec)}</body></html>`);w.document.close();
+ w.onload=()=>{w.focus();w.print()};
+}
 function drawForm(root){const rec=records.find(x=>x.id===selectedId),review=rec&&canReview()&&rec.status!=='Approved';
  const methodHtml=methods().map(m=>`<div class="sr-field"><label>${esc(m)}</label><input type="number" min="0" step="0.01" class="sr-pay" data-pay="${esc(m)}" value="${esc(form.payments[m]??'')}"></div>`).join('');
  root.innerHTML=`<div class="sr-layout"><div>
  <div class="sr-card"><div class="sr-head"><h3>${rec?(review?'Review Reconciliation':'Edit Reconciliation'):'Daily Sales Reconciliation'}</h3><span class="sr-status">${esc(rec?.status||'Draft')}</span></div><div class="sr-row"><div class="sr-field"><label>Sales Date</label><input id="sr-date" type="date" value="${esc(form.date)}"></div><div class="sr-field"><label>Prepared By</label>${isClerk()?`<input readonly value="${esc(staff.find(s=>s.id===viewerStaff)?.full_name||'')}">`:`<select id="sr-preparer"><option value="">Select preparer</option>${staff.filter(s=>s.is_active||s.id===form.staffId).map(s=>`<option value="${s.id}" ${form.staffId===s.id?'selected':''}>${esc(s.full_name)}</option>`).join('')}</select>`}</div></div><div class="sr-field"><label>Total POS Sales (KSh)</label><input id="sr-pos" type="number" min="0" step="0.01" value="${esc(form.pos)}"></div></div>
  <div class="sr-card"><h3>Actual Collections</h3><div class="sr-row">${methodHtml}</div></div>
  <div class="sr-card"><div class="sr-head"><h3>Variance Explanation</h3><button class="sr-btn" id="sr-add">+ Add Row</button></div><div id="sr-lines">${form.details.map(x=>`<div class="sr-row sr-line" data-line="${x.id}"><div class="sr-field grow"><label>Item / Description</label><input class="sr-label" value="${esc(x.label)}"></div><div class="sr-field"><label>Amount (KSh)</label><input class="sr-amount" type="number" step="0.01" value="${esc(x.amount)}"></div><button class="sr-btn remove" data-remove="${x.id}">×</button></div>`).join('')}</div><div class="sr-field"><label>Additional Notes</label><textarea rows="3" id="sr-notes">${esc(form.note)}</textarea></div></div>
+ ${rec&&canReview()&&rec.status!=='Draft'?`<div class="sr-card"><div class="sr-head"><h3>Reconciliation Report</h3><button class="sr-btn primary" id="sr-export-individual-pdf">Export PDF</button></div>${reconReportHtml(rec)}</div>`:''}
  <div class="sr-card">${review?`<h3>Accountant / Admin Review</h3><div class="sr-field"><label>Review Notes</label><textarea rows="3" id="sr-review">${esc(form.reviewNote||'')}</textarea></div><div class="sr-actions"><button class="sr-btn" data-act="save_review">Save Changes</button><button class="sr-btn" data-act="return">Return to Clerk</button><button class="sr-btn success" data-act="approve">Approve</button></div>`:rec?.status==='Approved'&&canReview()?`<div class="sr-actions"><button class="sr-btn" data-act="reopen">Reopen for Correction</button></div>`:`<div class="sr-actions"><button class="sr-btn" data-act="draft">Save Draft</button><button class="sr-btn primary" data-act="submit">Submit for Review</button></div>`}<div id="rc-msg"></div></div>
  </div><div><div class="sr-card"><h3>Reconciliation Summary</h3><div class="sr-stat"><span>POS Sales</span><b id="sr-sum-pos"></b></div><div class="sr-stat"><span>Actual Collections</span><b id="sr-sum-actual"></b></div><hr><div class="sr-stat"><b>Variance</b><strong id="sr-sum-var"></strong></div><div class="sr-stat"><span>Explained</span><b id="sr-sum-explained"></b></div><div class="sr-stat"><b>Unexplained Variance</b><strong id="sr-sum-extra"></strong></div></div></div></div>`;
  const b=(s,fn)=>$(s)?.addEventListener('input',fn);
@@ -8853,6 +8887,7 @@ function drawForm(root){const rec=records.find(x=>x.id===selectedId),review=rec&
  $$('.sr-line').forEach(el=>{const d=form.details.find(x=>x.id===el.dataset.line);$('.sr-label',el).oninput=e=>d.label=e.target.value;$('.sr-amount',el).oninput=e=>{d.amount=e.target.value;update()}});
  $$('[data-remove]').forEach(b=>b.onclick=()=>{form.details=form.details.filter(x=>x.id!==b.dataset.remove);drawForm(root)});
  $('#sr-add').onclick=()=>{form.details.push({id:crypto.randomUUID(),label:'',amount:''});drawForm(root)};
+ const reportButton=$('#sr-export-individual-pdf');if(reportButton)reportButton.onclick=()=>exportSingleReconPdf(records.find(x=>x.id===selectedId));
  $$('[data-act]').forEach(b=>b.onclick=()=>save(b.dataset.act));update();}
 function update(){const fields={'#sr-sum-pos':Number(form.pos||0),'#sr-sum-actual':rowTotal(),'#sr-sum-var':difference(),'#sr-sum-explained':explained(),'#sr-sum-extra':difference()-explained()};for(const [sel,n]of Object.entries(fields)){const el=$(sel);if(el)el.textContent=money(n)}const v=$('#sr-sum-var');if(v)v.style.color=Math.abs(difference())<.005?'#159260':'#b45309';}
 async function save(action){if(loading)return;let error=validate(action);if(error)return msg(error,true);
