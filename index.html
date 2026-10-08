@@ -708,7 +708,7 @@ body.online-loading .app{visibility:hidden}
       <h3>Users & Roles</h3>
       <div class="small-note">Company access is enforced by Supabase Auth, memberships and row-level security.</div>
     </div>
-    <button class="btn primary" id="inviteFinSightUserBtn">+ Invite User</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="createClerkLoginBtn">+ Clerk Account</button><button class="btn primary" id="inviteFinSightUserBtn">+ Invite User</button></div>
   </div>
 
   <div class="users-notice">
@@ -4198,15 +4198,15 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     tbody.querySelectorAll('.finsight-toggle-user').forEach(b=>b.onclick=()=>toggleCompanyUser(b.dataset.membership,b.dataset.active==='1'));
   }
 
-  function openInviteUser(){
+  function openInviteUser(defaultRole='viewer'){
     const access=window.finsightOnline.profile;
-    const roles=access.role==='owner'?['owner','admin','accountant','manager','viewer']:['admin','accountant','manager','viewer'];
-    openModal('Invite FinSight User','Send a secure company invitation and assign a role.',
+    const roles=access.role==='owner'?['owner','admin','accountant','manager','viewer','clerk']:['admin','accountant','manager','viewer','clerk'];
+    openModal('Invite FinSight User','',
       `<div class="form-grid">
         <div class="field"><label>Full Name</label><input class="input" id="fuInviteName" placeholder="Full name"></div>
         <div class="field"><label>Email</label><input class="input" id="fuInviteEmail" type="email" placeholder="name@example.com"></div>
-        <div class="field"><label>Role</label><select class="input" id="fuInviteRole">${roles.map(r=>`<option value="${r}" ${r==='viewer'?'selected':''}>${prettyRole(r)}</option>`).join('')}</select></div>
-        <div class="field full"><div class="small-note">The invited user will only receive access to ${esc(access.company_name||'this company')}.</div></div>
+        <div class="field"><label>Role</label><select class="input" id="fuInviteRole">${roles.map(r=>`<option value="${r}" ${r===defaultRole?'selected':''}>${prettyRole(r)}</option>`).join('')}</select></div>
+        
       </div>
       <div class="modal-actions"><button class="btn primary" id="fuSendInviteBtn">Send Invitation</button></div>`);
     document.getElementById('fuSendInviteBtn').onclick=sendFinSightInvite;
@@ -4229,7 +4229,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
 
   function openRoleEditor(membershipId){
     const access=window.finsightOnline.profile, u=(window.finsightOnline.companyUsers||[]).find(x=>x.id===membershipId); if(!u)return;
-    const roles=access.role==='owner'?['owner','admin','accountant','manager','viewer']:['admin','accountant','manager','viewer'];
+    const roles=access.role==='owner'?['owner','admin','accountant','manager','viewer','clerk']:['admin','accountant','manager','viewer','clerk'];
     if(access.role!=='owner'&&u.role==='owner'){toast('Only an Owner can modify another Owner.');return}
     openModal('Change User Role','Role permissions are enforced by database policies.',
       `<div class="form-grid">
@@ -4259,7 +4259,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
   function setupUsersRoles(access){
     const allowed=['owner','admin'].includes(String(access.role||'').toLowerCase());
     const nav=document.getElementById('usersNavItem'), sec=document.getElementById('usersNavSection'), invite=document.getElementById('inviteFinSightUserBtn');
-    if(allowed){nav?.classList.remove('hidden');sec?.classList.remove('hidden');if(invite)invite.onclick=openInviteUser;loadCompanyUsers();}
+    if(allowed){nav?.classList.remove('hidden');sec?.classList.remove('hidden');if(invite)invite.onclick=()=>openInviteUser('viewer');const clerkBtn=document.getElementById('createClerkLoginBtn');if(clerkBtn)clerkBtn.onclick=()=>openInviteUser('clerk');loadCompanyUsers();}
     else{nav?.classList.add('hidden');sec?.classList.add('hidden');}
   }
   async function q(table,orderCol=null){let req=sb.from(table).select('*');if(orderCol)req=req.order(orderCol,{ascending:true});const {data,error}=await req;if(error){console.warn('[FinSight Online] '+table,error.message);return []}return data||[]}
@@ -8800,7 +8800,7 @@ function validate(action){if(!form.date||form.pos===''||!Number.isFinite(Number(
  if(methods().some(m=>form.payments[m]!==undefined && (!Number.isFinite(Number(form.payments[m]))||Number(form.payments[m])<0)))return 'Enter valid collection amounts.';
  if(form.details.some(x=>(x.label.trim()==='')!==(x.amount==='')||x.amount!==''&&!Number.isFinite(Number(x.amount))))return 'Complete both columns in each explanation row.';
  if(Math.abs(difference())>.005&&!form.details.some(x=>x.label.trim()&&Number(x.amount)!==0))return 'Explain the sales variance before submitting.';
- if(isClerk()&&!form.staffId)return 'Select your name.';
+ if(!form.staffId)return 'Select a registered preparer. Add names under Staff & PINs first.';
  if(['submit','approve','return'].includes(action)&&selectedId&&records.find(x=>x.id===selectedId)?.status==='Approved')return 'Reopen this reconciliation before changing its approval.';
  return ''}
 async function refresh(){if(!cid())return;try{
@@ -8827,13 +8827,13 @@ function render(){const root=$('#sr-root');if(!root)return;const clerk=isClerk()
 function drawForm(root){const rec=records.find(x=>x.id===selectedId),review=rec&&canReview()&&rec.status!=='Approved';
  const methodHtml=methods().map(m=>`<div class="sr-field"><label>${esc(m)}</label><input type="number" min="0" step="0.01" class="sr-pay" data-pay="${esc(m)}" value="${esc(form.payments[m]??'')}"></div>`).join('');
  root.innerHTML=`<div class="sr-layout"><div>
- <div class="sr-card"><div class="sr-head"><h3>${rec?(review?'Review Reconciliation':'Edit Reconciliation'):'Daily Sales Reconciliation'}</h3><span class="sr-status">${esc(rec?.status||'Draft')}</span></div><div class="sr-row"><div class="sr-field"><label>Sales Date</label><input id="sr-date" type="date" value="${esc(form.date)}"></div><div class="sr-field"><label>Prepared By</label>${isClerk()?`<input readonly value="${esc(staff.find(s=>s.id===viewerStaff)?.full_name||'')}">`:`<input id="sr-preparer" value="${esc(form.staffName||platform().profile?.full_name||'')}">`}</div></div><div class="sr-field"><label>Total POS Sales (KSh)</label><input id="sr-pos" type="number" min="0" step="0.01" value="${esc(form.pos)}"></div></div>
+ <div class="sr-card"><div class="sr-head"><h3>${rec?(review?'Review Reconciliation':'Edit Reconciliation'):'Daily Sales Reconciliation'}</h3><span class="sr-status">${esc(rec?.status||'Draft')}</span></div><div class="sr-row"><div class="sr-field"><label>Sales Date</label><input id="sr-date" type="date" value="${esc(form.date)}"></div><div class="sr-field"><label>Prepared By</label>${isClerk()?`<input readonly value="${esc(staff.find(s=>s.id===viewerStaff)?.full_name||'')}">`:`<select id="sr-preparer"><option value="">Select preparer</option>${staff.filter(s=>s.is_active||s.id===form.staffId).map(s=>`<option value="${s.id}" ${form.staffId===s.id?'selected':''}>${esc(s.full_name)}</option>`).join('')}</select>`}</div></div><div class="sr-field"><label>Total POS Sales (KSh)</label><input id="sr-pos" type="number" min="0" step="0.01" value="${esc(form.pos)}"></div></div>
  <div class="sr-card"><h3>Actual Collections</h3><div class="sr-row">${methodHtml}</div></div>
  <div class="sr-card"><div class="sr-head"><h3>Variance Explanation</h3><button class="sr-btn" id="sr-add">+ Add Row</button></div><div id="sr-lines">${form.details.map(x=>`<div class="sr-row sr-line" data-line="${x.id}"><div class="sr-field grow"><label>Item / Description</label><input class="sr-label" value="${esc(x.label)}"></div><div class="sr-field"><label>Amount (KSh)</label><input class="sr-amount" type="number" step="0.01" value="${esc(x.amount)}"></div><button class="sr-btn remove" data-remove="${x.id}">×</button></div>`).join('')}</div><div class="sr-field"><label>Additional Notes</label><textarea rows="3" id="sr-notes">${esc(form.note)}</textarea></div></div>
  <div class="sr-card">${review?`<h3>Accountant / Admin Review</h3><div class="sr-field"><label>Review Notes</label><textarea rows="3" id="sr-review">${esc(form.reviewNote||'')}</textarea></div><div class="sr-actions"><button class="sr-btn" data-act="save_review">Save Changes</button><button class="sr-btn" data-act="return">Return to Clerk</button><button class="sr-btn success" data-act="approve">Approve</button></div>`:rec?.status==='Approved'&&canReview()?`<div class="sr-actions"><button class="sr-btn" data-act="reopen">Reopen for Correction</button></div>`:`<div class="sr-actions"><button class="sr-btn" data-act="draft">Save Draft</button><button class="sr-btn primary" data-act="submit">Submit for Review</button></div>`}<div id="rc-msg"></div></div>
  </div><div><div class="sr-card"><h3>Reconciliation Summary</h3><div class="sr-stat"><span>POS Sales</span><b id="sr-sum-pos"></b></div><div class="sr-stat"><span>Actual Collections</span><b id="sr-sum-actual"></b></div><hr><div class="sr-stat"><b>Variance</b><strong id="sr-sum-var"></strong></div><div class="sr-stat"><span>Explained</span><b id="sr-sum-explained"></b></div><div class="sr-stat"><b>Unexplained Variance</b><strong id="sr-sum-extra"></strong></div></div></div></div>`;
  const b=(s,fn)=>$(s)?.addEventListener('input',fn);
- b('#sr-date',e=>form.date=e.target.value);b('#sr-pos',e=>{form.pos=e.target.value;update()});b('#sr-preparer',e=>form.staffName=e.target.value);b('#sr-notes',e=>form.note=e.target.value);b('#sr-review',e=>form.reviewNote=e.target.value);
+ b('#sr-date',e=>form.date=e.target.value);b('#sr-pos',e=>{form.pos=e.target.value;update()});b('#sr-preparer',e=>form.staffId=e.target.value);b('#sr-notes',e=>form.note=e.target.value);b('#sr-review',e=>form.reviewNote=e.target.value);
  $$('.sr-pay').forEach(n=>n.oninput=()=>{form.payments[n.dataset.pay]=n.value;update()});
  $$('.sr-line').forEach(el=>{const d=form.details.find(x=>x.id===el.dataset.line);$('.sr-label',el).oninput=e=>d.label=e.target.value;$('.sr-amount',el).oninput=e=>{d.amount=e.target.value;update()}});
  $$('[data-remove]').forEach(b=>b.onclick=()=>{form.details=form.details.filter(x=>x.id!==b.dataset.remove);drawForm(root)});
@@ -8846,7 +8846,7 @@ async function save(action){if(loading)return;let error=validate(action);if(erro
  if(action==='approve'&&selectedId){const r=records.find(x=>x.id===selectedId);const {data:{user}}=await cloud().auth.getUser();if(r?.preparer_user_id===user?.id)return msg('You cannot approve your own submission.',true)}
  const note=form.reviewNote||'';if(action==='return'&&!note.trim())return msg('Enter a reason for returning.',true);
  if(action==='approve'&&Math.abs(difference()-explained())>.005&&!note.trim())return msg('Document the unresolved variance before approval.',true);
- try{loading=true;await rpc('recon_save',{p_company:cid(),p_data:payload(),p_action:action,p_id:selectedId,p_staff_id:isClerk()?viewerStaff:null,p_pin:isClerk()?viewerPin:null,p_review_note:note});selectedId=null;form=fresh();if(isClerk())form.staffId=viewerStaff;mode='history';await refresh();}catch(e){msg(e.message,true)}finally{loading=false}}
+ try{loading=true;await rpc('recon_save',{p_company:cid(),p_data:payload(),p_action:action,p_id:selectedId,p_staff_id:form.staffId||null,p_pin:isClerk()?viewerPin:null,p_review_note:note});selectedId=null;form=fresh();if(isClerk())form.staffId=viewerStaff;mode='history';await refresh();}catch(e){msg(e.message,true)}finally{loading=false}}
 function editRecord(id){const r=records.find(x=>x.id===id);if(!r)return;if(isClerk()&&!['Draft','Returned'].includes(r.status))return;selectedId=id;form={...fresh(),date:r.data?.date||r.sales_date,pos:String(r.data?.pos??''),staffId:r.preparer_staff_id||'',staffName:r.data?.staff||'',payments:Object.fromEntries(Object.entries(r.data?.payments||{}).map(([k,v])=>[k,String(v)])),details:(r.data?.details||[]).map(x=>({id:crypto.randomUUID(),label:x.label,amount:String(x.amount)})),note:r.data?.note||'',reviewNote:r.review_note||''};mode='form';render()}
 function drawHistory(root){const f=records;root.innerHTML=`<div class="sr-card"><div class="sr-head"><h3>Reconciliation History</h3><div class="sr-actions"><button class="sr-btn" id="sr-csv">Export CSV</button><button class="sr-btn" id="sr-print">Print / PDF</button><button class="sr-btn" id="sr-new">+ New</button></div></div><div class="sr-row sr-filters"><div class="sr-field"><label>From</label><input type="date" id="sr-from"></div><div class="sr-field"><label>To</label><input type="date" id="sr-to"></div><div class="sr-field"><label>Status</label><select id="sr-status"><option value="">All</option>${['Draft','Pending Review','Returned','Approved'].map(v=>`<option>${v}</option>`).join('')}</select></div></div><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Date</th><th>Prepared By</th><th>POS Sales</th><th>Actual</th><th>Variance</th><th>Status</th><th></th></tr></thead><tbody id="sr-history-rows"></tbody></table></div><div id="rc-msg"></div></div>`;
  $('#sr-new').onclick=()=>{selectedId=null;form=fresh();if(isClerk())form.staffId=viewerStaff;mode='form';render()};
