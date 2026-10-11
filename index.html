@@ -6849,6 +6849,52 @@ async function postSales(p,v){
   }
 }
 
+/* Supplier Bills only: preserve quoted commas, quoted newlines, and escaped quotes. */
+function parseBillsCsv(text){
+  const records=[];let row=[],field='',quoted=false;
+  text=String(text||'').replace(/^\uFEFF/,'');
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(c==='"'){
+      if(quoted&&text[i+1]==='"'){field+='"';i++}else quoted=!quoted;
+    }else if(c===','&&!quoted){row.push(field);field=''}
+    else if((c==='\n'||c==='\r')&&!quoted){
+      if(c==='\r'&&text[i+1]==='\n')i++;
+      row.push(field);
+      if(row.some(x=>String(x).trim()))records.push(row);
+      row=[];field='';
+    }else field+=c;
+  }
+  if(quoted)throw new Error('Supplier Bills CSV contains an unclosed quoted field.');
+  row.push(field);if(row.some(x=>String(x).trim()))records.push(row);
+  const headers=(records.shift()||[]).map(clean);
+  if(records.some(r=>r.length!==headers.length))throw new Error('Supplier Bills CSV has an inconsistent column count. Check quoted descriptions and memos.');
+  return {headers,rows:records};
+}
+function billCsvDate(value){
+  const v=clean(value);
+  const m=v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m){
+    const month=+m[1],day=+m[2],year=+m[3];
+    const d=new Date(Date.UTC(year,month-1,day));
+    if(d.getUTCFullYear()!==year||d.getUTCMonth()!==month-1||d.getUTCDate()!==day)return '';
+    return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+  }
+  return csvDate(v);
+}
+function billAmount(raw){
+  const v=clean(raw);
+  if(!v)return NaN;
+  const stripped=v.replace(/,/g,'').replace(/\s/g,'');
+  return /^-?(?:\d+\.?\d*|\.\d+)$/.test(stripped)?Number(stripped):NaN;
+}
+function billQty(raw){return clean(raw)===''?1:billAmount(raw)}
+function billVat(raw){
+  const v=clean(raw);if(v==='')return 0;
+  const n=billAmount(v.replace(/%$/,''));
+  return v.endsWith('%')?n/100:n>1?n/100:n;
+}
+
 /* ---------------- SUPPLIER BILLS ---------------- */
 async function validateBills(p){
   const required=['Date','Supplier','Invoice_No','Line_Group','Purchase_Item','Description','Account','Quantity','Rate','VAT_Rate'];
@@ -6856,21 +6902,22 @@ async function validateBills(p){
   if(missing.length)return {errors:[{label:'Required columns missing',column:'Column',items:missing}]};
 
   const supplierMap=await fetchMap('suppliers');
-  const badSupplier=[],badItem=[],badExpense=[],badDate=[],badQtyRate=[],badGroup=[],duplicates=[];
+  const badSupplier=[],badItem=[],badExpense=[],badDate=[],badQtyRate=[],badVat=[],badGroup=[],duplicates=[];
   const groups=new Map();
 
   p.rows.forEach((r,i)=>{
     const supplier=clean(r[idx(p.headers,'Supplier')]),invoice=clean(r[idx(p.headers,'Invoice_No')]),
-          date=csvDate(r[idx(p.headers,'Date')]),groupRaw=norm(r[idx(p.headers,'Line_Group')]),
+          date=billCsvDate(r[idx(p.headers,'Date')]),groupRaw=norm(r[idx(p.headers,'Line_Group')]),
           purchase=['purchase item','purchaseitem','purchase'].includes(groupRaw),
           item=clean(r[idx(p.headers,'Purchase_Item')]),acc=clean(r[idx(p.headers,'Account')]),
-          qty=num(r[idx(p.headers,'Quantity')]),rate=num(r[idx(p.headers,'Rate')]);
+          qty=billQty(r[idx(p.headers,'Quantity')]),rate=billAmount(r[idx(p.headers,'Rate')]),vat=billVat(r[idx(p.headers,'VAT_Rate')]);
     if(!date)badDate.push(rowLabel(i));
     if(!supplier||!supplierMap.get(norm(supplier))?.is_active)badSupplier.push(supplier||rowLabel(i));
     if(!purchase && !['expenditure','expense'].includes(groupRaw))badGroup.push(`${rowLabel(i)}: ${clean(r[idx(p.headers,'Line_Group')])||'blank'}`);
-    if(purchase && (!item||!itemByName(item)))badItem.push(item||rowLabel(i));
+    if(purchase && (!item||!itemByName(item)))badItem.push(item||`${rowLabel(i)}: Purchase_Item is blank`);
     if(!purchase && (!acc||!accountByName(acc,['Expense','Cost of Sales'])))badExpense.push(acc||rowLabel(i));
-    if(qty<=0||rate<0)badQtyRate.push(rowLabel(i));
+    if(!Number.isFinite(qty)||qty<=0||!Number.isFinite(rate)||rate<=0)badQtyRate.push(rowLabel(i));
+    if(!Number.isFinite(vat)||vat<0||vat>1)badVat.push(`${rowLabel(i)}: ${clean(r[idx(p.headers,'VAT_Rate')])}`);
     const key=norm(supplier)+'|'+invoice;
     if(!groups.has(key))groups.set(key,[]);
     groups.get(key).push(i);
@@ -6885,7 +6932,7 @@ async function validateBills(p){
 
   const ap=accountByName('Accounts Payable',['Liability']);
   const foodCost=accountByName('Food Cost',['Cost of Sales']);
-  const hasVat=p.rows.some(r=>num(r[idx(p.headers,'VAT_Rate')])>0);
+  const hasVat=p.rows.some(r=>billVat(r[idx(p.headers,'VAT_Rate')])>0);
   const inputVat=hasVat?accountByName('Input VAT',['Asset']):null;
   const errors=[
     {label:'Unavailable Suppliers',column:'Supplier',items:unique(badSupplier)},
@@ -6894,6 +6941,7 @@ async function validateBills(p){
     {label:'Invalid Line Groups',column:'CSV Row / Value',items:unique(badGroup)},
     {label:'Missing / Invalid Dates',column:'CSV Row',items:unique(badDate)},
     {label:'Invalid Quantity / Rate',column:'CSV Row',items:unique(badQtyRate)},
+    {label:'Invalid VAT Rate',column:'CSV Row / VAT',items:unique(badVat)},
     {label:'Duplicate Supplier Invoices Already Posted',column:'Supplier / Invoice',items:unique(duplicates)}
   ];
   if(!ap)errors.push({label:'Required Chart of Accounts entry missing',column:'Account',items:['Accounts Payable']});
@@ -6909,17 +6957,16 @@ async function postBills(p,v){
     const first=p.rows[indexes[0]];
     const supplierName=clean(first[idx(p.headers,'Supplier')]),
           invoice=clean(first[idx(p.headers,'Invoice_No')]),
-          billDate=csvDate(first[idx(p.headers,'Date')]),
-          dueDate=csvDate(first[idx(p.headers,'Due_Date')])||null,
+          billDate=billCsvDate(first[idx(p.headers,'Date')]),
+          dueDate=billCsvDate(first[idx(p.headers,'Due_Date')])||null,
           memo=clean(first[idx(p.headers,'Memo')]);
 
     const lines=indexes.map(i=>{
       const r=p.rows[i],groupRaw=norm(r[idx(p.headers,'Line_Group')]),
             purchase=['purchase item','purchaseitem','purchase'].includes(groupRaw),
             item=clean(r[idx(p.headers,'Purchase_Item')]),desc=clean(r[idx(p.headers,'Description')]),
-            acc=clean(r[idx(p.headers,'Account')]),qty=num(r[idx(p.headers,'Quantity')]),
-            rate=num(r[idx(p.headers,'Rate')]),vatRaw=num(r[idx(p.headers,'VAT_Rate')]),
-            vatPct=vatRaw>1?vatRaw:vatRaw*100;
+            acc=clean(r[idx(p.headers,'Account')]),qty=billQty(r[idx(p.headers,'Quantity')]),
+            rate=billAmount(r[idx(p.headers,'Rate')]),vatPct=billVat(r[idx(p.headers,'VAT_Rate')])*100;
       return {
         line_type:purchase?'Purchase Item':'Expenditure',
         stock_item_id:purchase?itemByName(item).id:null,
@@ -7076,7 +7123,7 @@ function enableButtons(){
 
 async function handleFile(file){
   const text=await file.text();
-  const p=parseCsv(text);
+  const p=activeKind==='bills'?parseBillsCsv(text):parseCsv(text);
   if(!p.rows.length)return toast('The CSV contains no data rows.');
 
   let validation;
