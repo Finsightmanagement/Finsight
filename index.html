@@ -8177,6 +8177,7 @@ body.fs-dark .fs-confirm-message{color:#98a2b3}
  }
  function isSaveAction(btn){
    if(!btn||btn.disabled||btn.id==='fsConfirmOk'||btn.id==='fsConfirmCancel')return false;
+   const active=visibleModal();if(!active||!active.contains(btn)||btn.closest('#fsFloatTabs')||btn.id==='minimizeModalBtn')return false;
    if(btn===bypassButton){bypassButton=null;return false}
    const tx=(btn.textContent||'').trim().replace(/\s+/g,' ');
    if(!tx)return false;
@@ -8773,7 +8774,7 @@ async function editBillSafe(b){
  q('#fs510EBSave').onclick=async()=>{const reason=prompt('Reason for editing this supplier bill:');if(!reason)return;const payload={bill_date:q('#fs510EBDate').value,invoice_no:q('#fs510EBInv').value.trim(),due_date:q('#fs510EBDue').value||null,memo:q('#fs510EBMemo').value||null};const {error}=await sb().rpc('edit_supplier_bill_header',{p_company_id:cid(),p_bill_id:b.id,p_changes:payload,p_reason:reason});if(error)return toast(error.message);closeModal();await window.finsightReloadCloudState?.();toast('Supplier bill updated')};
 }
 function installBills(){
- const table=findTableByHeaders(['supplier','invoice']);if(!table||q('#fs510Bills'))return;
+ const table=findTableByHeaders(['supplier','invoice']);if(!table)return;if(q('#fs510Bills')){enhance();return;}
  const host=addToolbarBefore(table,'fs510Bills',{apply:render,pdf:()=>exportBills('pdf'),xls:()=>exportBills('xls')});if(!host)return;
  function filtered(){const {f,t}=dates(host);return (state.bills||[]).filter(x=>inRange(x.date,f,t))}
  function render(){const {f,t}=dates(host);qa('tbody tr',table).forEach(tr=>{const d=q('td',tr)?.textContent?.trim();tr.style.display=inRange(d,f,t)?'':'none'});enhance()}
@@ -9019,6 +9020,8 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 #minimizeModalBtn{margin-left:auto}
 .fs-payment-table input[type=number]{width:125px}.fs-payment-table{min-width:690px}
 @media(max-width:900px){#fsFloatTabs{left:14px;max-width:calc(100vw - 28px)}}
+.fs-pay-summary-sticky{position:sticky;top:0;z-index:4;display:flex;align-items:center;justify-content:space-between;gap:15px;background:var(--card,#fff);border:1px solid var(--line,#e5e7eb);border-radius:12px;padding:14px 18px;margin-bottom:16px;box-shadow:0 4px 12px rgba(15,23,42,.06)}
+.fs-pay-summary-sticky span{font-weight:700;font-size:12px}.fs-pay-summary-sticky strong{font-size:21px}
 </style>
 <script id="finsight-supplier-maintenance-batch1">
 (function(){
@@ -9066,7 +9069,7 @@ let paymentBusy=false;
 function payBills(selectedBill){
  const initial=(state.bills||[]).find(b=>b.id===selectedBill);
  const supplier=initial?.supplier||currentSupplierNames()[0]||'';
- openModal('Pay Bills','',`<div class="form-grid"><div class="field"><label>Supplier</label><select id="fsPaySupplier" class="input">${currentSupplierNames().map(s=>`<option value="${esc(s)}" ${s===supplier?'selected':''}>${esc(s)}</option>`).join('')}</select></div><div class="field"><label>Payment Date</label><input id="fsPayDate" class="input" type="date" value="${today()}"></div><div class="field"><label>Pay From</label><select id="fsPayBank" class="input">${bankOptions()||allAssetOptions()}</select></div><div class="field"><label>Reference / Cheque No.</label><input id="fsPayRef" class="input"></div><div class="field full"><label>Memo</label><input id="fsPayMemo" class="input"></div></div><div class="statement-wrap" style="margin-top:16px"><table class="fs-payment-table"><thead><tr><th>Select</th><th>Invoice</th><th>Date</th><th>Outstanding</th><th>Amount to Pay</th></tr></thead><tbody id="fsPayRows"></tbody></table></div><div class="total-bar"><span>Total Payment</span><strong id="fsPayTotal">${money(0)}</strong></div><div id="fsPayStatus"></div><div class="modal-actions"><button type="button" class="btn primary" id="fsSubmitPayBills">Pay Selected Bills</button></div>`);
+ openModal('Pay Bills','',`<div class="fs-pay-summary-sticky"><span>Total Selected Payment</span><strong id="fsPayTotal">${money(0)}</strong></div><div class="form-grid"><div class="field"><label>Supplier</label><select id="fsPaySupplier" class="input">${currentSupplierNames().map(s=>`<option value="${esc(s)}" ${s===supplier?'selected':''}>${esc(s)}</option>`).join('')}</select></div><div class="field"><label>Payment Date</label><input id="fsPayDate" class="input" type="date" value="${today()}"></div><div class="field"><label>Pay From</label><select id="fsPayBank" class="input">${bankOptions()||allAssetOptions()}</select></div><div class="field"><label>Reference / Cheque No.</label><input id="fsPayRef" class="input"></div><div class="field full"><label>Memo</label><input id="fsPayMemo" class="input"></div></div><div class="statement-wrap" style="margin-top:16px"><table class="fs-payment-table"><thead><tr><th>Select</th><th>Invoice</th><th>Date</th><th>Outstanding</th><th>Amount to Pay</th></tr></thead><tbody id="fsPayRows"></tbody></table></div><div id="fsPayStatus" role="status"></div><div class="modal-actions"><button type="button" class="btn primary" id="fsSubmitPayBills">Pay Selected Bills</button></div>`);
  const supplierSelect=el('fsPaySupplier'),rows=el('fsPayRows');
  function total(){let n=0;rows.querySelectorAll('tr').forEach(tr=>{const check=tr.querySelector('input[type=checkbox]'),amount=tr.querySelector('input[type=number]');if(check?.checked)n+=Number(amount?.value||0)});el('fsPayTotal').textContent=money(n)}
  function redraw(){
@@ -9097,7 +9100,15 @@ function payBills(selectedBill){
    }
    status.textContent=`${posted} payment(s) posted successfully.`;
    if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
-   btn.textContent='Finish';btn.disabled=false;btn.onclick=()=>{el('modalBody').querySelectorAll('input,select,textarea').forEach(x=>x.dataset.fsInitialValue=JSON.stringify({value:x.value,checked:x.checked}));closeModal()};
+   btn.remove();
+   const actions=el('fsPayCompletionActions')||document.createElement('div');
+   actions.id='fsPayCompletionActions';actions.className='modal-actions';
+   actions.innerHTML='<span style="margin-right:auto;align-self:center;font-weight:700">Pay more bills?</span><button type="button" class="btn" id="fsPayDone">Done</button><button type="button" class="btn primary" id="fsPayMore">Pay More Bills</button>';
+   status.after(actions);
+   // A completed payment is no longer an unsaved form.
+   el('modalBody').querySelectorAll('input,select,textarea').forEach(x=>x.dataset.fsInitialValue=JSON.stringify({value:x.value,checked:x.checked}));
+   el('fsPayDone').onclick=()=>closeModal();
+   el('fsPayMore').onclick=()=>payBills(null);
   }catch(e){
    status.textContent=`${posted} of ${selected.length} payments posted. Remaining invoices were not submitted. Refresh supplier balances before retrying. ${e.message||e}`;
    if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState().catch(()=>{});
