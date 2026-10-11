@@ -566,7 +566,7 @@ body.online-loading .app{visibility:hidden}
 </section>
 
 <section class="page" id="bills">
-  <div class="section-title"><div><h3>Supplier Bills</h3><div class="small-note">One supplier bill can contain many lines using different accounts.</div></div><div><button class="btn" id="manageSuppliersBtn">Supplier List</button> <button class="btn" id="supplierStatementsBtn">Supplier Statements</button> <button class="btn primary" id="newBillBtn">+ Enter Bill</button></div></div>
+  <div class="section-title"><div><h3>Supplier Bills</h3><div class="small-note">One supplier bill can contain many lines using different accounts.</div></div><div><button class="btn" id="manageSuppliersBtn">Supplier List</button> <button class="btn" id="supplierStatementsBtn">Supplier Statements</button> <button class="btn" id="batchPayBillsBtn">Pay Bills</button> <button class="btn primary" id="newBillBtn">+ Enter Bill</button></div></div>
   <div class="card table-card"><table><thead><tr><th>Date</th><th>Supplier</th><th>Invoice</th><th>Lines</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Action</th></tr></thead><tbody id="billTable"></tbody></table></div>
 </section>
 
@@ -6771,12 +6771,11 @@ async function refreshCloud(){
 function setProgress(done,total,text=''){
   const bar=q('#cloudCsvProgressBar'),label=q('#cloudCsvProgressText');
   if(bar)bar.style.width=`${total?Math.round(done/total*100):0}%`;
-  if(label)label.textContent=text||`${done} of ${total} posted`;
+  if(label)label.textContent=text||`${done} of ${total} imported`;
 }
-function preview(title,fileName,p,acceptLabel='Post to Supabase'){
+function preview(title,fileName,p,acceptLabel='Import CSV'){
   openModal(title,`${fileName} · ${p.rows.length} rows`,
-    `<div class="insight"><strong>Validation passed</strong><p>These records will be posted to the live Supabase accounting database. This is not a browser-only import.</p></div>
-     <div class="insight"><strong>Detected columns</strong><p>${p.headers.map(esc).join(' · ')}</p></div>
+    `<div class="insight"><strong>Detected columns</strong><p>${p.headers.map(esc).join(' · ')}</p></div>
      <div style="overflow:auto"><table><thead><tr>${p.headers.map(x=>`<th>${esc(x)}</th>`).join('')}</tr></thead>
      <tbody>${p.rows.slice(0,5).map(r=>`<tr>${r.map(x=>`<td>${esc(x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
      ${p.rows.length>5?`<div class="small-note" style="margin-top:8px">Previewing the first 5 of ${p.rows.length} rows.</div>`:''}
@@ -6789,15 +6788,23 @@ function preview(title,fileName,p,acceptLabel='Post to Supabase'){
 }
 function beginPosting(total){
   const btn=q('#cloudCsvAccept'),wrap=q('#cloudCsvProgress');
-  if(btn){btn.disabled=true;btn.textContent='Posting…'}
+  if(btn){btn.disabled=true;btn.textContent='Importing…'}
   wrap?.classList.remove('hidden');
-  setProgress(0,total,'Preparing import…');
+  setProgress(0,total,'Preparing…');
 }
 function finishPosting(message,ok=true){
   const box=q('#cloudCsvResult');
   if(box){box.className='csv-result '+(ok?'ok':'warn');box.textContent=message}
   const btn=q('#cloudCsvAccept');
-  if(btn){btn.disabled=true;btn.textContent=ok?'Posted':'Import Stopped'}
+  if(btn){
+    btn.disabled=false;
+    btn.textContent=ok?'Finish':'Close';
+    btn.onclick=()=>{
+      const input=q('#csvInput');
+      if(input)input.value='';
+      closeModal();
+    };
+  }
 }
 function rowLabel(i){return `Row ${i+2}`}
 
@@ -6918,10 +6925,10 @@ async function validateBills(p){
     if(!date)badDate.push(rowLabel(i));
     if(!supplier||!supplierMap.get(norm(supplier))?.is_active)badSupplier.push(supplier||rowLabel(i));
     if(!purchase && !['expenditure','expense'].includes(groupRaw))badGroup.push(`${rowLabel(i)}: ${clean(r[idx(p.headers,'Line_Group')])||'blank'}`);
-    if(purchase && item && !stockMap.has(norm(item)))badItem.push(item);
-    // Blank stock items are account-based invoice lines: do not update item quantities.
-    const accountName=purchase&&!item?(acc||'Inventory'):acc;
-    if((!purchase||!item) && (!accountName||!expenseMap.has(norm(accountName))))badExpense.push(accountName||rowLabel(i));
+    if(purchase && (!item || !stockMap.has(norm(item))))badItem.push(item||rowLabel(i));
+    // Purchase Item lines require a registered stock item; expenditure lines use accounts.
+    const accountName=acc;
+    if(!purchase && (!accountName||!expenseMap.has(norm(accountName))))badExpense.push(accountName||rowLabel(i));
     if(!Number.isFinite(qty)||qty<=0||!Number.isFinite(rate)||rate<=0)badQtyRate.push(rowLabel(i));
     if(!Number.isFinite(vat)||vat<0||vat>1)badVat.push(`${rowLabel(i)}: ${clean(r[idx(p.headers,'VAT_Rate')])}`);
     const key=norm(supplier)+'|'+invoice;
@@ -6977,10 +6984,10 @@ async function postBills(p,v){
             acc=clean(r[idx(p.headers,'Account')]),qty=billQty(r[idx(p.headers,'Quantity')]),
             rate=billAmount(r[idx(p.headers,'Rate')]),vatPct=billVat(r[idx(p.headers,'VAT_Rate')])*100;
       return {
-        line_type:purchase&&item?'Purchase Item':'Expenditure',
-        stock_item_id:purchase&&item?v.stockMap.get(norm(item)).id:null,
+        line_type:purchase?'Purchase Item':'Expenditure',
+        stock_item_id:purchase?v.stockMap.get(norm(item)).id:null,
         description:desc||item||clean(r[idx(p.headers,'Memo')])||'Supplier invoice',
-        account_id:purchase&&item?v.foodCost.id:v.expenseMap.get(norm(purchase&&!item?(acc||'Inventory'):acc)).id,
+        account_id:purchase?v.foodCost.id:v.expenseMap.get(norm(acc)).id,
         quantity:qty,rate,vat_rate:vatPct
       };
     });
@@ -7124,7 +7131,7 @@ function enableButtons(){
     btn.classList.remove('production-disabled');
     btn.disabled=false;
     btn.textContent='Upload CSV';
-    btn.title='Upload and post CSV to Supabase';
+    btn.title='Upload CSV';
     btn.onclick=e=>{
       e.preventDefault();
       activeKind=btn.dataset.kind;
@@ -7167,9 +7174,9 @@ async function handleFile(file){
     if(showErrors(reportTitle,validation.errors))return;
   }
 
-  preview('Online CSV Preview',file.name,p,'Post to Supabase');
+  preview('CSV Preview',file.name,p,'Import CSV');
   q('#cloudCsvAccept').onclick=async()=>{
-    if(!confirm(`Post ${p.rows.length} CSV row${p.rows.length===1?'':'s'} to the live FinSight database?`))return;
+    if(!confirm(`Import ${p.rows.length} CSV row${p.rows.length===1?'':'s'}?`))return;
     const total=activeKind==='bills'?validation.groups.size:p.rows.length;
     beginPosting(total);
     try{
@@ -7178,9 +7185,9 @@ async function handleFile(file){
       if(activeKind==='petty')await postPetty(p,validation);
       if(activeKind==='stock')await postStock(p,validation);
       await refreshCloud();
-      setProgress(total,total,'Import completed successfully.');
-      finishPosting(`Success. ${activeKind==='bills'?total+' supplier invoice(s)':p.rows.length+' row(s)'} were posted to Supabase.`,true);
-      toast('CSV posted online successfully');
+      setProgress(total,total,'Import complete.');
+      finishPosting(`Import complete. ${activeKind==='bills'?total+' supplier invoice(s)':p.rows.length+' row(s)'} imported.`,true);
+      toast('CSV imported successfully');
     }catch(e){
       console.error('[FinSight V18.5.3 CSV]',e);
       finishPosting(`Import stopped: ${e?.message||String(e)}. Some earlier rows may already have posted. Do not immediately re-upload the same file; review the affected module first.`,false);
@@ -8151,7 +8158,15 @@ body.fs-dark .fs-confirm-message{color:#98a2b3}
    });
  }
  function visibleModal(){const b=document.getElementById('modalBackdrop');return b&&b.classList.contains('show')?b:null}
- function modalHasEditableForm(){const b=visibleModal();return !!(b&&b.querySelector('#modalBody input:not([disabled]):not([readonly]),#modalBody select:not([disabled]),#modalBody textarea:not([disabled])'))}
+ function modalHasEditableForm(){
+   const b=visibleModal();if(!b)return false;
+   const fields=[...b.querySelectorAll('#modalBody input:not([disabled]):not([readonly]),#modalBody select:not([disabled]),#modalBody textarea:not([disabled])')];
+   return fields.some(el=>{
+     if(!el.dataset.fsInitialValue)el.dataset.fsInitialValue=JSON.stringify({value:el.value,checked:el.checked});
+     const initial=JSON.parse(el.dataset.fsInitialValue);
+     return initial.value!==el.value||initial.checked!==el.checked;
+   });
+ }
  function isCloseAttempt(target){
    const b=visibleModal();if(!b)return false;
    if(target===b)return true;
@@ -8165,7 +8180,7 @@ body.fs-dark .fs-confirm-message{color:#98a2b3}
    if(btn===bypassButton){bypassButton=null;return false}
    const tx=(btn.textContent||'').trim().replace(/\s+/g,' ');
    if(!tx)return false;
-   if(/calculate|refresh|apply|today|month|export|download|print|view|edit|delete|remove|sample|upload csv/i.test(tx))return false;
+   if(/calculate|refresh|apply|today|month|export|download|print|view|edit|delete|remove|sample|upload csv|^pay bill$|^pay selected bills$/i.test(tx))return false;
    return /^(save\b|post\b|deposit funds\b|transfer funds\b|pay\b|receive\b|invite\b|update\b|create\b|add account\b|add supplier\b)/i.test(tx);
  }
  document.addEventListener('click',async function(e){
@@ -8995,6 +9010,131 @@ function drawStaff(root){root.innerHTML=`<div class="sr-card"><h3>Staff & PINs</
  $('#sr-add-staff').onclick=async()=>{const name=$('#sr-staff-name').value.trim(),pin=$('#sr-staff-pin').value;if(!name||!/^[0-9]{4,8}$/.test(pin))return msg('Enter a name and a 4–8 digit PIN.',true);try{await rpc('recon_staff_manage',{p_company:cid(),p_name:name,p_pin:pin});await refresh();msg('Clerk saved.')}catch(e){msg(e.message,true)}};
  $$('[data-staff]').forEach(b=>b.onclick=async()=>{const s=staff.find(x=>x.id===b.dataset.staff),pin=prompt('New 4–8 digit PIN for '+s.full_name);if(pin===null)return;if(!/^[0-9]{4,8}$/.test(pin))return msg('Use 4–8 digits.',true);try{await rpc('recon_staff_manage',{p_company:cid(),p_staff_id:s.id,p_name:s.full_name,p_pin:pin,p_active:s.is_active});msg('PIN updated.')}catch(e){msg(e.message,true)}})}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+</script>
+
+<style id="finsight-supplier-maintenance-css">
+#fsFloatTabs{position:fixed;bottom:18px;left:285px;z-index:9997;display:flex;gap:7px;flex-wrap:wrap;max-width:calc(100vw - 315px)}
+.fs-float-tab{border:1px solid #c7d2fe;background:white;border-radius:12px;padding:9px 12px;box-shadow:0 8px 26px rgba(15,23,42,.16);font-size:11px;cursor:pointer;color:#3730a3;font-weight:700}
+#minimizeModalBtn{margin-left:auto}
+.fs-payment-table input[type=number]{width:125px}.fs-payment-table{min-width:690px}
+@media(max-width:900px){#fsFloatTabs{left:14px;max-width:calc(100vw - 28px)}}
+</style>
+<script id="finsight-supplier-maintenance-batch1">
+(function(){
+'use strict';
+const el=id=>document.getElementById(id);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm=v=>String(v??'').trim().toLowerCase();
+const currentSupplierNames=()=>[...new Set((state.bills||[]).map(b=>b.supplier).filter(Boolean))].sort();
+const payable=b=>Math.max(0,+(Number(b.total||0)-paidOnBill(b.id)).toFixed(2));
+function bankOptions(){return (state.accounts||[]).filter(a=>a.active!==false&&a.type==='Asset'&&(norm(a.subtype||a.sub_type||'').includes('bank')||a.is_bank===true||a.isBank===true)).map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}
+function allAssetOptions(){return (state.accounts||[]).filter(a=>a.active!==false&&a.type==='Asset').map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('')}
+const money=n=>typeof fmt==='function'?fmt(n):Number(n).toFixed(2);
+function statementRows(supplier){
+ const arr=[];
+ (state.bills||[]).filter(b=>b.supplier===supplier).forEach(b=>{
+  arr.push({date:b.date||'',type:'Bill',ref:b.invoice||'',debit:Number(b.total||0),credit:0});
+  (state.billPayments||[]).filter(p=>p.billId===b.id).forEach(p=>arr.push({date:p.date||'',type:'Payment',ref:p.chequeNo||p.reference||'',debit:0,credit:Number(p.amount||0)}));
+ });
+ arr.sort((a,b)=>a.date.localeCompare(b.date)||((a.type==='Bill'?0:1)-(b.type==='Bill'?0:1)));
+ let running=0;return arr.map(r=>({...r,balance:(running+=r.debit-r.credit)}));
+}
+function csvCell(v){let s=String(v??'');return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
+function exportStatementCsv(supplier){
+ const rows=statementRows(supplier);const lines=[['Date','Type','Reference','Bill / Debit','Payment / Credit','Running Balance'],...rows.map(r=>[r.date,r.type,r.ref,r.debit||'',r.credit||'',r.balance])];
+ const blob=new Blob(['\ufeff'+lines.map(line=>line.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});
+ const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='Supplier_Statement_'+supplier.replace(/[^a-z\d_-]+/gi,'_')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function printStatement(supplier){
+ const rows=statementRows(supplier);const win=window.open('','_blank');if(!win){toast('Allow pop-ups to export PDF');return}
+ win.document.write('<!doctype html><html><head><title>Supplier Statement</title><style>body{font:13px Arial;margin:32px}table{border-collapse:collapse;width:100%}th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}h2{margin-bottom:4px}td:last-child,th:last-child{text-align:right}</style></head><body><h2>Supplier Statement</h2><p>'+esc(supplier)+'</p><table><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Bill / Debit</th><th>Payment / Credit</th><th>Balance</th></tr></thead><tbody>'+rows.map(r=>'<tr><td>'+esc(r.date)+'</td><td>'+esc(r.type)+'</td><td>'+esc(r.ref)+'</td><td>'+money(r.debit||0)+'</td><td>'+money(r.credit||0)+'</td><td>'+money(r.balance)+'</td></tr>').join('')+'</tbody></table></body></html>');win.document.close();setTimeout(()=>win.print(),400);
+}
+function attachStatements(){
+ const body=el('modalBody');if(!body||!el('modalBackdrop')?.classList.contains('show'))return;
+ const title=el('modalTitle')?.textContent||'';
+ if(!/Supplier Statements?|Supplier Statement/i.test(title))return;
+ if(el('fsStatementExports'))return;
+ const tools=document.createElement('div');tools.id='fsStatementExports';tools.className='modal-actions';
+ tools.innerHTML='<button type="button" class="btn" id="fsSupplierExcel">Export Excel CSV</button><button type="button" class="btn" id="fsSupplierPdf">Export PDF</button>';
+ body.appendChild(tools);
+ const selected=()=>el('v7StmtSupplier')?.value||el('stmtSupplier')?.value||el('modalSub')?.textContent||'';
+ el('fsSupplierExcel').onclick=()=>exportStatementCsv(selected());
+ el('fsSupplierPdf').onclick=()=>printStatement(selected());
+}
+let paymentBusy=false;
+function payBills(selectedBill){
+ const initial=(state.bills||[]).find(b=>b.id===selectedBill);
+ const supplier=initial?.supplier||currentSupplierNames()[0]||'';
+ openModal('Pay Bills','',`<div class="form-grid"><div class="field"><label>Supplier</label><select id="fsPaySupplier" class="input">${currentSupplierNames().map(s=>`<option value="${esc(s)}" ${s===supplier?'selected':''}>${esc(s)}</option>`).join('')}</select></div><div class="field"><label>Payment Date</label><input id="fsPayDate" class="input" type="date" value="${today()}"></div><div class="field"><label>Pay From</label><select id="fsPayBank" class="input">${bankOptions()||allAssetOptions()}</select></div><div class="field"><label>Reference / Cheque No.</label><input id="fsPayRef" class="input"></div><div class="field full"><label>Memo</label><input id="fsPayMemo" class="input"></div></div><div class="statement-wrap" style="margin-top:16px"><table class="fs-payment-table"><thead><tr><th>Select</th><th>Invoice</th><th>Date</th><th>Outstanding</th><th>Amount to Pay</th></tr></thead><tbody id="fsPayRows"></tbody></table></div><div class="total-bar"><span>Total Payment</span><strong id="fsPayTotal">${money(0)}</strong></div><div id="fsPayStatus"></div><div class="modal-actions"><button type="button" class="btn primary" id="fsSubmitPayBills">Pay Selected Bills</button></div>`);
+ const supplierSelect=el('fsPaySupplier'),rows=el('fsPayRows');
+ function total(){let n=0;rows.querySelectorAll('tr').forEach(tr=>{const check=tr.querySelector('input[type=checkbox]'),amount=tr.querySelector('input[type=number]');if(check?.checked)n+=Number(amount?.value||0)});el('fsPayTotal').textContent=money(n)}
+ function redraw(){
+  rows.innerHTML=(state.bills||[]).filter(b=>b.supplier===supplierSelect.value&&payable(b)>.005).map(b=>{
+   const max=payable(b),chosen=b.id===selectedBill;
+   return `<tr data-id="${esc(b.id)}" data-max="${max}"><td><input type="checkbox" ${chosen?'checked':''}></td><td>${esc(b.invoice||'—')}</td><td>${esc(b.date)}</td><td>${money(max)}</td><td><input class="input" type="number" min="0.01" max="${max}" step="0.01" value="${max.toFixed(2)}"></td></tr>`;
+  }).join('')||'<tr><td colspan="5">No outstanding invoices for this supplier.</td></tr>';
+  rows.querySelectorAll('input').forEach(input=>input.addEventListener('input',total));total();
+ }
+ supplierSelect.onchange=()=>{selectedBill=null;redraw()};redraw();
+ el('fsSubmitPayBills').onclick=async()=>{
+  if(paymentBusy)return;
+  const selected=[...rows.querySelectorAll('tr[data-id]')].filter(tr=>tr.querySelector('input[type=checkbox]')?.checked).map(tr=>({billId:tr.dataset.id,amount:Number(tr.querySelector('input[type=number]').value),max:Number(tr.dataset.max)}));
+  if(!selected.length)return toast('Select at least one invoice');
+  if(selected.some(x=>!Number.isFinite(x.amount)||x.amount<=0||x.amount>x.max+.005))return toast('Enter valid payment amounts');
+  const cid=window.finsightOnline?.companyId,sb=window.finsightSupabase;
+  const ap=(state.accounts||[]).find(a=>norm(a.name)==='accounts payable'&&a.type==='Liability');
+  const bank=el('fsPayBank').value,date=el('fsPayDate').value,ref=el('fsPayRef').value.trim(),memo=el('fsPayMemo').value.trim();
+  if(!cid||!sb)return toast('Cloud connection unavailable');
+  if(!ap||!bank||!date)return toast('Choose a payment date and bank account');
+  const btn=el('fsSubmitPayBills'),status=el('fsPayStatus');paymentBusy=true;btn.disabled=true;
+  let posted=0;
+  try{
+   for(const row of selected){
+    status.textContent=`Posting ${posted+1} of ${selected.length}…`;
+    const {error}=await sb.rpc('post_supplier_bill_payment',{p_company_id:cid,p_bill_id:row.billId,p_payment_date:date,p_payment_account_id:bank,p_accounts_payable_account_id:ap.id,p_amount:row.amount,p_reference:ref||null,p_memo:memo||null});
+    if(error)throw error;posted++;
+   }
+   status.textContent=`${posted} payment(s) posted successfully.`;
+   if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
+   btn.textContent='Finish';btn.disabled=false;btn.onclick=()=>{el('modalBody').querySelectorAll('input,select,textarea').forEach(x=>x.dataset.fsInitialValue=JSON.stringify({value:x.value,checked:x.checked}));closeModal()};
+  }catch(e){
+   status.textContent=`${posted} of ${selected.length} payments posted. Remaining invoices were not submitted. Refresh supplier balances before retrying. ${e.message||e}`;
+   if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState().catch(()=>{});
+   btn.disabled=true;toast('Payment batch incomplete; review posted payments');
+  }finally{paymentBusy=false}
+ };
+}
+window.payBill=function(id){payBills(id)};
+function bind(){const btn=el('batchPayBillsBtn');if(btn)btn.onclick=()=>payBills(null);document.querySelectorAll('.payBill').forEach(b=>b.onclick=()=>payBills(b.dataset.id));}
+const oldOpen=window.openModal;
+// Store minimized form DOM nodes so input values and event handlers survive.
+const drafts=new Map();let seq=0;
+const tabs=document.createElement('div');tabs.id='fsFloatTabs';document.body.appendChild(tabs);
+function renderTabs(){tabs.innerHTML='';drafts.forEach((d,id)=>{const tab=document.createElement('button');tab.className='fs-float-tab';tab.textContent=d.title+'  ↗';tab.onclick=()=>restore(id);tabs.appendChild(tab)})}
+function minimize(){
+ const backdrop=el('modalBackdrop');if(!backdrop?.classList.contains('show'))return;
+ const body=el('modalBody'),nodes=[...body.childNodes],id=++seq,title=el('modalTitle').textContent,subtitle=el('modalSub').textContent;
+ nodes.forEach(n=>body.removeChild(n));drafts.set(id,{title,subtitle,nodes});backdrop.classList.remove('show');renderTabs();
+}
+function restore(id){
+ const d=drafts.get(id);if(!d)return;
+ if(el('modalBackdrop')?.classList.contains('show'))minimize();
+ const body=el('modalBody');body.replaceChildren(...d.nodes);el('modalTitle').textContent=d.title;el('modalSub').textContent=d.subtitle;
+ el('modalBackdrop').classList.add('show');drafts.delete(id);renderTabs();
+}
+const handle=el('modalDragHandle');if(handle){const b=document.createElement('button');b.type='button';b.id='minimizeModalBtn';b.className='btn';b.textContent='Minimize';b.onclick=minimize;handle.insertBefore(b,el('closeModalBtn'))}
+window.openModal=function(){const result=oldOpen.apply(this,arguments);setTimeout(()=>{el('modalBody')?.querySelectorAll('input,select,textarea').forEach(x=>x.dataset.fsInitialValue=JSON.stringify({value:x.value,checked:x.checked}));attachStatements()},0);return result};
+// Direct calls to openModal are global (function declarations), update binding where allowed.
+try{openModal=window.openModal}catch(_){}
+const existingRender=window.renderTables;
+if(typeof existingRender==='function'){
+ window.renderTables=function(){const result=existingRender.apply(this,arguments);bind();return result};
+ try{renderTables=window.renderTables}catch(_){}
+}
+document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(bind,20));
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();
+setTimeout(bind,700);
 })();
 </script>
 </body></html>
