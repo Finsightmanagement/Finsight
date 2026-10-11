@@ -6840,19 +6840,31 @@ async function validateSales(p){
 async function postSales(p,v){
   const {cid}=cloud();
   const total=p.rows.length;
-  for(let i=0;i<total;i++){
-    const r=p.rows[i];
-    const pay=clean(r[idx(p.headers,'Payment_Type')]),cat=clean(r[idx(p.headers,'Category')]),
-          inc=clean(r[idx(p.headers,'Income_Account')]),date=csvDate(r[idx(p.headers,'Date')]),
-          memo=clean(r[idx(p.headers,'Memo')]),item=clean(r[idx(p.headers,'Item')])||'Unspecified',
-          qty=num(r[idx(p.headers,'Quantity')]),amount=num(r[idx(p.headers,'Line_Revenue')]);
-    await rpc('post_sale',{
-      p_company_id:cid,p_sale_date:date,p_payment_type_id:v.paymentMap.get(norm(pay)).id,
-      p_income_account_id:accountByName(inc,['Income']).id,
-      p_sales_receivable_account_id:v.receivable.id,p_total_amount:amount,p_memo:memo||null,
-      p_items:[{category_id:v.categoryMap.get(norm(cat)).id,item_name:item,quantity:qty,line_revenue:amount}]
-    });
-    setProgress(i+1,total,`Sales: ${i+1} of ${total} rows posted`);
+  // Post a small, bounded batch at a time. Do not start later batches after an error.
+  // Each record retains the original post_sale RPC and its journal behaviour.
+  const batchSize=3;
+  let completed=0;
+  for(let start=0;start<total;start+=batchSize){
+    const batch=p.rows.slice(start,start+batchSize);
+    const results=await Promise.allSettled(batch.map(async(r)=>{
+      const pay=clean(r[idx(p.headers,'Payment_Type')]),cat=clean(r[idx(p.headers,'Category')]),
+            inc=clean(r[idx(p.headers,'Income_Account')]),date=csvDate(r[idx(p.headers,'Date')]),
+            memo=clean(r[idx(p.headers,'Memo')]),item=clean(r[idx(p.headers,'Item')])||'Unspecified',
+            qty=num(r[idx(p.headers,'Quantity')]),amount=num(r[idx(p.headers,'Line_Revenue')]);
+      await rpc('post_sale',{
+        p_company_id:cid,p_sale_date:date,p_payment_type_id:v.paymentMap.get(norm(pay)).id,
+        p_income_account_id:accountByName(inc,['Income']).id,
+        p_sales_receivable_account_id:v.receivable.id,p_total_amount:amount,p_memo:memo||null,
+        p_items:[{category_id:v.categoryMap.get(norm(cat)).id,item_name:item,quantity:qty,line_revenue:amount}]
+      });
+    }));
+    completed+=results.filter(x=>x.status==='fulfilled').length;
+    setProgress(start+batch.length,total,`Sales: ${completed} posted of ${total} rows processed`);
+    const failed=results.findIndex(x=>x.status==='rejected');
+    if(failed!==-1){
+      const reason=results[failed].reason;
+      throw new Error(`Sales CSV row ${start+failed+2} failed. ${completed} of ${total} rows were successfully posted in this attempt. ${reason?.message||String(reason)}`);
+    }
   }
 }
 
@@ -9077,14 +9089,23 @@ function payBills(selectedBill){
    const max=payable(b),chosen=b.id===selectedBill;
    return `<tr data-id="${esc(b.id)}" data-max="${max}"><td><input type="checkbox" ${chosen?'checked':''}></td><td>${esc(b.invoice||'—')}</td><td>${esc(b.date)}</td><td>${money(max)}</td><td><input class="input" type="number" min="0.01" max="${max}" step="0.01" value="${max.toFixed(2)}"></td></tr>`;
   }).join('')||'<tr><td colspan="5">No outstanding invoices for this supplier.</td></tr>';
-  rows.querySelectorAll('input').forEach(input=>input.addEventListener('input',total));total();
+  rows.querySelectorAll('input').forEach(input=>input.addEventListener('input',()=>{
+   if(input.type==='number'){
+    const max=Number(input.closest('tr')?.dataset.max||0);
+    if(input.value!==''&&Number(input.value)>max){input.value=max.toFixed(2);toast('Payment cannot exceed invoice outstanding balance');}
+    if(input.value!==''&&Number(input.value)<0)input.value='0';
+   }
+   total();
+  }));total();
  }
  supplierSelect.onchange=()=>{selectedBill=null;redraw()};redraw();
  el('fsSubmitPayBills').onclick=async()=>{
   if(paymentBusy)return;
   const selected=[...rows.querySelectorAll('tr[data-id]')].filter(tr=>tr.querySelector('input[type=checkbox]')?.checked).map(tr=>({billId:tr.dataset.id,amount:Number(tr.querySelector('input[type=number]').value),max:Number(tr.dataset.max)}));
   if(!selected.length)return toast('Select at least one invoice');
-  if(selected.some(x=>!Number.isFinite(x.amount)||x.amount<=0||x.amount>x.max+.005))return toast('Enter valid payment amounts');
+  if(selected.some(x=>!Number.isFinite(x.amount)||x.amount<=0||x.amount>x.max+.005))return toast('Payment cannot exceed an invoice outstanding balance');
+  // Recheck against current in-memory balances, not only the earlier input maximum.
+  if(selected.some(x=>{const bill=(state.bills||[]).find(b=>b.id===x.billId);return !bill||x.amount>payable(bill)+.005;}))return toast('Invoice balances have changed. Reopen Pay Bills to refresh amounts');
   const cid=window.finsightOnline?.companyId,sb=window.finsightSupabase;
   const ap=(state.accounts||[]).find(a=>norm(a.name)==='accounts payable'&&a.type==='Liability');
   const bank=el('fsPayBank').value,date=el('fsPayDate').value,ref=el('fsPayRef').value.trim(),memo=el('fsPayMemo').value.trim();
