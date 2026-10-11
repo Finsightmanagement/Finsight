@@ -6903,7 +6903,8 @@ async function validateBills(p){
 
   const supplierMap=await fetchMap('suppliers');
   const stockMap=new Map((state.stockItems||[]).map(x=>[norm(x.name),x]));
-  const expenseMap=new Map((state.accounts||[]).filter(a=>a.active!==false&&['Expense','Cost of Sales'].includes(a.type)).map(a=>[norm(a.name),a]));
+  const expenseMap=new Map((state.accounts||[]).filter(a=>a.active!==false&&(['Expense','Cost of Sales'].includes(a.type)||(a.type==='Asset'&&norm(a.name)==='inventory'))).map(a=>[norm(a.name),a]));
+  const inventoryAccount=accountByName('Inventory',['Asset']);
   const postedKeys=new Set((state.bills||[]).map(b=>norm(b.supplier)+'|'+norm(b.invoice)));
   const badSupplier=[],badItem=[],badExpense=[],badDate=[],badQtyRate=[],badVat=[],badGroup=[],duplicates=[];
   const groups=new Map();
@@ -6917,8 +6918,10 @@ async function validateBills(p){
     if(!date)badDate.push(rowLabel(i));
     if(!supplier||!supplierMap.get(norm(supplier))?.is_active)badSupplier.push(supplier||rowLabel(i));
     if(!purchase && !['expenditure','expense'].includes(groupRaw))badGroup.push(`${rowLabel(i)}: ${clean(r[idx(p.headers,'Line_Group')])||'blank'}`);
-    if(purchase && (!item||!stockMap.has(norm(item))))badItem.push(item||rowLabel(i));
-    if(!purchase && (!acc||!expenseMap.has(norm(acc))))badExpense.push(acc||rowLabel(i));
+    if(purchase && item && !stockMap.has(norm(item)))badItem.push(item);
+    // Blank stock items are account-based invoice lines: do not update item quantities.
+    const accountName=purchase&&!item?(acc||'Inventory'):acc;
+    if((!purchase||!item) && (!accountName||!expenseMap.has(norm(accountName))))badExpense.push(accountName||rowLabel(i));
     if(!Number.isFinite(qty)||qty<=0||!Number.isFinite(rate)||rate<=0)badQtyRate.push(rowLabel(i));
     if(!Number.isFinite(vat)||vat<0||vat>1)badVat.push(`${rowLabel(i)}: ${clean(r[idx(p.headers,'VAT_Rate')])}`);
     const key=norm(supplier)+'|'+invoice;
@@ -6935,6 +6938,7 @@ async function validateBills(p){
 
   const ap=accountByName('Accounts Payable',['Liability']);
   const foodCost=accountByName('Food Cost',['Cost of Sales']);
+  const hasTrackedPurchase=p.rows.some(r=>['purchase item','purchaseitem','purchase'].includes(norm(r[idx(p.headers,'Line_Group')]))&&clean(r[idx(p.headers,'Purchase_Item')]));
   const hasVat=p.rows.some(r=>billVat(r[idx(p.headers,'VAT_Rate')])>0);
   const inputVat=hasVat?accountByName('Input VAT',['Asset']):null;
   const errors=[
@@ -6948,9 +6952,9 @@ async function validateBills(p){
     {label:'Duplicate Supplier Invoices Already Posted',column:'Supplier / Invoice',items:unique(duplicates)}
   ];
   if(!ap)errors.push({label:'Required Chart of Accounts entry missing',column:'Account',items:['Accounts Payable']});
-  if(!foodCost)errors.push({label:'Required Chart of Accounts entry missing',column:'Account',items:['Food Cost']});
+  if(hasTrackedPurchase&&!foodCost)errors.push({label:'Required Chart of Accounts entry missing',column:'Account',items:['Food Cost']});
   if(hasVat&&!inputVat)errors.push({label:'Required Chart of Accounts entry missing',column:'Account',items:['Input VAT']});
-  return {errors,supplierMap,groups,ap,foodCost,inputVat,stockMap,expenseMap};
+  return {errors,supplierMap,groups,ap,foodCost,inputVat,stockMap,expenseMap,inventoryAccount};
 }
 async function postBills(p,v){
   const {cid}=cloud();
@@ -6973,10 +6977,10 @@ async function postBills(p,v){
             acc=clean(r[idx(p.headers,'Account')]),qty=billQty(r[idx(p.headers,'Quantity')]),
             rate=billAmount(r[idx(p.headers,'Rate')]),vatPct=billVat(r[idx(p.headers,'VAT_Rate')])*100;
       return {
-        line_type:purchase?'Purchase Item':'Expenditure',
-        stock_item_id:purchase?v.stockMap.get(norm(item)).id:null,
-        description:desc||item||(purchase?'Purchase Item':'Expenditure'),
-        account_id:purchase?v.foodCost.id:v.expenseMap.get(norm(acc)).id,
+        line_type:purchase&&item?'Purchase Item':'Expenditure',
+        stock_item_id:purchase&&item?v.stockMap.get(norm(item)).id:null,
+        description:desc||item||clean(r[idx(p.headers,'Memo')])||'Supplier invoice',
+        account_id:purchase&&item?v.foodCost.id:v.expenseMap.get(norm(purchase&&!item?(acc||'Inventory'):acc)).id,
         quantity:qty,rate,vat_rate:vatPct
       };
     });
