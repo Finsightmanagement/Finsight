@@ -5637,7 +5637,45 @@ async function rpc(name,args){const sb=window.finsightSupabase,cid=window.finsig
 function dates(f,t){const now=new Date(),end=t||now.toISOString().slice(0,10),start=f||new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString().slice(0,10);return {start,end};}
 function hdr(title,start,end){return typeof reportHeader==='function'?reportHeader(title,start,end):`<div class="report-headline"><h3>${esc(title)}</h3><div>${esc(start)} to ${esc(end)}</div></div>`;}
 async function pnl(start,end){return Promise.all([rpc('get_profit_and_loss',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end}),rpc('get_profit_and_loss_summary',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end})]);}
-function pnlHTML(rows,summary){const s=first(summary),rev=n(s,'total_revenue','revenue'),cogs=n(s,'total_cost_of_sales','total_cogs','cost_of_sales'),gross=n(s,'gross_profit'),opex=n(s,'total_expenses','operating_expenses','expenses'),net=n(s,'net_profit','net_income');const pct=x=>rev?(Number(x)/rev*100).toFixed(1)+'%':'0.0%';const detail=arr(rows);const sections=['Revenue','Cost of Sales','Expenses'];let body='';for(const sec of sections){const rs=detail.filter(r=>String(v(r,'section','account_type')).toLowerCase()===sec.toLowerCase());if(rs.length){body+=`<tr class="section-row"><td colspan="3">${esc(sec)}</td></tr>`+rs.map(r=>`<tr><td>${esc(v(r,'account_name','name'))}</td><td>${money(n(r,'amount','balance'))}</td><td>${pct(n(r,'amount','balance'))}</td></tr>`).join('');}}body+=`<tr class="subtotal"><td>Total Revenue</td><td>${money(rev)}</td><td>${pct(rev)}</td></tr><tr class="subtotal"><td>Total Cost of Sales</td><td>${money(cogs)}</td><td>${pct(cogs)}</td></tr><tr class="subtotal"><td>Gross Profit / (Loss)</td><td>${money(gross)}</td><td>${pct(gross)}</td></tr><tr class="subtotal"><td>Total Expenses</td><td>${money(opex)}</td><td>${pct(opex)}</td></tr><tr class="grand"><td>Net Profit / (Loss)</td><td>${money(net)}</td><td>${pct(net)}</td></tr>`;return `<table class="live-fin-table pnl-statement"><thead><tr><th>Account</th><th>Amount</th><th>% of Revenue</th></tr></thead><tbody>${body}</tbody></table>`;}
+function pnlHTML(rows,summary){
+  // Presentation-only: all financial totals come from the existing Supabase P&L RPCs.
+  // Do not synthesize tax or inventory movements when the RPC doesn't supply them.
+  const s=first(summary), detail=arr(rows);
+  const rev=n(s,'total_revenue','revenue');
+  const cogs=n(s,'total_cost_of_sales','total_cogs','cost_of_sales');
+  const gross=n(s,'gross_profit');
+  const expenses=n(s,'total_expenses','operating_expenses','expenses');
+  const net=n(s,'net_profit','net_income');
+  const pct=x=>rev?(Number(x)/rev*100).toFixed(1)+'%':'0.0%';
+  const tr=(label,value,cls='',percent=true)=>`<tr${cls?' class="'+cls+'"':''}><td>${esc(label)}</td><td>${value==null?'—':money(value)}</td><td>${value==null||!percent?'—':pct(value)}</td></tr>`;
+  const heading=label=>`<tr class="section-heading"><td colspan="3">${esc(label)}</td></tr>`;
+  const section=label=>detail.filter(r=>String(v(r,'section','account_type')).trim().toLowerCase()===label.toLowerCase());
+  const accountRows=rs=>rs.map(r=>tr(v(r,'account_name','name')||'Unnamed account',n(r,'amount','balance'))).join('');
+  const revenueRows=section('Revenue');
+  const cogsRows=section('Cost of Sales');
+  const expenseRows=section('Expenses');
+  const has=(...keys)=>keys.some(k=>s[k]!==null&&s[k]!==undefined&&s[k]!=='');
+  const optional=(label,keys)=>tr(label,has(...keys)?n(s,...keys):null);
+  // Breakdown is displayed only when explicitly returned by the existing live summary.
+  const stockFields=[
+    ['Opening Stock',['opening_stock','opening_inventory']],
+    ['Add: Purchases (VAT Exclusive)',['purchases','inventory_purchases','stock_purchases']],
+    ['Goods Available for Sale',['goods_available_for_sale','goods_available']],
+    ['Less: Closing Stock',['closing_stock','closing_inventory']]
+  ];
+  const taxFields=[['Less: VAT @ 16%',['vat','vat_amount','sales_vat']],['Less: Catering Levy',['catering_levy','levy_amount']]];
+  let body=heading('Revenue')+accountRows(revenueRows)+tr('Total Revenue',rev,'subtotal');
+  for(const [name,keys] of taxFields)body+=optional(name,keys);
+  body+=optional('Revenue After VAT & Catering Levy',['revenue_after_tax','revenue_exclusive','net_revenue']);
+  body+=heading('Cost of Sales');
+  for(const [name,keys] of stockFields)body+=optional(name,keys);
+  body+=accountRows(cogsRows)+tr('Total Cost of Sales',cogs,'subtotal');
+  body+=tr('Gross Profit / (Loss)',gross,'grand');
+  body+=heading('Operating Expenses')+accountRows(expenseRows)+tr('Total Expenses',expenses,'subtotal')+tr('Net Profit / (Loss)',net,'grand');
+  const missing=[...taxFields,...stockFields].some(([,keys])=>!has(...keys));
+  const notice=missing?'<div class="small-note" style="margin:10px 0">— indicates a breakdown not separately provided by the live P&amp;L. Totals remain unchanged from the posted journal report.</div>':'';
+  return `<table class="live-fin-table pnl-statement"><thead><tr><th>Account</th><th>Amount</th><th>% of Revenue</th></tr></thead><tbody>${body}</tbody></table>${notice}`;
+}
 async function cash(start,end){return Promise.all([rpc('get_cash_flow',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end}),rpc('get_cash_flow_summary',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end})]);}
 function cashPaymentType(r){
   const ref=String(v(r,'reference','memo')||'').trim();
