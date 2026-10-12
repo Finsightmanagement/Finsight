@@ -4330,9 +4330,10 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
       const {data:clerkTypes,error:clerkTypesError}=await sb.from('payment_types').select('name,is_active').eq('company_id',cid);
       if(clerkTypesError)throw clerkTypesError;
       state.paymentTypes=(clerkTypes||[]).filter(x=>x.is_active!==false).map(x=>x.name);
-      document.body.classList.remove('online-loading');gate.classList.add('hidden');
+      document.body.classList.add('sr-clerk-session');
       setStatus((profile.full_name||user.email||'Clerk')+' · '+company.name+' · Clerk','ok');
       document.dispatchEvent(new CustomEvent('finsight:cloud-state-loaded',{detail:{companyId:cid,role:'clerk'}}));
+      document.body.classList.remove('online-loading');gate.classList.add('hidden');
       return;
     }
     setupUsersRoles(access);
@@ -8978,13 +8979,14 @@ function init(){if($('#sales-recon-workspace'))return;const nav=$('.sidebar .nav
  const item=document.createElement('div');item.className='nav-item';item.dataset.page='sales-recon-workspace';item.innerHTML='<div class="dot"></div><span>Sales Reconciliation</span>';nav.parentNode.insertBefore(item,nav);
  const page=document.createElement('section');page.id='sales-recon-workspace';page.className='page';page.innerHTML=`<div class="sr-toolbar"><button class="sr-tab on" data-rt="form">Reconciliation</button><button class="sr-tab" data-rt="history">History</button><button class="sr-tab" data-rt="staff">Staff & PINs</button><button class="sr-btn" id="sr-refresh">Refresh</button></div><div id="sr-root"></div>`;main.appendChild(page);
  item.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();open();},true);
- $$('[data-rt]',page).forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.rt;render()}));$('#sr-refresh').onclick=refresh;
- document.addEventListener('finsight:cloud-state-loaded',async()=>{if(isClerk())lockClerk();await refresh();if(isClerk())open()});
- if(platform().companyId){refresh();if(isClerk()){lockClerk();open()}}
+ $$('[data-rt]',page).forEach(b=>b.addEventListener('click',()=>{if(isClerk()&&!viewerStaff)return render();mode=b.dataset.rt;render()}));$('#sr-refresh').onclick=refresh;
+ document.addEventListener('finsight:cloud-state-loaded',async()=>{if(isClerk()){lockClerk();open();}await refresh();});
+ if(platform().companyId){if(isClerk()){lockClerk();open()}refresh();}
  }
 function lockClerk(){document.body.classList.toggle('sr-clerk-session',isClerk());if(!isClerk())return;$$('.sidebar .nav-item').forEach(n=>{if(n.dataset.page!=='sales-recon-workspace')n.style.display='none'});$$('.sidebar .nav-section').forEach(n=>n.style.display='none');const menu=$('#sr-refresh');if(menu)menu.style.display='none';}
 function open(){$$('.page').forEach(p=>p.classList.toggle('active',p.id==='sales-recon-workspace'));$$('.sidebar .nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page==='sales-recon-workspace'));$('#pageTitle').textContent='Sales Reconciliation';if($('#pageSub'))$('#pageSub').textContent='';render()}
 function render(){const root=$('#sr-root');if(!root)return;const clerk=isClerk();$$('[data-rt]').forEach(b=>{b.classList.toggle('on',b.dataset.rt===mode);b.hidden=(b.dataset.rt==='staff'&&!isAdmin())});if(mode==='staff'&&!isAdmin())mode='form';
+ if(clerk&&!viewerStaff){mode='form';$$('[data-rt]').forEach(b=>b.hidden=true);}
  if(clerk&&!viewerStaff){root.innerHTML=`<div class="sr-card sr-identify"><h3>Clerk Identification</h3><div class="sr-field"><label>Clerk Name</label><select id="sr-identity"><option value="">Select Clerk</option>${staff.filter(s=>s.is_active).map(s=>`<option value="${s.id}">${esc(s.full_name)}</option>`).join('')}</select></div><div class="sr-field"><label>Personal PIN</label><input id="sr-identity-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8"></div><button class="sr-btn primary" id="sr-identify">Continue</button><div id="rc-msg"></div></div>`;
  $('#sr-identify').onclick=async()=>{const staffId=$('#sr-identity').value,pin=$('#sr-identity-pin').value;if(!staffId||!pin)return msg('Select your name and enter your PIN.',true);try{const valid=await rpc('recon_check_pin',{p_company:cid(),p_staff_id:staffId,p_pin:pin});if(!valid)throw Error('Incorrect PIN');viewerStaff=staffId;viewerPin=pin;form.staffId=staffId;await refresh();}catch(e){msg(e.message,true)}};return;}
  if(mode==='form')drawForm(root);else if(mode==='history')drawHistory(root);else drawStaff(root);
@@ -9048,7 +9050,7 @@ async function save(action){if(loading)return;let error=validate(action);if(erro
  if(isClerk()&&selectedId&& !viewerPin)return msg('PIN is required for existing records.',true);
  const note=form.reviewNote||'';if(action==='return'&&!note.trim())return msg('Enter a reason for returning.',true);
  if(action==='approve'&&Math.abs(difference()-explained())>.005&&!note.trim())return msg('Document the unresolved variance before approval.',true);
- try{loading=true;const existing=selectedId?records.find(x=>x.id===selectedId):null;const lockedPreparer=existing&&canReview();const savedData=payload();if(lockedPreparer)savedData.staff=existing.data?.staff||staff.find(s=>s.id===existing.preparer_staff_id)?.full_name||'';await rpc('recon_save',{p_company:cid(),p_data:savedData,p_action:action,p_id:selectedId,p_staff_id:lockedPreparer?existing.preparer_staff_id:(form.staffId||null),p_pin:isClerk()?viewerPin:null,p_review_note:note});selectedId=null;form=fresh();if(isClerk())form.staffId=viewerStaff;mode='history';await refresh();}catch(e){msg(e.message,true)}finally{loading=false}}
+ try{loading=true;const existing=selectedId?records.find(x=>x.id===selectedId):null;const lockedPreparer=existing&&canReview();const savedData=payload();if(lockedPreparer)savedData.staff=existing.data?.staff||staff.find(s=>s.id===existing.preparer_staff_id)?.full_name||'';await rpc('recon_save',{p_company:cid(),p_data:savedData,p_action:action,p_id:selectedId,p_staff_id:lockedPreparer?existing.preparer_staff_id:(form.staffId||null),p_pin:isClerk()?viewerPin:null,p_review_note:note});selectedId=null;form=fresh();if(isClerk()&&action==='submit'){viewerStaff=null;viewerPin='';records=[];mode='form';await refresh();}else{if(isClerk())form.staffId=viewerStaff;mode='history';await refresh();}}catch(e){msg(e.message,true)}finally{loading=false}}
 function editRecord(id){const r=records.find(x=>x.id===id);if(!r)return;if(isClerk()&&!['Draft','Returned'].includes(r.status))return;selectedId=id;form={...fresh(),date:r.data?.date||r.sales_date,pos:String(r.data?.pos??''),staffId:r.preparer_staff_id||'',staffName:r.data?.staff||'',payments:Object.fromEntries(Object.entries(r.data?.payments||{}).map(([k,v])=>[k,String(v)])),details:(r.data?.details||[]).map(x=>({id:crypto.randomUUID(),label:x.label,amount:String(x.amount)})),note:r.data?.note||'',reviewNote:r.review_note||''};mode='form';render()}
 function drawHistory(root){const f=records;root.innerHTML=`<div class="sr-card"><div class="sr-head"><h3>Reconciliation History</h3><div class="sr-actions"><button class="sr-btn" id="sr-csv">Export CSV</button><button class="sr-btn" id="sr-print">Print / PDF</button><button class="sr-btn" id="sr-new">+ New</button></div></div><div class="sr-row sr-filters"><div class="sr-field"><label>From</label><input type="date" id="sr-from"></div><div class="sr-field"><label>To</label><input type="date" id="sr-to"></div><div class="sr-field"><label>Status</label><select id="sr-status"><option value="">All</option>${['Draft','Pending Review','Returned','Approved'].map(v=>`<option>${v}</option>`).join('')}</select></div></div><div class="sr-table-wrap"><table class="sr-table"><thead><tr><th>Date</th><th>Prepared By</th><th>POS Sales</th><th>Actual</th><th>Variance</th><th>Status</th><th></th></tr></thead><tbody id="sr-history-rows"></tbody></table></div><div id="rc-msg"></div></div>`;
  $('#sr-new').onclick=()=>{selectedId=null;form=fresh();if(isClerk())form.staffId=viewerStaff;mode='form';render()};
@@ -9210,83 +9212,67 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 setTimeout(bind,700);
 })();
 </script>
-<script id="finsight-inline-amount-calculator-batch-9">
-/* Batch 9: arithmetic inside existing amount inputs only; no posting or accounting changes. */
-(()=>{
- 'use strict';
- const moneyWords=/\b(amount|rate|price|cost|balance|total|paid|payment|value|debit|credit|replenish|gross|net)\b/i;
- const notMoney=/\b(quantity|qty|count|units|percentage|percent|tax rate|vat rate|days|month|year)\b/i;
- function monetary(input){
-   if(!(input instanceof HTMLInputElement)||input.type!=='number'||input.readOnly||input.disabled)return false;
-   if(input.closest('#onlineAuthGate'))return false;
-   const cls=String(input.className||''),id=input.id||'',nm=input.name||'';
-   if(/(?:qty|quantity|percent|percentage|vatRate)/i.test(id+' '+nm+' '+cls))return false;
-   if(/(?:amount|rate|price|cost|balance|total|paid|payment|value)/i.test(id+' '+nm+' '+cls))return true;
-   let label=input.closest('.field')?.querySelector('label')?.textContent||'';
-   if(!label&&input.id){const explicit=document.querySelector('label[for="'+CSS.escape(input.id)+'"]');label=explicit?.textContent||'';}
-   if(label&&!notMoney.test(label)&&moneyWords.test(label))return true;
-   const cell=input.closest('td');
-   if(cell){const table=cell.closest('table'),col=cell.cellIndex;
-     const heads=table?.querySelectorAll('thead tr:last-child th')||[];
-     const header=heads[col]?.textContent?.trim()||'';
-     if(header&&!notMoney.test(header)&&moneyWords.test(header))return true;
-   }
-   return false;
+<script id="finsight-inline-amount-calculator-batch-10">
+/* Formula entry for monetary amount fields. No changes to stored values until Enter. */
+(()=>{'use strict';
+const moneyPattern=/(amount|rate|price|cost|balance|total|payment|paid|debit|credit|value|deposit|withdrawal|replenish)/i;
+const exclude=/(quantity|\bqty\b|percent|percentage|vat.?rate|tax.?rate|units|count)/i;
+function moneyField(el){
+ if(!(el instanceof HTMLInputElement)||el.readOnly||el.disabled||!['number','text'].includes(el.type))return false;
+ if(el.closest('#onlineAuthGate')||el.matches('[type=date], [type=password]'))return false;
+ const attrs=[el.id,el.name,el.className,el.getAttribute('placeholder')||''].join(' ');
+ if(exclude.test(attrs))return false;
+ if(moneyPattern.test(attrs))return true;
+ const parent=el.closest('.field,.sr-field');
+ const label=parent?.querySelector('label')?.textContent?.trim()||'';
+ if(label&&!exclude.test(label)&&moneyPattern.test(label))return true;
+ const td=el.closest('td'),table=td?.closest('table');
+ if(td&&table){const col=td.cellIndex,header=table.querySelectorAll('thead tr:last-child th')[col]?.textContent||'';return moneyPattern.test(header)&&!exclude.test(header)}
+ return false;
+}
+function calculate(expression){
+ let src=expression.trim().slice(1).replace(/[×]/g,'*').replace(/[÷]/g,'/').replace(/[−]/g,'-');
+ if(!src||src.length>200||!/^[\d\s.+*/()\-]+$/.test(src))throw Error('Invalid calculation');
+ const tokens=src.match(/(?:\d+(?:\.\d*)?|\.\d+)|[()+*/-]/g)||[];
+ if(tokens.length>120||tokens.join('')!==src.replace(/\s/g,''))throw Error('Invalid calculation');
+ let at=0;
+ function factor(){if(tokens[at]==='+'){at++;return factor()}if(tokens[at]==='-'){at++;return -factor()}if(tokens[at]==='('){at++;const n=sum();if(tokens[at++]!==')')throw Error('Invalid calculation');return n}const x=tokens[at++];if(!x||!/^(\d|\.)/.test(x))throw Error('Invalid calculation');return Number(x)}
+ function term(){let n=factor();while(tokens[at]==='*'||tokens[at]==='/'){const op=tokens[at++],v=factor();if(op==='/'&&v===0)throw Error('Cannot divide by zero');n=op==='*'?n*v:n/v}return n}
+ function sum(){let n=term();while(tokens[at]==='+'||tokens[at]==='-'){const op=tokens[at++],v=term();n=op==='+'?n+v:n-v}return n}
+ let number=sum();if(at!==tokens.length||!Number.isFinite(number))throw Error('Invalid calculation');return Math.round((number+Number.EPSILON)*100)/100;
+}
+function errorMsg(message){if(typeof window.toast==='function')window.toast(message);else alert(message)}
+function enable(el){if(el.dataset.fsFormulaEditor==='1'||!moneyField(el))return;
+ el.dataset.fsFormulaEditor='1';el.dataset.fsFormulaBefore=el.value;
+ if(el.type==='number'){el.dataset.fsFormulaNumeric='1';el.type='text';el.inputMode='decimal';}
+}
+function finalize(el){if(el.dataset.fsFormulaEditor!=='1')return true;
+ const text=el.value.trim();if(text.startsWith('=')){
+  let n;try{n=calculate(text)}catch(e){errorMsg(e.message);return false}
+  const min=el.getAttribute('min'),max=el.getAttribute('max');
+  if(min!==null&&n<Number(min)){errorMsg('Amount cannot be below '+min);return false}
+  if(max!==null&&n>Number(max)){errorMsg('Amount cannot exceed '+max);return false}
+  el.value=n.toFixed(2);
+  el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}));
  }
- function calculate(source){
-   const src=source.trim().replace(/^=/,'').replace(/×/g,'*').replace(/[÷]/g,'/').replace(/−/g,'-');
-   if(!src||src.length>200||!/^[\d\s.+*/()\-]+$/.test(src))throw Error('Invalid calculation');
-   const tokens=src.match(/(?:\d+(?:\.\d*)?|\.\d+)|[()+*/-]/g)||[];
-   if(tokens.join('')!==src.replace(/\s/g,'')||tokens.length>100)throw Error('Invalid calculation');
-   let i=0;
-   function factor(){if(tokens[i]==='+'){i++;return factor()}if(tokens[i]==='-'){i++;return -factor()}
-     if(tokens[i]==='('){i++;const val=sum();if(tokens[i++]!==')')throw Error('Invalid calculation');return val}
-     const t=tokens[i++];if(!t||! /^(?:\d|\.\d)/.test(t))throw Error('Invalid calculation');return Number(t)}
-   function term(){let n=factor();while(tokens[i]==='*'||tokens[i]==='/'){const op=tokens[i++],rhs=factor();if(op==='/'&&rhs===0)throw Error('Cannot divide by zero');n=op==='*'?n*rhs:n/rhs}return n}
-   function sum(){let n=term();while(tokens[i]==='+'||tokens[i]==='-'){const op=tokens[i++],rhs=term();n=op==='+'?n+rhs:n-rhs}return n}
-   const result=sum();if(i!==tokens.length||!Number.isFinite(result))throw Error('Invalid calculation');
-   // Money fields in FinSight use two decimal places. Quantity fields are excluded.
-   return Math.round((result+Number.EPSILON)*100)/100;
+ return true;
+}
+function reset(el){if(el.dataset.fsFormulaEditor!=='1')return;
+ if(el.value.trim().startsWith('='))el.value=el.dataset.fsFormulaBefore||'';
+ if(el.dataset.fsFormulaNumeric==='1'){el.type='number';el.inputMode='';}
+ delete el.dataset.fsFormulaEditor;delete el.dataset.fsFormulaNumeric;delete el.dataset.fsFormulaBefore;
+}
+document.addEventListener('focusin',e=>enable(e.target),true);
+document.addEventListener('keydown',e=>{
+ const el=e.target;if(!(el instanceof HTMLInputElement))return;
+ if(e.key==='='&&el.type==='number'&&moneyField(el))enable(el);
+ if(e.key!=='Enter')return;
+ if(el.dataset.fsFormulaEditor==='1'&&el.value.trim().startsWith('=')){
+   e.preventDefault();e.stopImmediatePropagation();if(finalize(el)){el.blur()}
  }
- function showError(message){if(typeof window.toast==='function')window.toast(message);else alert(message)}
- function commit(input){
-   if(!input.value.trim().startsWith('='))return true;
-   let number;
-   try{number=calculate(input.value)}catch(err){showError(err.message||'Invalid calculation');return false}
-   const min=input.getAttribute('min'),max=input.getAttribute('max');
-   if(min!==null&&number<Number(min)){showError('Amount cannot be below '+min);return false}
-   if(max!==null&&number>Number(max)){showError('Amount cannot exceed '+max);return false}
-   input.value=number.toFixed(2);
-   input.dataset.fsCalcOriginal=input.value;
-   input.dispatchEvent(new Event('input',{bubbles:true}));
-   input.dispatchEvent(new Event('change',{bubbles:true}));
-   return true;
- }
- document.addEventListener('focusin',e=>{
-   const input=e.target;if(!monetary(input))return;
-   input.dataset.fsCalcOriginal=input.value;
-   input.dataset.fsCalcActive='1';
-   input.type='text';input.inputMode='decimal';
- },true);
- document.addEventListener('keydown',e=>{
-   const input=e.target;
-   if(!(input instanceof HTMLInputElement)||input.dataset.fsCalcActive!=='1'||e.key!=='Enter'||!input.value.trim().startsWith('='))return;
-   e.preventDefault();e.stopImmediatePropagation();commit(input);
- },true);
- // Existing numeric input handlers should not process an unfinished expression as zero.
- document.addEventListener('input',e=>{
-   const input=e.target;
-   if(input instanceof HTMLInputElement&&input.dataset.fsCalcActive==='1'&&input.value.trim().startsWith('='))e.stopImmediatePropagation();
- },true);
- document.addEventListener('focusout',e=>{
-   const input=e.target;
-   if(!(input instanceof HTMLInputElement)||input.dataset.fsCalcActive!=='1')return;
-   if(input.value.trim().startsWith('=')){
-     // Uncommitted expressions are not valid amounts: preserve original value.
-     input.value=input.dataset.fsCalcOriginal||'';
-   }
-   input.type='number';input.inputMode='';delete input.dataset.fsCalcActive;
- },true);
+},true);
+document.addEventListener('input',e=>{const el=e.target;if(el instanceof HTMLInputElement&&el.dataset.fsFormulaEditor==='1'&&el.value.trim().startsWith('='))e.stopImmediatePropagation()},true);
+document.addEventListener('focusout',e=>{const el=e.target;if(el instanceof HTMLInputElement&&el.dataset.fsFormulaEditor==='1'){if(el.value.trim().startsWith('='))finalize(el);reset(el)}},true);
 })();
 </script>
 </body></html>
