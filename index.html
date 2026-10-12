@@ -301,8 +301,7 @@ td{padding:12px;border-top:1px solid #eef1f5}
 
 /* V11 requested polish only */
 .coa-statement-btn,
-#coaTable .mini-btn,
-#accountsTable .mini-btn {
+#coaTable .mini-btn {
   margin-right: 7px !important;
   margin-bottom: 4px !important;
 }
@@ -4496,7 +4495,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
           closeModal();
           if(typeof window.finsightReloadCloudState==='function') await window.finsightReloadCloudState();
           toast('Sales posted online');
-          console.log('[FinSight Phase 2A] post_sale success:',data);
         }catch(e){
           console.error('[FinSight Phase 2A] Sales posting failed',e);
           toast(e?.message||'Unable to post sale online.');
@@ -4624,7 +4622,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
         closeModal();
         if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
         toast(`Collections posted online · ${money(posted)}`);
-        console.log('[FinSight Phase 2B] receive_sale success',{count:requests.length,amount:posted,reference:batchRef});
       }catch(e){
         console.error('[FinSight Phase 2B] Collection posting failed',e);
         toast(e?.message||'Unable to post collections online.');
@@ -4802,7 +4799,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
           closeModal();
           if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
           toast('Supplier bill posted online');
-          console.log('[FinSight Phase 2C] post_supplier_bill success:',data);
         }catch(e){
           console.error('[FinSight Phase 2C] Supplier bill posting failed',e);
           toast(e?.message||'Unable to post supplier bill online.');
@@ -4871,7 +4867,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
           closeModal();
           if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
           toast('Supplier bill payment posted online');
-          console.log('[FinSight Phase 2C.2] post_supplier_bill_payment success:',data);
         }catch(e){
           console.error('[FinSight Phase 2C.2] Supplier bill payment failed',e);
           toast(e?.message||'Unable to post supplier bill payment online.');
@@ -4965,7 +4960,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
           closeModal();
           if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
           toast('Cheque posted online');
-          console.log('[FinSight Phase 2D] post_cheque success:',data);
         }catch(e){
           console.error('[FinSight Phase 2D] Write Cheque failed',e);
           toast(e?.message||'Unable to post cheque online.');
@@ -5037,7 +5031,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
           const fundTransferNav=document.querySelector('.nav-item[data-page="fund-transfer"]');
           if(fundTransferNav) fundTransferNav.click();
           toast('Fund transfer posted online');
-          console.log('[FinSight Phase 2E] post_fund_transfer success:',data);
         }catch(e){
           console.error('[FinSight Phase 2E] Fund transfer failed',e);
           toast(e?.message||'Unable to post fund transfer online.');
@@ -5114,7 +5107,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
           const nav=document.querySelector('.nav-item[data-page="fund-deposit"]');
           if(nav)nav.click();
           toast('Fund deposit posted online');
-          console.log('[FinSight Phase 2F] post_fund_deposit success:',data);
         }catch(e){
           console.error('[FinSight Phase 2F] Fund deposit failed',e);
           toast(e?.message||'Unable to post fund deposit online.');
@@ -5184,7 +5176,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
           const nav=document.querySelector('.nav-item[data-page="petty"]'); if(nav)nav.click();
           if(typeof window.renderPettyCash==='function')window.renderPettyCash();
           toast('Petty cash expense posted online');
-          console.log('[FinSight Phase 2G] post_petty_cash_expense success:',data);
         }catch(e){
           console.error('[FinSight Phase 2G] Petty cash expense failed',e);
           toast(e?.message||'Unable to post petty cash expense online.');
@@ -5650,7 +5641,7 @@ document.addEventListener('click',e=>{if(e.target.closest('.report-tab[data-repo
 document.addEventListener('finsight:cloud-state-loaded',()=>{if(q('.report-tab[data-report="balance"]')?.classList.contains('active'))setTimeout(renderLiveBalanceSheet,80)});
 })();
 </script>\n
-<!-- Restored V18 report patches -->
+
 \n<style id="finsight-v18-financial-css">
 .live-fin-note{padding:10px 12px;border:1px solid #dbeafe;background:#eff6ff;color:#1e40af;border-radius:11px;font-size:10px;margin-bottom:12px}.live-fin-table td:nth-child(n+2),.live-fin-table th:nth-child(n+2){text-align:right}.live-fin-table .section-row td{background:#f8fafc;font-weight:800;text-transform:uppercase}.live-fin-table .subtotal td{font-weight:800;border-top:1px solid #cbd5e1}.live-fin-table .grand td{font-weight:900;border-top:2px solid #111827}.live-fin-error{padding:18px;color:#b91c1c;background:#fef2f2;border-radius:12px;font-size:11px}.live-fin-loading{padding:24px;text-align:center;color:var(--muted);font-size:11px}
 </style>
@@ -8351,7 +8342,7 @@ body.fs-dark .fs-confirm-message{color:#98a2b3}
 </script>
 
 
-<!-- FinSight V18.5.7.3 — Bank dark-mode completion + General Journal report -->
+
 <style id="finsight-v18573-bank-dark-journal-css">
 body.fs-dark #banking .recon-status,
 body.fs-dark #banking .card,
