@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>FinSight Management Intelligence</title><style>
+<!DOCTYPE html><html lang='en'><head><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2215%22%20fill%3D%22%234f46e5%22%2F%3E%3Ctext%20x%3D%2232%22%20y%3D%2242%22%20font-family%3D%22Arial%2Csans-serif%22%20font-weight%3D%22bold%22%20font-size%3D%2230%22%20fill%3D%22white%22%20text-anchor%3D%22middle%22%3EFI%3C%2Ftext%3E%3C%2Fsvg%3E"><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1.0'><title>FinSight Management Intelligence</title><style>
 :root{
   --bg:#f5f7fb; --card:#ffffff; --nav:#0f172a; --nav2:#111c35;
   --primary:#4f46e5; --primary2:#7c3aed; --accent:#06b6d4;
@@ -445,6 +445,13 @@ body.online-loading .app{visibility:hidden}
 #onlineRecoveryBack{margin-top:12px}
 </style>
 <style id="fs-daily-totals-css">#reportDaily .fs-daily-number{text-align:right;white-space:nowrap}#reportDaily .fs-daily-footer th{border-top:2px solid #94a3b8;font-weight:800;background:#f8fafc}#reportDaily .grouped-head th.fs-daily-number{vertical-align:middle;text-align:right}</style>
+<style id="finsight-batch12-report-alignment">
+#reports .report-card table th:not(:first-child),#reports .report-card table td:not(:first-child),
+#accounting .pnl-statement th:not(:first-child),#accounting .pnl-statement td:not(:first-child),
+#accounting .cashflow-statement th:not(:first-child),#accounting .cashflow-statement td:not(:first-child),
+#accounting .balance-vertical th:not(:first-child),#accounting .balance-vertical td:not(:first-child){text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+#reports .report-card table th:first-child,#reports .report-card table td:first-child{text-align:left}
+</style>
 </head><body class="online-loading">
 <div id="onlineAuthGate">
   <div class="online-login-card">
@@ -740,8 +747,9 @@ body.online-loading .app{visibility:hidden}
     <div class="upload"><div style="font-size:30px">⇧</div><h4>Sales Analysis CSV</h4><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="sales">Upload CSV</button><button class="btn sampleBtn" data-kind="sales">Sample CSV</button></div></div>
     <div class="upload"><div style="font-size:30px">⇧</div><h4>Supplier Bills CSV</h4><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="bills">Upload CSV</button><button class="btn sampleBtn" data-kind="bills">Sample CSV</button></div></div>
     <div class="upload"><div style="font-size:30px">⇧</div><h4>Petty Cash CSV</h4><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="petty">Upload CSV</button><button class="btn sampleBtn" data-kind="petty">Sample CSV</button></div></div>
-    <div class="upload"><div style="font-size:30px">⇧</div><h4>Purchase / Recipe Items CSV</h4><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="stock">Upload CSV</button><button class="btn sampleBtn" data-kind="stock">Sample CSV</button></div></div>
+    <div class="upload"><div style="font-size:30px">⇧</div><h4>Stock Take CSV</h4><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="stock">Upload CSV</button><button class="btn sampleBtn" data-kind="stock">Sample CSV</button></div></div>
   </div>
+  <div class="upload" style="margin-top:14px"><h4>Purchase / Recipe Items CSV</h4><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button type="button" class="btn primary" id="openItemCsvManager12">Upload Items CSV</button><button type="button" class="btn" id="downloadItemCsvTemplate12">Sample CSV</button></div></div>
   <input id="csvInput" type="file" accept=".csv,text/csv" class="hidden">
 
   <div style="margin-top:18px">
@@ -1532,11 +1540,11 @@ fi.onchange=()=>{
     // STOCK: Item must already exist in Stock Items. CSV import never creates new stock items.
     if(importKind==='stock'){
       const itemIdx=idx('Item');
-      if(itemIdx<0){showCsvErrors('Purchase / Recipe Items CSV Error',[{label:'Required column missing',column:'Column',items:['Item']}]);return}
+      if(itemIdx<0){showCsvErrors('Stock Take CSV Error',[{label:'Required column missing',column:'Column',items:['Item']}]);return}
       const itemMap=masterMap(state.stockItems||[],x=>x.name);
       const missing=unique(p.rows.map(r=>clean(r[itemIdx])).filter(x=>x&&!itemMap.has(norm(x))));
       const blanks=p.rows.some(r=>!clean(r[itemIdx]))?['Blank Item value']:[];
-      if(showCsvErrors('Purchase / Recipe Items CSV Error',[
+      if(showCsvErrors('Stock Take CSV Error',[
         {label:'Unavailable Stock Items',column:'Item',items:missing,note:'Stock items must be created in FinSight before opening or closing stock can be uploaded.'},
         {label:'Missing Stock Items',column:'Issue',items:blanks}
       ]))return;
@@ -4333,6 +4341,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
       document.body.classList.add('sr-clerk-session');
       setStatus((profile.full_name||user.email||'Clerk')+' · '+company.name+' · Clerk','ok');
       document.dispatchEvent(new CustomEvent('finsight:cloud-state-loaded',{detail:{companyId:cid,role:'clerk'}}));
+      if(typeof window.finsightOpenClerkWorkspace==='function')window.finsightOpenClerkWorkspace();
       document.body.classList.remove('online-loading');gate.classList.add('hidden');
       return;
     }
@@ -4527,7 +4536,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     const open=groups().filter(g=>g.outstanding>.005);
     if(!open.length)return toast('There are no outstanding daily collections to receive');
     const dates=[...new Set(open.map(g=>g.date))].sort().reverse();
-    openModal('Receive Daily Collections','Post collections directly to Supabase. FinSight allocates each payment-type total across its outstanding sales.',
+    openModal('Receive Daily Collections','Record daily collections. FinSight allocates each payment-type total across its outstanding sales.',
       `<div class="form-grid">
         <div class="field"><label>Sales Date</label><select id="dcSalesDate" class="input">${dates.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('')}</select></div>
         <div class="field"><label>Date Received</label><input id="dcReceivedDate" class="input" type="date" value="${typeof today==='function'?today():''}"></div>
@@ -5459,7 +5468,7 @@ function renderDetail(){
   }).join(''):'<tr><td colspan="10"><div class="empty-state">No inventory activity for this period.</div></td></tr>';
 }
 async function refreshInventory(){const online=window.finsightOnline||{},cid=online.companyId,m=q('#cogsMonth')?.value;if(!cid||!m)return;const b=monthBounds(m);live.start=b.start;live.end=b.end;q('#inventoryTable').innerHTML='<tr><td colspan="10"><div class="empty-state">Loading live COGS…</div></td></tr>';try{const [detail,summary,posting]=await Promise.all([rpc('get_cogs_report',{p_company_id:cid,p_start_date:b.start,p_end_date:b.end}),rpc('get_cogs_period_summary',{p_company_id:cid,p_start_date:b.start,p_end_date:b.end}),loadPosting(cid,b.start,b.end)]);live.detail=detail||[];live.summary=summaryObj(summary);live.posting=posting;q('#openingVal').textContent=money(num(live.summary,'opening_stock','opening_stock_value'));q('#purchVal').textContent=money(num(live.summary,'purchases','purchase_value'));q('#closingVal').textContent=money(num(live.summary,'closing_stock','closing_stock_value'));q('#calcCogs').textContent=money(num(live.summary,'cost_of_sales','calculated_cogs','cogs'));renderDetail();renderStatus();}catch(e){q('#inventoryTable').innerHTML=`<tr><td colspan="10"><div class="empty-state">${esc(e.message||String(e))}</div></td></tr>`;if(typeof toast==='function')toast(e.message||String(e));}}
-function openStockModal(type){const items=stockItems();if(!items.length)return toast('Add a stock item first');const isOpen=type==='opening',title=isOpen?'Opening Stock':'Closing Stock';openModal(title,isOpen?'Save opening quantities and unit costs to Supabase.':'Save closing quantities and unit costs to Supabase.',`<div class="form-grid"><div class="field"><label>Stock Date</label><input class="input" id="liveStockDate" type="date" value="${isOpen?live.start:live.end}"></div></div><div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Stock Item</th><th>Quantity</th><th>Unit Cost</th><th>Value</th><th></th></tr></thead><tbody id="liveStockLines"></tbody></table></div><button class="btn" id="addLiveStockLine" style="margin-top:8px">+ Add Item</button><div class="modal-actions"><button class="btn primary" id="saveLiveStock">Save ${title}</button></div>`);setTimeout(()=>{const tb=q('#liveStockLines');const add=()=>{const tr=document.createElement('tr');tr.innerHTML=`<td><select class="input lsi">${items.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></td><td><input class="input lsq" type="number" min="0" step="0.001" value="0"></td><td><input class="input lsc" type="number" min="0" step="0.01" value="0"></td><td class="lsv">${money(0)}</td><td><button class="btn">×</button></td>`;tb.appendChild(tr);const calc=()=>q('.lsv',tr).textContent=money(Number(q('.lsq',tr).value||0)*Number(q('.lsc',tr).value||0));q('.lsq',tr).oninput=calc;q('.lsc',tr).oninput=calc;q('button',tr).onclick=()=>tr.remove();};add();q('#addLiveStockLine').onclick=add;q('#saveLiveStock').onclick=async()=>{const date=q('#liveStockDate').value,rows=[...tb.querySelectorAll('tr')].map(r=>({id:q('.lsi',r).value,qty:Number(q('.lsq',r).value||0),cost:Number(q('.lsc',r).value||0)}));if(!date||!rows.length)return toast('Enter a stock date and at least one item');if(rows.some(x=>x.qty<0||x.cost<0))return toast('Quantity and unit cost cannot be negative');const btn=q('#saveLiveStock');btn.disabled=true;btn.textContent='Saving…';try{for(const r of rows)await rpc(isOpen?'save_opening_stock':'save_closing_stock',{p_company_id:window.finsightOnline.companyId,p_stock_date:date,p_stock_item_id:await resolveStockUuid(r.id),p_quantity:r.qty,p_unit_cost:r.cost});closeModal();if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();await refreshInventory();toast(title+' saved');}catch(e){toast(e.message||String(e));}finally{btn.disabled=false;btn.textContent='Save '+title;}};},0);}
+function openStockModal(type){const items=stockItems();if(!items.length)return toast('Add a stock item first');const isOpen=type==='opening',title=isOpen?'Opening Stock':'Closing Stock';openModal(title,isOpen?'Save opening quantities and unit costs.':'Save closing quantities and unit costs.',`<div class="form-grid"><div class="field"><label>Stock Date</label><input class="input" id="liveStockDate" type="date" value="${isOpen?live.start:live.end}"></div></div><div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Stock Item</th><th>Quantity</th><th>Unit Cost</th><th>Value</th><th></th></tr></thead><tbody id="liveStockLines"></tbody></table></div><button class="btn" id="addLiveStockLine" style="margin-top:8px">+ Add Item</button><div class="modal-actions"><button class="btn primary" id="saveLiveStock">Save ${title}</button></div>`);setTimeout(()=>{const tb=q('#liveStockLines');const add=()=>{const tr=document.createElement('tr');tr.innerHTML=`<td><select class="input lsi">${items.map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></td><td><input class="input lsq" type="number" min="0" step="0.001" value="0"></td><td><input class="input lsc" type="number" min="0" step="0.01" value="0"></td><td class="lsv">${money(0)}</td><td><button class="btn">×</button></td>`;tb.appendChild(tr);const calc=()=>q('.lsv',tr).textContent=money(Number(q('.lsq',tr).value||0)*Number(q('.lsc',tr).value||0));q('.lsq',tr).oninput=calc;q('.lsc',tr).oninput=calc;q('button',tr).onclick=()=>tr.remove();};add();q('#addLiveStockLine').onclick=add;q('#saveLiveStock').onclick=async()=>{const date=q('#liveStockDate').value,rows=[...tb.querySelectorAll('tr')].map(r=>({id:q('.lsi',r).value,qty:Number(q('.lsq',r).value||0),cost:Number(q('.lsc',r).value||0)}));if(!date||!rows.length)return toast('Enter a stock date and at least one item');if(rows.some(x=>x.qty<0||x.cost<0))return toast('Quantity and unit cost cannot be negative');const btn=q('#saveLiveStock');btn.disabled=true;btn.textContent='Saving…';try{for(const r of rows)await rpc(isOpen?'save_opening_stock':'save_closing_stock',{p_company_id:window.finsightOnline.companyId,p_stock_date:date,p_stock_item_id:await resolveStockUuid(r.id),p_quantity:r.qty,p_unit_cost:r.cost});closeModal();if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();await refreshInventory();toast(title+' saved');}catch(e){toast(e.message||String(e));}finally{btn.disabled=false;btn.textContent='Save '+title;}};},0);}
 async function postPeriod(){if(live.posting)return toast('This COGS period is already posted');const inv=accountsBy(a=>String(a.type||'').toLowerCase()==='asset'&&String(a.sub||'').toLowerCase()==='inventory')[0],cogs=accountsBy(a=>['cost of sales','cogs'].includes(String(a.type||'').toLowerCase())||String(a.sub||'').toLowerCase()==='cogs')[0];if(!inv||!cogs)return toast('Inventory and Cost of Sales accounts are required');if(!confirm(`Post COGS for ${live.start} to ${live.end}?\n\nCalculated COGS: ${money(num(live.summary,'cost_of_sales','calculated_cogs','cogs'))}\n\nThis period cannot be posted twice.`))return;const btn=q('#postCogsPeriodBtn');btn.disabled=true;btn.textContent='Posting…';try{await rpc('post_cogs_period',{p_company_id:window.finsightOnline.companyId,p_period_start:live.start,p_period_end:live.end,p_inventory_account_id:inv.id,p_cogs_account_id:cogs.id,p_reference:'COGS '+live.start.slice(0,7),p_memo:'Posted from FinSight Inventory & COGS'});toast('COGS period posted');await refreshInventory();}catch(e){toast(e.message||String(e));btn.disabled=false;btn.textContent='Post Period COGS';}}
 window.renderInventory=function(){const sec=q('#inventory');if(!sec)return;sec.innerHTML=`<div class="section-title"><div><h3>Inventory & Cost of Sales</h3><div class="small-note">Live periodic inventory: Opening Stock + Purchases − Closing Stock = Cost of Sales.</div></div><div class="cogs-actions"><button class="btn" id="stockItemsBtn">Purchase / Recipe Items</button><button class="btn" id="openingStockBtn">Opening Stock</button><button class="btn primary" id="closingStockBtn">Closing Stock</button></div></div><div class="card panel"><div class="cogs-period-bar"><div class="field"><label>COGS Period</label><input class="input" id="cogsMonth" type="month"></div><button class="btn" id="refreshCogsBtn">Refresh COGS</button><button class="btn primary" id="postCogsPeriodBtn">Post Period COGS</button></div><div id="cogsPostingStatus" class="cogs-status-card"></div></div><div class="grid kpis" style="margin-top:16px"><div class="card kpi"><div class="label">Opening Stock</div><div class="value" id="openingVal">KSh 0</div></div><div class="card kpi"><div class="label">Inventory Purchases</div><div class="value" id="purchVal">KSh 0</div></div><div class="card kpi"><div class="label">Closing Stock</div><div class="value" id="closingVal">KSh 0</div></div><div class="card kpi"><div class="label">Calculated COGS</div><div class="value" id="calcCogs">KSh 0</div></div></div><div class="card table-card" style="overflow:auto"><table class="cogs-live-table"><thead><tr><th>Item</th><th>Opening Qty</th><th>Opening Unit Cost</th><th>Purchase Qty</th><th>Purchases</th><th>Average Cost</th><th>Closing Qty</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Consumption / COGS</th></tr></thead><tbody id="inventoryTable"></tbody></table></div>`;q('#cogsMonth').value=(new Date()).toISOString().slice(0,7);q('#refreshCogsBtn').onclick=refreshInventory;q('#cogsMonth').onchange=refreshInventory;q('#openingStockBtn').onclick=()=>openStockModal('opening');q('#closingStockBtn').onclick=()=>openStockModal('closing');q('#stockItemsBtn').onclick=()=>{if(typeof manageSimpleList==='function')manageSimpleList('stock');else toast('Stock item management is unavailable');};q('#postCogsPeriodBtn').onclick=postPeriod;refreshInventory();};
 document.addEventListener('click',e=>{if(e.target.closest('[data-page="inventory"]'))setTimeout(()=>window.renderInventory(),0);});
@@ -5537,7 +5546,7 @@ async function renderLiveCashFlow(){
   const box=q('#reportCashFlow');
   if(!box)return;
   const {start,end}=bounds();
-  box.innerHTML='<div class="report-card"><div class="empty-state">Loading live Cash Flow from Supabase…</div></div>';
+  box.innerHTML='<div class="report-card"><div class="empty-state">Loading cash flow…</div></div>';
   try{
     const cid=window.finsightOnline.companyId;
     const [rows,summary]=await Promise.all([
@@ -5551,7 +5560,7 @@ async function renderLiveCashFlow(){
     const net=num(s,'net_cash_flow','net_cashflow');
     const header=typeof reportHeader==='function'?reportHeader('CASH FLOW STATEMENT',start,end):`<div class="report-headline"><h3>CASH FLOW STATEMENT</h3><div>${esc(start)} to ${esc(end)}</div></div>`;
     box.innerHTML=`<div class="report-card">${header}
-      <div class="small-note" style="margin-bottom:12px">Live from posted Supabase journals.</div>
+      <div class="small-note" style="margin-bottom:12px">Live from posted accounting journals.</div>
       <table class="cashflow-statement"><thead><tr><th>Item</th><th>Amount</th></tr></thead><tbody>
         <tr class="section-heading"><td colspan="2">Cash Flows from Operating Activities</td></tr>
         ${detailRows(rows,'Operating')}
@@ -5592,7 +5601,7 @@ function subtypeOf(r){return String(val(r,'sub_type','account_sub_type')||'').to
 function rowsHtml(rows,empty){return rows.length?rows.map(r=>`<tr><td>${esc(val(r,'account_name','name')||'Account')}</td><td>${money(num(r,'amount','balance'))}</td></tr>`).join(''):`<tr><td class="muted">${esc(empty)}</td><td>${money(0)}</td></tr>`;}
 async function renderLiveBalanceSheet(){
  const box=q('#reportBalance'); if(!box)return;
- const date=asAt(); box.innerHTML='<div class="report-card"><div class="empty-state">Loading live Balance Sheet from Supabase…</div></div>';
+ const date=asAt(); box.innerHTML='<div class="report-card"><div class="empty-state">Loading balance sheet…</div></div>';
  try{
   const cid=window.finsightOnline.companyId;
   const [detail,summary]=await Promise.all([rpc('get_balance_sheet',{p_company_id:cid,p_as_of_date:date}),rpc('get_balance_sheet_summary',{p_company_id:cid,p_as_of_date:date})]);
@@ -5605,7 +5614,7 @@ async function renderLiveBalanceSheet(){
   const sum=a=>a.reduce((t,r)=>t+num(r,'amount','balance'),0);
   const ta=num(s,'total_assets')||sum(assets), tl=num(s,'total_liabilities')||sum(liabilities), te=(s.total_equity!=null?Number(s.total_equity):sum(equity)), diff=num(s,'balance_difference','difference');
   const header=typeof reportHeader==='function'?reportHeader('BALANCE SHEET','',date):`<div class="report-headline"><h3>BALANCE SHEET</h3><div>As at ${esc(date)}</div></div>`;
-  box.innerHTML=`<div class="report-card">${header}<div class="small-note" style="margin-bottom:12px">Live from posted Supabase journals.</div><table class="balance-vertical"><thead><tr><th>Item</th><th>Amount</th></tr></thead><tbody>
+  box.innerHTML=`<div class="report-card">${header}<div class="small-note" style="margin-bottom:12px">Live from posted accounting journals.</div><table class="balance-vertical"><thead><tr><th>Item</th><th>Amount</th></tr></thead><tbody>
   <tr class="section-heading"><td colspan="2">Assets</td></tr><tr class="section-heading"><td colspan="2">Current Assets</td></tr>${rowsHtml(currentAssets,'No current assets posted')}<tr class="subtotal"><td>Total Current Assets</td><td>${money(sum(currentAssets))}</td></tr>
   <tr class="section-heading"><td colspan="2">Non-Current Assets</td></tr>${rowsHtml(nonCurrentAssets,'No non-current assets posted')}<tr class="subtotal"><td>Total Non-Current Assets</td><td>${money(sum(nonCurrentAssets))}</td></tr><tr class="grand"><td>Total Assets</td><td>${money(ta)}</td></tr>
   <tr class="section-heading"><td colspan="2">Liabilities</td></tr><tr class="section-heading"><td colspan="2">Current Liabilities</td></tr>${rowsHtml(currentLiabilities,'No current liabilities posted')}<tr class="subtotal"><td>Total Current Liabilities</td><td>${money(sum(currentLiabilities))}</td></tr>
@@ -5702,9 +5711,9 @@ async function balance(asOf){return Promise.all([rpc('get_balance_sheet',{p_comp
 function balanceHTML(rows,summary){const s=first(summary),assets=n(s,'total_assets'),liab=n(s,'total_liabilities'),eq=n(s,'total_equity'),diff=n(s,'balance_difference','difference');let body='';for(const sec of ['Assets','Liabilities','Equity']){const rs=arr(rows).filter(r=>String(v(r,'section','account_type')).toLowerCase()===sec.toLowerCase());if(rs.length)body+=`<tr class="section-row"><td colspan="2">${sec}</td></tr>`+rs.map(r=>`<tr><td>${esc(v(r,'account_name','name'))}</td><td>${money(n(r,'amount','balance'))}</td></tr>`).join('');}body+=`<tr class="subtotal"><td>Total Assets</td><td>${money(assets)}</td></tr><tr class="subtotal"><td>Total Liabilities</td><td>${money(liab)}</td></tr><tr class="subtotal"><td>Total Equity</td><td>${money(eq)}</td></tr><tr class="grand"><td>Balance Difference</td><td>${money(diff)}</td></tr>`;return `<table class="live-fin-table balance-vertical"><thead><tr><th>Account</th><th>Amount</th></tr></thead><tbody>${body}</tbody></table>`;}
 async function trial(start,end){return rpc('get_trial_balance',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end});}
 function trialHTML(rows){let td=0,tc=0;const body=arr(rows).map(r=>{const deb=n(r,'period_debit','debit','debits'),cred=n(r,'period_credit','credit','credits'),close=n(r,'closing_balance','balance');td+=deb;tc+=cred;return `<tr><td>${esc(v(r,'account_name','name'))}</td><td>${esc(v(r,'account_type','type'))}</td><td>${money(n(r,'opening_balance'))}</td><td>${money(deb)}</td><td>${money(cred)}</td><td>${money(close)}</td></tr>`}).join('');return `<table class="live-fin-table"><thead><tr><th>Account</th><th>Type</th><th>Opening</th><th>Debit</th><th>Credit</th><th>Closing</th></tr></thead><tbody>${body||'<tr><td colspan="6" class="empty-state">No trial balance activity.</td></tr>'}<tr class="grand"><td colspan="3">Period Totals</td><td>${money(td)}</td><td>${money(tc)}</td><td>Difference ${money(td-tc)}</td></tr></tbody></table>`;}
-async function renderAccountingLive(){const pbox=q('#plBox'),cbox=q('#cfBox');if(!pbox||!cbox)return;const pd=dates(q('#plFrom')?.value,q('#plTo')?.value),cd=dates(q('#cfFrom')?.value,q('#cfTo')?.value);pbox.innerHTML='<div class="live-fin-loading">Loading live P&amp;L…</div>';cbox.innerHTML='<div class="live-fin-loading">Loading live cash flow…</div>';try{const [pr,cr]=await Promise.all([pnl(pd.start,pd.end),cash(cd.start,cd.end)]);pbox.innerHTML='<div class="live-fin-note">Live from posted Supabase journals.</div>'+pnlHTML(pr[0],pr[1]);cbox.innerHTML='<div class="live-fin-note">Live from posted Supabase journals.</div>'+cashHTML(cr[0],cr[1]);}catch(e){console.error('[FinSight V18 Accounting]',e);const h=`<div class="live-fin-error">${esc(e.message||String(e))}</div>`;pbox.innerHTML=h;cbox.innerHTML=h;}}
+async function renderAccountingLive(){const pbox=q('#plBox'),cbox=q('#cfBox');if(!pbox||!cbox)return;const pd=dates(q('#plFrom')?.value,q('#plTo')?.value),cd=dates(q('#cfFrom')?.value,q('#cfTo')?.value);pbox.innerHTML='<div class="live-fin-loading">Loading live P&amp;L…</div>';cbox.innerHTML='<div class="live-fin-loading">Loading live cash flow…</div>';try{const [pr,cr]=await Promise.all([pnl(pd.start,pd.end),cash(cd.start,cd.end)]);pbox.innerHTML='<div class="live-fin-note">Live from posted accounting journals.</div>'+pnlHTML(pr[0],pr[1]);cbox.innerHTML='<div class="live-fin-note">Live from posted accounting journals.</div>'+cashHTML(cr[0],cr[1]);}catch(e){console.error('[FinSight V18 Accounting]',e);const h=`<div class="live-fin-error">${esc(e.message||String(e))}</div>`;pbox.innerHTML=h;cbox.innerHTML=h;}}
 function ensureTrialTab(){if(!q('.report-tab[data-report="trial"]')){const tabs=q('.report-tabs');if(tabs)tabs.insertAdjacentHTML('beforeend','<button class="report-tab" data-report="trial">Trial Balance</button>');const reports=q('#reports');if(reports&&!q('#reportTrial'))reports.insertAdjacentHTML('beforeend','<div class="report-panel hidden" id="reportTrial"></div>');}q('.report-tab[data-report="trial"]')?.addEventListener('click',()=>{document.querySelectorAll('.report-tab').forEach(x=>x.classList.remove('active'));q('.report-tab[data-report="trial"]').classList.add('active');document.querySelectorAll('.report-panel').forEach(x=>{x.classList.add('hidden');x.classList.remove('active')});q('#reportTrial')?.classList.remove('hidden');q('#reportTrial')?.classList.add('active');});}
-async function renderFinancialReportsLive(){ensureTrialTab();const d=dates(q('#reportFrom')?.value,q('#reportTo')?.value);for(const id of ['reportPl','reportCashFlow','reportBalance','reportTrial']){const x=q('#'+id);if(x)x.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading live financial report…</div></div>';}try{const [pr,cr,br,tr]=await Promise.all([pnl(d.start,d.end),cash(d.start,d.end),balance(d.end),trial(d.start,d.end)]);q('#reportPl').innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}<div class="live-fin-note">Live from posted Supabase journals.</div>${pnlHTML(pr[0],pr[1])}</div>`;q('#reportCashFlow').innerHTML=`<div class="report-card">${hdr('CASH FLOW',d.start,d.end)}<div class="live-fin-note">Live from posted Supabase journals.</div>${cashHTML(cr[0],cr[1])}</div>`;q('#reportBalance').innerHTML=`<div class="report-card">${hdr('BALANCE SHEET','As at',d.end)}<div class="live-fin-note">Live from posted Supabase journals.</div>${balanceHTML(br[0],br[1])}</div>`;q('#reportTrial').innerHTML=`<div class="report-card">${hdr('TRIAL BALANCE',d.start,d.end)}<div class="live-fin-note">Live from posted Supabase journals.</div>${trialHTML(tr)}</div>`;}catch(e){console.error('[FinSight V18 Reports]',e);const h=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;['reportPl','reportCashFlow','reportBalance','reportTrial'].forEach(id=>{if(q('#'+id))q('#'+id).innerHTML=h;});}}
+async function renderFinancialReportsLive(){ensureTrialTab();const d=dates(q('#reportFrom')?.value,q('#reportTo')?.value);for(const id of ['reportPl','reportCashFlow','reportBalance','reportTrial']){const x=q('#'+id);if(x)x.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading live financial report…</div></div>';}try{const [pr,cr,br,tr]=await Promise.all([pnl(d.start,d.end),cash(d.start,d.end),balance(d.end),trial(d.start,d.end)]);q('#reportPl').innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${pnlHTML(pr[0],pr[1])}</div>`;q('#reportCashFlow').innerHTML=`<div class="report-card">${hdr('CASH FLOW',d.start,d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${cashHTML(cr[0],cr[1])}</div>`;q('#reportBalance').innerHTML=`<div class="report-card">${hdr('BALANCE SHEET','As at',d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${balanceHTML(br[0],br[1])}</div>`;q('#reportTrial').innerHTML=`<div class="report-card">${hdr('TRIAL BALANCE',d.start,d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${trialHTML(tr)}</div>`;}catch(e){console.error('[FinSight V18 Reports]',e);const h=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;['reportPl','reportCashFlow','reportBalance','reportTrial'].forEach(id=>{if(q('#'+id))q('#'+id).innerHTML=h;});}}
 function bind(){ensureTrialTab();const ap=q('#applyPlFilter'),ac=q('#applyCfFilter'),rr=q('#refreshReportsBtn');if(ap)ap.onclick=()=>{filters.plFrom=q('#plFrom').value;filters.plTo=q('#plTo').value;renderAccountingLive();};if(ac)ac.onclick=()=>{filters.cfFrom=q('#cfFrom').value;filters.cfTo=q('#cfTo').value;renderAccountingLive();};if(rr){const old=rr.onclick;rr.onclick=()=>{filters.reportFrom=q('#reportFrom').value;filters.reportTo=q('#reportTo').value;if(typeof window.renderReports==='function')window.renderReports();setTimeout(renderFinancialReportsLive,0);if(typeof toast==='function')toast('Live reports refreshed');};}document.addEventListener('click',e=>{const nav=e.target.closest('[data-page]');if(!nav)return;if(nav.dataset.page==='accounting')setTimeout(renderAccountingLive,20);if(nav.dataset.page==='reports')setTimeout(renderFinancialReportsLive,30);});}
 window.finsightRenderLiveAccounting=renderAccountingLive;window.finsightRenderLiveFinancialReports=renderFinancialReportsLive;
 document.addEventListener('finsight:cloud-state-loaded',()=>{if(q('#accounting')?.classList.contains('active'))renderAccountingLive();if(q('#reports')?.classList.contains('active'))renderFinancialReportsLive();});
@@ -5742,7 +5751,7 @@ async function renderTrial(){
   const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
   if(!sb||!cid){box.innerHTML='<div class="report-card"><div class="empty-state">FinSight cloud connection is not ready.</div></div>';return;}
   const {start,end}=bounds();
-  box.innerHTML='<div class="report-card"><div class="empty-state">Loading live Trial Balance from Supabase…</div></div>';
+  box.innerHTML='<div class="report-card"><div class="empty-state">Loading trial balance…</div></div>';
   try{
     const {data,error}=await sb.rpc('get_trial_balance',{p_company_id:cid,p_start_date:start,p_end_date:end});
     if(error)throw error;
@@ -5757,7 +5766,7 @@ async function renderTrial(){
       return `<tr><td>${esc(val(r,'account_name','name'))}</td><td>${esc(val(r,'account_type','type'))}</td><td>${esc(val(r,'sub_type','account_sub_type'))}</td><td>${money(ob.d)}</td><td>${money(ob.c)}</td><td>${money(deb)}</td><td>${money(cred)}</td><td>${money(cb.d)}</td><td>${money(cb.c)}</td></tr>`;
     }).join('');
     const header=typeof reportHeader==='function'?reportHeader('TRIAL BALANCE',start,end):`<div class="report-headline"><h3>TRIAL BALANCE</h3><div>${esc(start)} to ${esc(end)}</div></div>`;
-    box.innerHTML=`<div class="report-card">${header}<div class="small-note" style="margin-bottom:12px">Live from posted Supabase journals.</div>
+    box.innerHTML=`<div class="report-card">${header}<div class="small-note" style="margin-bottom:12px">Live from posted accounting journals.</div>
       <div class="summary-strip">
         <div class="summary-box"><span>Period Debits</span><b>${money(pd)}</b></div>
         <div class="summary-box"><span>Period Credits</span><b>${money(pc)}</b></div>
@@ -5842,7 +5851,7 @@ async function manageCloudSuppliers(){
   const {sb,cid}=cloud();
   if(!sb||!cid) return toast('FinSight cloud connection is not ready.');
 
-  openModal('Suppliers','Suppliers are saved to this company in Supabase and are immediately available when posting supplier bills.',
+  openModal('Suppliers','Suppliers are saved to this company and available when posting bills.',
     `<div class="inline-add">
        <input class="input" id="cloudSupplierName" placeholder="Add supplier">
        <button class="btn primary" id="cloudSupplierAdd" type="button">Add</button>
@@ -7854,7 +7863,7 @@ async function postCogsV1855(){if(inv.posting)return toast('This exact COGS peri
 function stockItems(){return state.stockItems||[]}
 function reconItems(){return state.stockItems||[]}
 function reconQty(v){return v==null?'—':num(v).toLocaleString('en-KE',{maximumFractionDigits:3})}
-function reconUnit(id){return reconItems().find(x=>String(x.id)===String(id))?.unit||'Unit'}
+function reconUnit(id){const x=reconItems().find(x=>String(x.id)===String(id))||window.finsightStockItems?.find(x=>String(x.id)===String(id));return x?.unit||'Unit'}
 function reconName(id){return reconItems().find(x=>String(x.id)===String(id))?.name||'Stock Item'}
 function reconInputLines(tb){return qa('tr',tb).filter(r=>q('.irinclude',r)?.checked!==false).map(r=>{const raw=q('.irq',r).value.trim();return{stock_item_id:q('.iri',r).value,quantity:raw===''?null:Number(raw),explanation:(q('.ire',r)?.value||'').trim()}})}
 function addReconInputLine(tb,line={}){
@@ -7870,7 +7879,7 @@ function addReconInputLine(tb,line={}){
  const sel=q('.iri',tr),unit=q('.irunit',tr),inc=q('.irinclude',tr);
  const sync=(applyDefault=false)=>{
    const it=items.find(x=>String(x.id)===String(sel.value));
-   if(unit)unit.textContent=it?.unit||'Unit';
+   if(unit)unit.textContent=it?.unit||reconUnit(sel.value);
    if(applyDefault&&inc)inc.checked=it?.track_variance!==false;
  };
  sel.onchange=()=>sync(true);
@@ -7976,6 +7985,19 @@ async function openReconciliation(existing=null,viewOnly=false){
 }
 async function loadReconciliations(){
  const host=q('#inventoryReconHistory');if(!host||!cid())return;const sb=window.finsightSupabase;const {data,error}=await sb.from('inventory_reconciliations').select('id,reconciliation_no,stock_date,notes,created_at,inventory_reconciliation_lines(id,stock_item_id,quantity,unit_cost,explanation)').eq('company_id',cid()).order('stock_date',{ascending:false}).order('created_at',{ascending:false});if(error){host.innerHTML=`<div class="empty-state">${esc(error.message)}</div>`;return}const rows=data||[];
+ // Load reconciliation lines independently: embedded relationships may be truncated for large stock takes.
+ if(rows.length){
+   const groups=new Map(rows.map(r=>[String(r.id),[]]));
+   let offset=0;const pageSize=500;
+   while(true){
+     const resp=await sb.from('inventory_reconciliation_lines').select('reconciliation_id,stock_item_id,quantity,unit_cost').eq('company_id',cid()).order('id').range(offset,offset+pageSize-1);
+     if(resp.error){host.innerHTML=`<div class="empty-state">${esc(resp.error.message)}</div>`;return}
+     for(const line of resp.data||[]){const list=groups.get(String(line.reconciliation_id));if(list)list.push(line)}
+     if((resp.data||[]).length<pageSize)break;
+     offset+=pageSize;
+   }
+   rows.forEach(r=>{r.inventory_reconciliation_lines=groups.get(String(r.id))||[]});
+ }
  host.innerHTML=rows.length?`<div style="overflow:auto"><table class="inventory-recon-table"><thead><tr><th>Reconciliation No.</th><th>Date</th><th>Items Counted</th><th>Physical Stock Value</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${rows.map(r=>{const ls=r.inventory_reconciliation_lines||[],total=ls.reduce((a,x)=>a+num(x.quantity)*num(x.unit_cost),0);return `<tr><td><b>${esc(r.reconciliation_no)}</b></td><td>${esc(r.stock_date)}</td><td>${ls.length}</td><td>${money(total)}</td><td>${esc(r.notes||'—')}</td><td><div class="recon-actions"><button class="mini-btn" type="button" data-ir-view="${r.id}">View</button><button class="mini-btn" type="button" data-ir-edit="${r.id}">Edit</button><button class="mini-btn danger" type="button" data-ir-delete="${r.id}">Delete</button></div></td></tr>`}).join('')}</tbody></table></div>`:'<div class="empty-state">No inventory reconciliations posted yet.</div>';
  qa('[data-ir-view]',host).forEach(b=>b.onclick=()=>openReconciliation(rows.find(x=>x.id===b.dataset.irView),true));qa('[data-ir-edit]',host).forEach(b=>b.onclick=()=>openReconciliation(rows.find(x=>x.id===b.dataset.irEdit),false));qa('[data-ir-delete]',host).forEach(b=>b.onclick=async()=>{const r=rows.find(x=>x.id===b.dataset.irDelete);if(!confirm(`Delete ${r?.reconciliation_no||'this reconciliation'}? Later calculations will use the next available earlier physical count.`))return;try{await rpc('delete_inventory_reconciliation_v2',{p_company_id:cid(),p_reconciliation_id:b.dataset.irDelete});await window.finsightReloadCloudState?.();await refreshInventoryV1855();await loadReconciliations();toast('Reconciliation deleted')}catch(e){toast(e.message||String(e))}})
 }
@@ -8556,7 +8578,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
  window.openStockItemManagerV18593=async function(){
    try{
      let rows=await fetchItems();
-     openModal('Purchase / Recipe Items','',`<div class="fs-stock-manager-toolbar"><input class="input" id="fsStockSearch" placeholder="Search items"><button class="btn" id="fsStockSetupTemplate">Setup CSV</button><button class="btn" id="fsStockSetupUpload">Upload Setup CSV</button><button class="btn primary" id="fsStockNew">+ Add Item</button></div><div id="fsStockList"></div>`);
+     openModal('Purchase / Recipe Items','',`<div class="fs-stock-manager-toolbar"><input class="input" id="fsStockSearch" placeholder="Search items"><button class="btn" id="fsStockSetupTemplate">Items CSV Template</button><button class="btn" id="fsStockSetupUpload">Upload Items CSV</button><button class="btn primary" id="fsStockNew">+ Add Item</button></div><div id="fsStockList"></div>`);
      const render=()=>{
        const term=norm(q('#fsStockSearch').value),show=rows.filter(x=>!term||norm(x.name).includes(term));
        q('#fsStockList').innerHTML=show.length?show.map(x=>`<div class="manage-row" style="grid-template-columns:1fr auto"><div><b>${esc(x.name)}</b><div class="small-note">${esc(x.unit||'Unit')} · Track Variance: ${x.track_variance===false?'No':'Yes'} · ${x.is_active===false?'Inactive':'Active'}</div></div><button class="mini-btn" data-stock-edit="${x.id}">Edit</button></div>`).join(''):'<div class="empty-state">No Purchase / Recipe Items.</div>';
@@ -8586,7 +8608,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
        };
      };
      q('#fsStockSetupTemplate').onclick=()=>{
-       const csv='Item Name,Unit,Track Variance\n';
+       const csv='Item,Unit\n';
        const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FinSight_Purchase_Recipe_Item_Setup.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},100);
      };
      q('#fsStockSetupUpload').onclick=()=>{
@@ -8596,10 +8618,10 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
            const text=await f.text(),lines=text.replace(/\r/g,'').split('\n').filter(x=>x.trim());
            if(lines.length<2)return toast('The setup CSV has no item rows.');
            const parse=line=>{let a=[],cur='',quote=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(quote&&line[i+1]==='"'){cur+='"';i++}else quote=!quote}else if(c===','&&!quote){a.push(cur);cur=''}else cur+=c}a.push(cur);return a.map(x=>x.trim())};
-           const h=parse(lines[0]).map(norm),ni=h.indexOf('item name'),ui=h.indexOf('unit'),ti=h.indexOf('track variance');
-           if(ni<0||ui<0||ti<0)return toast('Setup CSV must contain Item Name, Unit and Track Variance.');
+           const h=parse(lines[0]).map(norm),ni=h.indexOf('item')>=0?h.indexOf('item'):h.indexOf('item name'),ui=h.indexOf('unit'),ti=h.indexOf('track variance');
+           if(ni<0||ui<0)return toast('Items CSV must contain Item and Unit.');
            const allowed=new Set(units.map(norm)),seen=new Set(),payload=[];
-           for(let i=1;i<lines.length;i++){const r=parse(lines[i]),name=(r[ni]||'').trim(),unit=(r[ui]||'').trim(),tv=norm(r[ti]);if(!name)continue;
+           for(let i=1;i<lines.length;i++){const r=parse(lines[i]),name=(r[ni]||'').trim(),unit=(r[ui]||'').trim(),tv=ti<0?'yes':norm(r[ti]);if(!name)continue;
              if(seen.has(norm(name)))throw new Error(`Duplicate item in setup CSV: ${name}`);seen.add(norm(name));
              if(!allowed.has(norm(unit)))throw new Error(`${name}: invalid Unit "${unit}".`);
              if(!['yes','no','true','false'].includes(tv))throw new Error(`${name}: Track Variance must be Yes or No.`);
@@ -9023,6 +9045,7 @@ function init(){if($('#sales-recon-workspace'))return;const nav=$('.sidebar .nav
  }
 function lockClerk(){document.body.classList.toggle('sr-clerk-session',isClerk());if(!isClerk())return;$$('.sidebar .nav-item').forEach(n=>{if(n.dataset.page!=='sales-recon-workspace')n.style.display='none'});$$('.sidebar .nav-section').forEach(n=>n.style.display='none');const menu=$('#sr-refresh');if(menu)menu.style.display='none';}
 function open(){$$('.page').forEach(p=>p.classList.toggle('active',p.id==='sales-recon-workspace'));$$('.sidebar .nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page==='sales-recon-workspace'));$('#pageTitle').textContent='Sales Reconciliation';if($('#pageSub'))$('#pageSub').textContent='';render()}
+window.finsightOpenClerkWorkspace=()=>{if(!$('#sales-recon-workspace'))init();lockClerk();open()};
 function render(){const root=$('#sr-root');if(!root)return;const clerk=isClerk();$$('[data-rt]').forEach(b=>{b.classList.toggle('on',b.dataset.rt===mode);b.hidden=(b.dataset.rt==='staff'&&!isAdmin())});if(mode==='staff'&&!isAdmin())mode='form';
  if(clerk&&!viewerStaff){mode='form';$$('[data-rt]').forEach(b=>b.hidden=true);}
  if(clerk&&!viewerStaff){root.innerHTML=`<div class="sr-card sr-identify"><h3>Clerk Identification</h3><div class="sr-field"><label>Clerk Name</label><select id="sr-identity"><option value="">Select Clerk</option>${staff.filter(s=>s.is_active).map(s=>`<option value="${s.id}">${esc(s.full_name)}</option>`).join('')}</select></div><div class="sr-field"><label>Personal PIN</label><input id="sr-identity-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8"></div><button class="sr-btn primary" id="sr-identify">Continue</button><div id="rc-msg"></div></div>`;
@@ -9313,4 +9336,8 @@ document.addEventListener('input',e=>{const el=e.target;if(el instanceof HTMLInp
 document.addEventListener('focusout',e=>{const el=e.target;if(el instanceof HTMLInputElement&&el.dataset.fsFormulaEditor==='1'){if(el.value.trim().startsWith('='))finalize(el);reset(el)}},true);
 })();
 </script>
+<script id="finsight-batch12-item-csv-access">(()=>{'use strict';
+function attach(){const a=document.getElementById('openItemCsvManager12'),b=document.getElementById('downloadItemCsvTemplate12');if(a)a.onclick=()=>{if(typeof window.openStockItemManagerV18593==='function')window.openStockItemManagerV18593();else alert('Open Inventory & COGS to load the item manager first.')};if(b)b.onclick=()=>{const blob=new Blob(['Item,Unit\n'],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='FinSight_Items_Template.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',attach);else attach();
+})();</script>
 </body></html>
