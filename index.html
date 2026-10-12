@@ -1199,10 +1199,12 @@ fi.onchange=()=>{const file=fi.files[0];if(!file)return;const rd=new FileReader(
  },0)};rd.readAsText(file)};
 
 function renderTables(){
- const total=state.sales.reduce((a,b)=>a+b.amount,0),received=state.receipts.reduce((a,b)=>a+b.amount,0);$("#salesTotal").textContent=fmt(total);$("#salesReceived").textContent=fmt(received);$("#salesOutstanding").textContent=fmt(total-received);$("#salesCount").textContent=state.sales.length;
- $("#salesTable").innerHTML=state.sales.length?state.sales.map(s=>{const rec=state.receipts.filter(r=>r.saleId===s.id).reduce((a,b)=>a+b.amount,0),o=s.amount-rec;return `<tr><td>${s.date}</td><td>${s.paymentType}</td><td>${accountName(s.incomeId)}</td><td>${s.memo||""}</td><td>${fmt(s.amount)}</td><td>${fmt(rec)}</td><td>${fmt(o)}</td><td><span class="badge ${o<=.01?"green":rec>0?"amber":"blue"}">${o<=.01?"Received":rec>0?"Part Received":"Open"}</span></td><td><button class="mini-btn editSale" data-id="${s.id}">Edit</button> <button class="mini-btn danger deleteSale" data-id="${s.id}">Delete</button></td></tr>`}).join(""):`<tr><td colspan="9"><div class="empty-state">No sales posted yet.</div></td></tr>`;
+ const total=state.sales.reduce((a,b)=>a+b.amount,0),received=state.receipts.reduce((a,b)=>a+b.amount,0);
+ const receivedBySale=new Map();for(const r of state.receipts){receivedBySale.set(r.saleId,(receivedBySale.get(r.saleId)||0)+Number(r.amount||0));}
+ const salesById=new Map(state.sales.map(s=>[s.id,s]));$("#salesTotal").textContent=fmt(total);$("#salesReceived").textContent=fmt(received);$("#salesOutstanding").textContent=fmt(total-received);$("#salesCount").textContent=state.sales.length;
+ $("#salesTable").innerHTML=state.sales.length?state.sales.map(s=>{const rec=receivedBySale.get(s.id)||0,o=s.amount-rec;return `<tr><td>${s.date}</td><td>${s.paymentType}</td><td>${accountName(s.incomeId)}</td><td>${s.memo||""}</td><td>${fmt(s.amount)}</td><td>${fmt(rec)}</td><td>${fmt(o)}</td><td><span class="badge ${o<=.01?"green":rec>0?"amber":"blue"}">${o<=.01?"Received":rec>0?"Part Received":"Open"}</span></td><td><button class="mini-btn editSale" data-id="${s.id}">Edit</button> <button class="mini-btn danger deleteSale" data-id="${s.id}">Delete</button></td></tr>`}).join(""):`<tr><td colspan="9"><div class="empty-state">No sales posted yet.</div></td></tr>`;
  $$(".editSale").forEach(b=>b.onclick=()=>editSale(b.dataset.id));$$(".deleteSale").forEach(b=>b.onclick=()=>deleteSale(b.dataset.id));
- $("#receiptTable").innerHTML=state.receipts.length?state.receipts.map(r=>{const s=state.sales.find(x=>x.id===r.saleId);return `<tr><td>${r.date}</td><td>${s?.date||""}</td><td>${s?.paymentType||""}</td><td>${accountName(r.accountId)}</td><td>${fmt(r.amount)}</td><td>${r.memo||""}</td><td><button class="mini-btn editReceipt" data-id="${r.id}">Edit</button> <button class="mini-btn danger deleteReceipt" data-id="${r.id}">Delete</button></td></tr>`}).join(""):`<tr><td colspan="7"><div class="empty-state">No sales received yet.</div></td></tr>`;
+ $("#receiptTable").innerHTML=state.receipts.length?state.receipts.map(r=>{const s=salesById.get(r.saleId);return `<tr><td>${r.date}</td><td>${s?.date||""}</td><td>${s?.paymentType||""}</td><td>${accountName(r.accountId)}</td><td>${fmt(r.amount)}</td><td>${r.memo||""}</td><td><button class="mini-btn editReceipt" data-id="${r.id}">Edit</button> <button class="mini-btn danger deleteReceipt" data-id="${r.id}">Delete</button></td></tr>`}).join(""):`<tr><td colspan="7"><div class="empty-state">No sales received yet.</div></td></tr>`;
  $$(".editReceipt").forEach(b=>b.onclick=()=>editReceipt(b.dataset.id));$$(".deleteReceipt").forEach(b=>b.onclick=()=>deleteReceipt(b.dataset.id));
  $("#billTable").innerHTML=state.bills.length?state.bills.map(b=>{const paid=paidOnBill(b.id),bal=b.total-paid;return `<tr><td>${b.date}</td><td>${b.supplier}</td><td>${b.invoice}</td><td>${b.lines.length}</td><td>${fmt(b.total)}</td><td>${fmt(paid)}</td><td>${fmt(bal)}</td><td><span class="badge ${bal<=.01?"green":"blue"}">${bal<=.01?"Paid":"Open"}</span></td><td>${bal>.01?`<button class="mini-btn payBill" data-id="${b.id}">Pay Bill</button>`:"—"}</td></tr>`}).join(""):`<tr><td colspan="9"><div class="empty-state">No supplier bills yet.</div></td></tr>`;$$(".payBill").forEach(b=>b.onclick=()=>payBill(b.dataset.id));
  $("#chequeTable").innerHTML=state.cheques.length?state.cheques.map(c=>`<tr><td>${c.date}</td><td>${c.no||"—"}</td><td>${c.payee}</td><td>${accountName(c.bankId)}</td><td>${c.lines.length}</td><td>${fmt(c.total)}</td><td>${c.memo||""}</td></tr>`).join(""):`<tr><td colspan="7"><div class="empty-state">No cheques posted yet.</div></td></tr>`;
@@ -4346,13 +4348,15 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     state.paymentTypes=PT.filter(x=>x.is_active!==false).map(x=>x.name);state.categories=CAT.filter(x=>x.is_active!==false).map(x=>x.name);state.suppliers=SUP.filter(x=>x.is_active!==false).map(x=>x.name);state.stockItems=SI.filter(x=>x.is_active!==false).map(x=>({id:x.id,name:x.name,unit:x.unit||'Unit',track_variance:x.track_variance!==false,is_active:x.is_active!==false}));window.finsightStockItems=state.stockItems;
     state.sales=cloudSales;state.saleItems=mine(saleItems).map(x=>{const saleDate=saleDateById.get(x.sale_id);return{saleId:x.sale_id,date:saleDate||'',item:x.item_name||'',category:catName(x.category_id),qty:Number(x.quantity||0),revenue:Number(x.line_revenue||0)}});
     state.receipts=mine(receipts).map(r=>({id:r.id,saleId:r.sale_id,date:r.receipt_date,salesDate:saleDateById.get(r.sale_id)||'',accountId:r.destination_account_id,amount:Number(r.amount||0),memo:r.memo||'',reference:r.reference||''}));
-    state.bills=mine(bills).map(b=>({id:b.id,date:b.bill_date,supplier:supplierName(b.supplier_id),invoice:b.invoice_no||'—',due:b.due_date||'',memo:b.memo||'',total:Number(b.total_amount||0),lines:mine(billLines).filter(l=>l.bill_id===b.id).map(l=>({group:l.line_type,item:stockName(l.stock_item_id),desc:l.description||'',accountId:l.account_id,qty:Number(l.quantity||0),rate:Number(l.rate||0),vatRate:Number(l.vat_rate||0)/100,net:Number(l.net_amount||0),vat:Number(l.vat_amount||0),gross:Number(l.gross_amount||0)}))}));
+    const billLinesByBill=new Map(); for(const line of mine(billLines)){if(!billLinesByBill.has(line.bill_id))billLinesByBill.set(line.bill_id,[]);billLinesByBill.get(line.bill_id).push(line)}
+    const chequeLinesByCheque=new Map(); for(const line of mine(chequeLines)){if(!chequeLinesByCheque.has(line.cheque_id))chequeLinesByCheque.set(line.cheque_id,[]);chequeLinesByCheque.get(line.cheque_id).push(line)}
+    state.bills=mine(bills).map(b=>({id:b.id,date:b.bill_date,supplier:supplierName(b.supplier_id),invoice:b.invoice_no||'—',due:b.due_date||'',memo:b.memo||'',total:Number(b.total_amount||0),lines:(billLinesByBill.get(b.id)||[]).map(l=>({group:l.line_type,item:stockName(l.stock_item_id),desc:l.description||'',accountId:l.account_id,qty:Number(l.quantity||0),rate:Number(l.rate||0),vatRate:Number(l.vat_rate||0)/100,net:Number(l.net_amount||0),vat:Number(l.vat_amount||0),gross:Number(l.gross_amount||0)}))}));
     state.billPayments=mine(billPayments).map(p=>({id:p.id,billId:p.bill_id,date:p.payment_date,accountId:p.payment_account_id,amount:Number(p.amount||0),chequeNo:p.reference||'',memo:p.memo||''}));
-    state.cheques=mine(cheques).map(c=>({id:c.id,date:c.cheque_date||c.transaction_date||'',no:c.cheque_no||'',payee:c.payee||'',bankId:c.payment_account_id||c.bank_account_id||'',memo:c.memo||'',total:Number(c.total_amount||0),lines:mine(chequeLines).filter(l=>l.cheque_id===c.id).map(l=>({desc:l.description||'',accountId:l.account_id,qty:1,rate:Number(l.amount||0),gross:Number(l.amount||0),net:Number(l.amount||0),vatRate:0}))}));
+    state.cheques=mine(cheques).map(c=>({id:c.id,date:c.cheque_date||c.transaction_date||'',no:c.cheque_no||'',payee:c.payee||'',bankId:c.payment_account_id||c.bank_account_id||'',memo:c.memo||'',total:Number(c.total_amount||0),lines:(chequeLinesByCheque.get(c.id)||[]).map(l=>({desc:l.description||'',accountId:l.account_id,qty:1,rate:Number(l.amount||0),gross:Number(l.amount||0),net:Number(l.amount||0),vatRate:0}))}));
     state.fundTransfers=mine(transfers).map(t=>({id:t.id,date:t.transfer_date||t.transaction_date||'',fromId:t.from_account_id,toId:t.to_account_id,amount:Number(t.amount||0),reference:t.reference||'',memo:t.memo||''}));
     state.fundDeposits=mine(deposits).map(d=>({id:d.id,date:d.deposit_date||d.transaction_date||'',toId:d.deposit_to_account_id||d.deposit_account_id||d.to_account_id,sourceId:d.source_account_id,amount:Number(d.amount||0),reference:d.reference||'',memo:d.memo||''}));
     state.stock={opening:mine(opening).map(x=>({id:x.id,date:x.stock_date,item:stockName(x.stock_item_id),qty:Number(x.quantity||0),unitCost:Number(x.unit_cost||0)})),closing:mine(closing).map(x=>({id:x.id,date:x.stock_date,item:stockName(x.stock_item_id),qty:Number(x.quantity||0),unitCost:Number(x.unit_cost||0)}))};state.onlinePettyTransactions=mine(pettyTx);state.auditLog=state.auditLog||[];state.dailyComments=state.dailyComments||{};
-    rebuildDashboardSummary();try{localStorage.setItem('finsight_v5_state_cloud_cache',JSON.stringify(state))}catch(e){};renderAll();if(typeof renderDashboard==='function')renderDashboard();if(typeof renderPettyCash==='function')renderPettyCash();
+    rebuildDashboardSummary();renderAll();if(typeof renderDashboard==='function')renderDashboard();if(typeof renderPettyCash==='function')renderPettyCash();
     document.body.classList.remove('online-loading');gate.classList.add('hidden');setStatus((profile.full_name||user.email||'FinSight user')+' · '+company.name+' · '+String(membership.role||'user').replace(/(^|_)([a-z])/g,(_,a,b)=>(a?' ':'')+b.toUpperCase()),'ok');
     const reset=document.getElementById('resetTestDataBtn');if(reset){reset.textContent='Reset Data (disabled online)';reset.onclick=()=>toast('Online reset is disabled for safety.')}
     try{document.dispatchEvent(new CustomEvent('finsight:cloud-state-loaded',{detail:{companyId:cid,role:membership.role}}));}catch(_){}
@@ -9204,6 +9208,85 @@ if(typeof existingRender==='function'){
 document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(bind,20));
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();
 setTimeout(bind,700);
+})();
+</script>
+<script id="finsight-inline-amount-calculator-batch-9">
+/* Batch 9: arithmetic inside existing amount inputs only; no posting or accounting changes. */
+(()=>{
+ 'use strict';
+ const moneyWords=/\b(amount|rate|price|cost|balance|total|paid|payment|value|debit|credit|replenish|gross|net)\b/i;
+ const notMoney=/\b(quantity|qty|count|units|percentage|percent|tax rate|vat rate|days|month|year)\b/i;
+ function monetary(input){
+   if(!(input instanceof HTMLInputElement)||input.type!=='number'||input.readOnly||input.disabled)return false;
+   if(input.closest('#onlineAuthGate'))return false;
+   const cls=String(input.className||''),id=input.id||'',nm=input.name||'';
+   if(/(?:qty|quantity|percent|percentage|vatRate)/i.test(id+' '+nm+' '+cls))return false;
+   if(/(?:amount|rate|price|cost|balance|total|paid|payment|value)/i.test(id+' '+nm+' '+cls))return true;
+   let label=input.closest('.field')?.querySelector('label')?.textContent||'';
+   if(!label&&input.id){const explicit=document.querySelector('label[for="'+CSS.escape(input.id)+'"]');label=explicit?.textContent||'';}
+   if(label&&!notMoney.test(label)&&moneyWords.test(label))return true;
+   const cell=input.closest('td');
+   if(cell){const table=cell.closest('table'),col=cell.cellIndex;
+     const heads=table?.querySelectorAll('thead tr:last-child th')||[];
+     const header=heads[col]?.textContent?.trim()||'';
+     if(header&&!notMoney.test(header)&&moneyWords.test(header))return true;
+   }
+   return false;
+ }
+ function calculate(source){
+   const src=source.trim().replace(/^=/,'').replace(/×/g,'*').replace(/[÷]/g,'/').replace(/−/g,'-');
+   if(!src||src.length>200||!/^[\d\s.+*/()\-]+$/.test(src))throw Error('Invalid calculation');
+   const tokens=src.match(/(?:\d+(?:\.\d*)?|\.\d+)|[()+*/-]/g)||[];
+   if(tokens.join('')!==src.replace(/\s/g,'')||tokens.length>100)throw Error('Invalid calculation');
+   let i=0;
+   function factor(){if(tokens[i]==='+'){i++;return factor()}if(tokens[i]==='-'){i++;return -factor()}
+     if(tokens[i]==='('){i++;const val=sum();if(tokens[i++]!==')')throw Error('Invalid calculation');return val}
+     const t=tokens[i++];if(!t||! /^(?:\d|\.\d)/.test(t))throw Error('Invalid calculation');return Number(t)}
+   function term(){let n=factor();while(tokens[i]==='*'||tokens[i]==='/'){const op=tokens[i++],rhs=factor();if(op==='/'&&rhs===0)throw Error('Cannot divide by zero');n=op==='*'?n*rhs:n/rhs}return n}
+   function sum(){let n=term();while(tokens[i]==='+'||tokens[i]==='-'){const op=tokens[i++],rhs=term();n=op==='+'?n+rhs:n-rhs}return n}
+   const result=sum();if(i!==tokens.length||!Number.isFinite(result))throw Error('Invalid calculation');
+   // Money fields in FinSight use two decimal places. Quantity fields are excluded.
+   return Math.round((result+Number.EPSILON)*100)/100;
+ }
+ function showError(message){if(typeof window.toast==='function')window.toast(message);else alert(message)}
+ function commit(input){
+   if(!input.value.trim().startsWith('='))return true;
+   let number;
+   try{number=calculate(input.value)}catch(err){showError(err.message||'Invalid calculation');return false}
+   const min=input.getAttribute('min'),max=input.getAttribute('max');
+   if(min!==null&&number<Number(min)){showError('Amount cannot be below '+min);return false}
+   if(max!==null&&number>Number(max)){showError('Amount cannot exceed '+max);return false}
+   input.value=number.toFixed(2);
+   input.dataset.fsCalcOriginal=input.value;
+   input.dispatchEvent(new Event('input',{bubbles:true}));
+   input.dispatchEvent(new Event('change',{bubbles:true}));
+   return true;
+ }
+ document.addEventListener('focusin',e=>{
+   const input=e.target;if(!monetary(input))return;
+   input.dataset.fsCalcOriginal=input.value;
+   input.dataset.fsCalcActive='1';
+   input.type='text';input.inputMode='decimal';
+ },true);
+ document.addEventListener('keydown',e=>{
+   const input=e.target;
+   if(!(input instanceof HTMLInputElement)||input.dataset.fsCalcActive!=='1'||e.key!=='Enter'||!input.value.trim().startsWith('='))return;
+   e.preventDefault();e.stopImmediatePropagation();commit(input);
+ },true);
+ // Existing numeric input handlers should not process an unfinished expression as zero.
+ document.addEventListener('input',e=>{
+   const input=e.target;
+   if(input instanceof HTMLInputElement&&input.dataset.fsCalcActive==='1'&&input.value.trim().startsWith('='))e.stopImmediatePropagation();
+ },true);
+ document.addEventListener('focusout',e=>{
+   const input=e.target;
+   if(!(input instanceof HTMLInputElement)||input.dataset.fsCalcActive!=='1')return;
+   if(input.value.trim().startsWith('=')){
+     // Uncommitted expressions are not valid amounts: preserve original value.
+     input.value=input.dataset.fsCalcOriginal||'';
+   }
+   input.type='number';input.inputMode='';delete input.dataset.fsCalcActive;
+ },true);
 })();
 </script>
 </body></html>
