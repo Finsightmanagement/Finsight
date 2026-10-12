@@ -4278,8 +4278,8 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     if(allowed){nav?.classList.remove('hidden');sec?.classList.remove('hidden');if(invite)invite.onclick=()=>openInviteUser('viewer');loadCompanyUsers();}
     else{nav?.classList.add('hidden');sec?.classList.add('hidden');}
   }
-  // Load complete Sales datasets. Supabase/PostgREST normally returns at most 1,000 rows per request.
-  // All pages use stable ID ordering; errors abort the load rather than displaying partial totals.
+  // Complete Sales loading with keyset pagination. This avoids increasingly costly
+  // OFFSET scans on large companies (particularly sale_items).
   async function q(table,orderCol=null){
     const pagedSales=['sales','sale_items','sales_receipts'].includes(table);
     if(!pagedSales){
@@ -4288,15 +4288,26 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
       if(error)throw new Error('Unable to load '+table+': '+error.message);
       return data||[];
     }
-    const pageSize=500, all=[];
-    let offset=0;
+    const all=[];
+    let lastId=null, pageSize=200;
     for(;;){
-      const {data,error}=await sb.from(table).select('*').eq('company_id',window.finsightOnline.companyId)
-        .order('id',{ascending:true}).range(offset,offset+pageSize-1);
-      if(error)throw new Error('Unable to load all '+table+' records: '+error.message);
-      const page=data||[];all.push(...page);
+      let page=null;
+      // Retry slow pages with fewer records, but never display incomplete financial totals.
+      for(let attempt=0;attempt<4;attempt++){
+        let req=sb.from(table).select('*').eq('company_id',window.finsightOnline.companyId)
+          .order('id',{ascending:true}).limit(pageSize);
+        if(lastId!==null)req=req.gt('id',lastId);
+        const {data,error}=await req;
+        if(!error){page=data||[];break;}
+        const msg=String(error.message||error);
+        const transient=/statement timeout|57014|timed out|timeout/i.test(msg);
+        if(!transient||attempt===3)throw new Error('Unable to load all '+table+' records: '+msg);
+        pageSize=Math.max(25,Math.floor(pageSize/2));
+      }
+      if(!page||page.length===0)break;
+      all.push(...page);
+      lastId=page[page.length-1].id;
       if(page.length<pageSize)break;
-      offset+=page.length;
     }
     if(orderCol)all.sort((a,b)=>String(a[orderCol]||'').localeCompare(String(b[orderCol]||'')));
     return all;
