@@ -8583,6 +8583,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
  const q=(s,r=document)=>r.querySelector(s),qa=(s,r=document)=>[...r.querySelectorAll(s)];
  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const norm=v=>String(v??'').trim().toLowerCase();
+ const money=n=>'KSh '+Number(n).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
  const units=['Kg','g','Litre','ml','Pcs','Pack','Box','Bottle','Tray','Other'];
  async function fetchItems(){
    const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
