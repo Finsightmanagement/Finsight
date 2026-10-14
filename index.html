@@ -579,7 +579,7 @@ body.online-loading .app{visibility:hidden}
 </section>
 
 <section class="page" id="sales">
-  <div class="section-title"><div><h3>Sales Register</h3><div class="small-note">Post sales first; receive the money separately.</div></div><div><button class="btn" id="managePaymentTypesBtn">Payment Types</button> <button class="btn primary" id="postSalesBtn">+ Post Sales</button></div></div>
+  <div class="section-title"><div><h3>Sales Register</h3><div class="small-note">Post sales first; receive the money separately.</div></div><div><button class="btn" id="managePaymentTypesBtn">Payment Types</button> <button class="btn primary" id="postSalesBtn">+ Post Sales</button> <button class="btn" id="fsBatchSalesBtn">+ Batch Sales</button></div></div>
   <div class="summary-strip"><div class="summary-box"><span>Total Posted</span><b id="salesTotal">KSh 0</b></div><div class="summary-box"><span>Received</span><b id="salesReceived">KSh 0</b></div><div class="summary-box"><span>Unreceived</span><b id="salesOutstanding">KSh 0</b></div><div class="summary-box"><span>Sales Entries</span><b id="salesCount">0</b></div></div>
   <div class="card table-card"><table><thead><tr><th>Date</th><th>Payment Type</th><th>Income Account</th><th>Memo</th><th>Total</th><th>Received</th><th>Outstanding</th><th>Status</th><th>Actions</th></tr></thead><tbody id="salesTable"></tbody></table></div>
 </section>
@@ -2280,7 +2280,9 @@ renderAll();
     const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     let sheet=`<html><head><meta charset="UTF-8"></head><body><table border="1" cellspacing="0" cellpadding="6"><tr><th colspan="20" style="font-size:16pt;text-align:left">${esc(title)}</th></tr>`;
     rows.forEach(r=>{sheet+="<tr>"+r.map((c,i)=>`<${i===0?"td":"td"}>${esc(c)}</td>`).join("")+"</tr>"});
-    sheet+="</table></body></html>";
+    sheet+="</table>
+
+</body></html>";
     const blob=new Blob([sheet],{type:"application/vnd.ms-excel;charset=utf-8"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=title.replace(/[^a-z0-9]+/gi,"_")+".xls";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500);
   }
@@ -9489,6 +9491,67 @@ status('General Journal posted successfully: '+(data||''));lines=[{acc:'',dr:'',
 function drawLines(){const tbody=el('fs15-lines');if(!tbody)return;tbody.innerHTML=lines.map((x,i)=>`<tr data-fs15-i="${i}"><td><select data-field="acc">${acctOptions(x.acc)}</select></td><td><input class="fs15-number" data-field="dr" inputmode="decimal" value="${esc(x.dr)}" placeholder="0.00"></td><td><input class="fs15-number" data-field="cr" inputmode="decimal" value="${esc(x.cr)}" placeholder="0.00"></td><td><button class="btn" data-fs15-del="${i}">×</button></td></tr>`).join('');tbody.querySelectorAll('[data-field]').forEach(node=>node.oninput=()=>{const row=lines[Number(node.closest('[data-fs15-i]').dataset.fs15I)];row[node.dataset.field]=node.value});tbody.querySelectorAll('[data-fs15-del]').forEach(b=>b.onclick=()=>{if(lines.length<=2)return status('A journal requires at least two lines.',true);lines.splice(Number(b.dataset.fs15Del),1);drawLines()})}
 function checkJournal(){const parsed=lines.filter(x=>x.acc||x.dr||x.cr);let debit=0,credit=0;for(const x of parsed){const d=Number(x.dr||0),c=Number(x.cr||0);if(!x.acc||!Number.isFinite(d)||!Number.isFinite(c)||d<0||c<0||(d>0&&c>0)||(d===0&&c===0))return status('Every journal line needs an account and exactly one positive debit or credit.',true),false;debit+=d;credit+=c}if(parsed.length<2||debit<=0||Math.abs(debit-credit)>.005)return status(`Journal out of balance. Debit ${fmt(debit)}, credit ${fmt(credit)}.`,true),false;el('fs15-journal-summary').textContent=`Balanced: KSh ${fmt(debit)} debit / credit`;status('Journal is balanced and ready to post.');return true}
 document.addEventListener('finsight:cloud-state-loaded',()=>{boot();});if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+})();
+</script>
+<script id="fs-batch-sales-only">
+(function(){
+'use strict';
+const el=(s,r=document)=>r.querySelector(s);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const normalized=v=>String(v??'').trim().toLowerCase();
+const money=n=>Number(n||0).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+function ensureBinding(){const b=document.getElementById('fsBatchSalesBtn');if(b)b.onclick=openBatchSales;}
+async function openBatchSales(){
+ const sb=window.finsightSupabase,companyId=window.finsightOnline?.companyId;
+ if(!sb||!companyId)return toast('Please sign in first.');
+ const [menuRes,payRes]=await Promise.all([
+  sb.from('menu_items').select('id,name,category_id,income_account_id,is_active').eq('company_id',companyId).eq('is_active',true).order('name'),
+  sb.from('payment_types').select('id,name,is_active').eq('company_id',companyId).eq('is_active',true).order('name')
+ ]);
+ if(menuRes.error||payRes.error)return toast(menuRes.error?.message||payRes.error?.message);
+ const menu=menuRes.data||[],pays=payRes.data||[];
+ if(!menu.length||!pays.length)return toast('Add Menu Items and Payment Types before posting sales.');
+ const categories=new Map((window.finsightRecipeData?.categories||[]).map(x=>[x.id,x.name]));
+ const accountMap=new Map((state.accounts||[]).map(x=>[x.id,x]));
+ const receivable=(state.accounts||[]).find(a=>a.active!==false&&normalized(a.name)==='sales receivable');
+ if(!receivable)return toast('Sales Receivable account is missing.');
+ const menuOpt=menu.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+ const payOpt=pays.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+ openModal('Batch Sales','',`<div class="form-grid"><div class="field"><label>Sales Date</label><input class="input" type="date" id="fsBatchDate" value="${typeof today==='function'?today():new Date().toISOString().slice(0,10)}"></div><div class="field"><label>Payment Type</label><select class="input" id="fsBatchPayment">${payOpt}</select></div><div class="field full"><label>Memo</label><input class="input" id="fsBatchMemo"></div></div>
+ <div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Menu Item</th><th>Category</th><th>Quantity Sold</th><th>Income Account</th><th>Sales Amount</th><th></th></tr></thead><tbody id="fsBatchRows"></tbody></table></div>
+ <div class="modal-actions" style="justify-content:space-between;align-items:center;flex-wrap:wrap"><button class="btn" id="fsBatchAdd">+ Add Item</button><strong id="fsBatchTotal">Total: KSh 0.00</strong></div>
+ <div id="fsBatchStatus" role="status"></div>
+ <div class="modal-actions"><button class="btn primary" id="fsBatchPost">Post Batch Sales</button></div>`);
+ const rows=el('#fsBatchRows'),status=el('#fsBatchStatus'),btn=el('#fsBatchPost');
+ function refresh(){let sum=0;for(const tr of rows.children){const m=menu.find(x=>x.id===el('.fs-item',tr).value);el('.fs-cat',tr).value=categories.get(m?.category_id)||'';el('.fs-inc',tr).value=accountMap.get(m?.income_account_id)?.name||'';sum+=Number(el('.fs-amount',tr).value)||0;}el('#fsBatchTotal').textContent='Total: KSh '+money(sum)}
+ function addRow(){const tr=document.createElement('tr');tr.innerHTML=`<td><select class="fs-item input">${menuOpt}</select></td><td><input class="fs-cat input" readonly></td><td><input class="fs-qty input" type="number" min="0.001" step="0.001" value="1"></td><td><input class="fs-inc input" readonly></td><td><input class="fs-amount input" type="text" inputmode="decimal" placeholder="0.00"></td><td><button type="button" class="btn fs-remove">Remove</button></td>`;rows.appendChild(tr);el('.fs-item',tr).onchange=refresh;el('.fs-amount',tr).oninput=refresh;el('.fs-remove',tr).onclick=()=>{if(rows.children.length===1)return toast('At least one item is required.');tr.remove();refresh()};refresh()}
+ el('#fsBatchAdd').onclick=addRow;addRow();
+ btn.onclick=async()=>{
+  const date=el('#fsBatchDate').value,paymentId=el('#fsBatchPayment').value,memo=el('#fsBatchMemo').value.trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return toast('Select a valid sales date.');
+  const parsed=[];
+  for(const [i,tr] of [...rows.children].entries()){
+   const m=menu.find(x=>x.id===el('.fs-item',tr).value),qty=Number(el('.fs-qty',tr).value),amount=Number(el('.fs-amount',tr).value);
+   if(!m||!m.category_id||!m.income_account_id||!Number.isFinite(qty)||qty<=0||!Number.isFinite(amount)||amount<=0)return toast('Check item, quantity and amount on row '+(i+1));
+   parsed.push({m,qty,amount});
+  }
+  btn.disabled=true;el('#fsBatchAdd').disabled=true;let posted=0;
+  try{
+   // Persist each row through the existing Sale RPC. Reconciliation must not repost a partially completed batch.
+   for(const item of parsed){
+    const {m,qty,amount}=item;
+    const r=await sb.rpc('post_sale',{p_company_id:companyId,p_sale_date:date,p_payment_type_id:paymentId,p_income_account_id:m.income_account_id,p_sales_receivable_account_id:receivable.id,p_total_amount:amount,p_memo:memo||null,p_items:[{category_id:m.category_id,item_name:m.name,quantity:qty,line_revenue:amount}]});
+    if(r.error)throw r.error;
+    posted++;status.textContent=`Posted ${posted} of ${parsed.length} items.`;
+   }
+   status.textContent=`Successfully posted ${posted} sales items.`;
+   btn.textContent='Finish';btn.disabled=false;
+   btn.onclick=async()=>{closeModal();await window.finsightReloadCloudState?.()};
+  }catch(e){status.textContent=`Posted ${posted} of ${parsed.length}. ${e.message||e}. Review the Sales Register before retrying to avoid duplicate sales.`;btn.textContent='Close';btn.disabled=false;btn.onclick=async()=>{closeModal();await window.finsightReloadCloudState?.()}}
+ };
+}
+window.openFinSightBatchSales=openBatchSales;
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',ensureBinding);else ensureBinding();
 })();
 </script>
 </body></html>
