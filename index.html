@@ -8729,20 +8729,22 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
    }catch(e){toast(e.message||String(e))}
  };
 
- // Batch 20: Menu-item names only; category and income are selected once for the entire import.
+ // Batch 21: Each menu-item CSV row supplies its own category and income account.
  window.openMenuItemsCsvImport=async function(){
    try{
      const d=await load();
-     if(!d.cats.length||!d.accounts.length)return toast('Create a Sales Category and Income account before importing menu items.');
+     if(!d.cats.length||!d.accounts.length)return toast('Create Sales Categories and Income accounts before importing menu items.');
      openModal('Import Menu Items','',`<div class="form-grid">
-       <div class="field full"><label>Menu Items CSV (Item column)</label><input class="input" type="file" id="fsMenuCsvFile" accept=".csv,text/csv"></div>
-       <div class="field"><label>Sales Category</label><select class="input" id="fsMenuCsvCat">${d.cats.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
-       <div class="field"><label>Income Account</label><select class="input" id="fsMenuCsvIncome">${d.accounts.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
+       <div class="field full"><label>Menu Items CSV (Item, Category, Income Account)</label><input class="input" type="file" id="fsMenuCsvFile" accept=".csv,text/csv"></div>
+       <div class="field full"><button type="button" class="btn" id="fsMenuCsvTemplate">Download Sample CSV</button></div>
        <div class="field full" id="fsMenuCsvStatus"></div>
        </div><div class="modal-actions"><button class="btn primary" id="fsMenuCsvPost" disabled>Import Menu Items</button></div>`);
      const file=q('#fsMenuCsvFile'),status=q('#fsMenuCsvStatus'),btn=q('#fsMenuCsvPost');
-     let names=[];
-     // Dedicated one-column CSV parser, accepting quoted commas and doubled quotes.
+     let prepared=[];
+     q('#fsMenuCsvTemplate').onclick=()=>{
+       const text='Item,Category,Income Account\r\nChicken Burger,Burgers,Sales Revenue\r\nMargherita Pizza,Pizzas,Sales Revenue\r\n';
+       const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/csv;charset=utf-8'}));a.download='FinSight_Menu_Items_Import_Template.csv';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+     };
      function parseCsv(text){
        const records=[];let fields=[],value='',quoted=false;
        text=String(text).replace(/^\uFEFF/,'');
@@ -8757,52 +8759,62 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
        fields.push(value);if(fields.some(v=>v.trim()))records.push(fields);
        return records;
      }
+     const categoryLookup=new Map(d.cats.map(x=>[norm(x.name),x.id]));
+     const accountLookup=new Map(d.accounts.map(x=>[norm(x.name),x.id]));
      file.onchange=async()=>{
-       btn.disabled=true;names=[];
+       btn.disabled=true;prepared=[];
        try{
          if(!file.files?.[0])return;
          const rows=parseCsv(await file.files[0].text());
          if(!rows.length)throw Error('CSV is empty.');
-         const header=rows[0].map(x=>norm(x));const ix=header.findIndex(x=>['item','item name','menu item','menu item name'].includes(x));
-         if(ix<0)throw Error('CSV requires an Item column.');
-         const seen=new Set(),existing=new Set(d.menu.map(x=>norm(x.name)));const duplicates=[];
+         const h=rows[0].map(x=>norm(x));
+         const col=(opts)=>h.findIndex(x=>opts.includes(x));
+         const ix=col(['item','item name','menu item','menu item name']);
+         const cx=col(['category','sales category']);
+         const ax=col(['income account','income_account','sales income account']);
+         if([ix,cx,ax].some(x=>x<0)||new Set([ix,cx,ax]).size!==3)throw Error('CSV must contain Item, Category, Income Account columns.');
+         if(h.length!==3)throw Error('CSV must contain exactly three columns: Item, Category, Income Account.');
+         const seen=new Set(),existing=new Set(d.menu.map(x=>norm(x.name)));
          for(let i=1;i<rows.length;i++){
-           const name=String(rows[i][ix]||'').trim();
-           if(!name)throw Error(`Row ${i+1}: item name is blank.`);
-           if(rows[i].some((v,j)=>j!==ix&&String(v).trim()))throw Error(`Row ${i+1}: extra values found. Use only the Item column.`);
+           const row=rows[i];
+           if(row.length!==3)throw Error(`Row ${i+1}: expected exactly three columns.`);
+           const name=String(row[ix]||'').trim(),cat=String(row[cx]||'').trim(),account=String(row[ax]||'').trim();
+           if(!name||!cat||!account)throw Error(`Row ${i+1}: Item, Category and Income Account are all required.`);
            const key=norm(name);
-           if(seen.has(key)||existing.has(key)){duplicates.push(name);continue}
-           seen.add(key);names.push(name);
+           if(seen.has(key)||existing.has(key))throw Error(`Row ${i+1}: duplicate menu item "${name}".`);
+           const category_id=categoryLookup.get(norm(cat));
+           const income_account_id=accountLookup.get(norm(account));
+           if(!category_id)throw Error(`Row ${i+1}: Sales Category "${cat}" does not exist.`);
+           if(!income_account_id)throw Error(`Row ${i+1}: active Income Account "${account}" does not exist.`);
+           seen.add(key);
+           prepared.push({name,category_id,income_account_id});
          }
-         if(duplicates.length)throw Error(`Duplicate items: ${duplicates.slice(0,5).join(', ')}${duplicates.length>5?'…':''}. Remove existing/repeated items before importing.`);
-         if(!names.length)throw Error('No menu items to import.');
-         status.textContent=`${names.length} menu items ready to import. No recipes will be created.`;btn.disabled=false;
+         if(!prepared.length)throw Error('No menu items to import.');
+         status.textContent=`${prepared.length} menu items ready to import. No recipes will be created.`;
+         btn.disabled=false;
        }catch(e){status.textContent=e.message||String(e)}
      };
      btn.onclick=async()=>{
-       if(!names.length)return;
-       const category_id=q('#fsMenuCsvCat').value,income_account_id=q('#fsMenuCsvIncome').value;
-       if(!category_id||!income_account_id)return toast('Select a category and income account.');
+       if(!prepared.length)return;
        const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
        if(!sb||!cid)return toast('Please sign in to import menu items.');
-       btn.disabled=true;
-       let saved=0;
+       btn.disabled=true;let saved=0;
        try{
-         // Recheck existing names before posting. A DB-level uniqueness constraint is still recommended.
+         // Check existing names once more before any insert; do not silently replace existing items.
          const refreshed=await sb.from('menu_items').select('name').eq('company_id',cid);
          if(refreshed.error)throw refreshed.error;
          const existing=new Set((refreshed.data||[]).map(x=>norm(x.name)));
-         if(names.some(x=>existing.has(norm(x))))throw Error('Some menu items now exist. Re-select your CSV and review duplicates.');
-         for(let i=0;i<names.length;i+=100){
-           const batch=names.slice(i,i+100).map(name=>({company_id:cid,name,category_id,income_account_id,is_active:true}));
+         if(prepared.some(x=>existing.has(norm(x.name))))throw Error('One or more items already exist. Please review the CSV before retrying.');
+         for(let i=0;i<prepared.length;i+=100){
+           const batch=prepared.slice(i,i+100).map(x=>({company_id:cid,...x,is_active:true}));
            const result=await sb.from('menu_items').insert(batch);
            if(result.error)throw result.error;
-           saved+=batch.length;status.textContent=`Imported ${saved} of ${names.length} menu items.`;
+           saved+=batch.length;status.textContent=`Imported ${saved} of ${prepared.length} menu items.`;
          }
          status.textContent=`Import complete: ${saved} menu items.`;
          btn.textContent='Finish';btn.disabled=false;
          btn.onclick=()=>{closeModal();window.finsightReloadCloudState?.()};
-       }catch(e){status.textContent=`Imported ${saved} of ${names.length}. ${e.message||e}. Check the list before retrying.`;btn.disabled=false}
+       }catch(e){status.textContent=`Imported ${saved} of ${prepared.length}. ${e.message||e}. Check the item list before retrying.`;btn.disabled=false}
      };
    }catch(e){toast(e.message||String(e))}
  };
