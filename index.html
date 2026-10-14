@@ -8777,8 +8777,12 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
          const seen=new Set(),existing=new Set(d.menu.map(x=>norm(x.name)));
          for(let i=1;i<rows.length;i++){
            const row=rows[i];
+           // Spreadsheet exports may include a trailing blank row made of commas,
+           // non-breaking spaces or invisible formatting characters.
+           const cleanCell=v=>String(v??'').replace(/[\u200B-\u200D\uFEFF\u00A0]/g,'').trim();
+           if(row.every(v=>!cleanCell(v)))continue;
            if(row.length!==3)throw Error(`Row ${i+1}: expected exactly three columns.`);
-           const name=String(row[ix]||'').trim(),cat=String(row[cx]||'').trim(),account=String(row[ax]||'').trim();
+           const name=cleanCell(row[ix]),cat=cleanCell(row[cx]),account=cleanCell(row[ax]);
            if(!name||!cat||!account)throw Error(`Row ${i+1}: Item, Category and Income Account are all required.`);
            const key=norm(name);
            if(seen.has(key)||existing.has(key))throw Error(`Row ${i+1}: duplicate menu item "${name}".`);
