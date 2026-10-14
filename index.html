@@ -8587,44 +8587,61 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
  const units=['Kg','g','Litre','ml','Pcs','Pack','Box','Bottle','Tray','Other'];
  async function fetchItems(){
    const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
-   const {data,error}=await sb.from('stock_items').select('id,name,unit,is_active,track_variance').eq('company_id',cid).order('name');
+   const {data,error}=await sb.from('stock_items').select('id,name,unit,is_active,track_variance,stock_take_category').eq('company_id',cid).order('name');
    if(error)throw error;return data||[];
  }
+ const baseCategories=['Vegetables','Perishables','Drinks','Packaging','Dry Foods','Cleaning Supplies'];
+ const categories=rows=>[...new Set([...baseCategories,...rows.map(r=>r.stock_take_category).filter(Boolean)])].sort((a,b)=>a.localeCompare(b));
+ function categoryOpts(rows,current){return `<option value="">Select category</option>`+categories(rows).map(v=>`<option value="${esc(v)}" ${v===current?'selected':''}>${esc(v)}</option>`).join('')}
  function unitOpts(current){return units.map(u=>`<option ${String(current||'')===u?'selected':''}>${u}</option>`).join('')}
  window.openStockItemManagerV18593=async function(){
    try{
      let rows=await fetchItems();
      openModal('Purchase / Recipe Items','',`<div class="fs-stock-manager-toolbar"><input class="input" id="fsStockSearch" placeholder="Search items"><button class="btn" id="fsStockSetupTemplate">Items CSV Template</button><button class="btn" id="fsStockSetupUpload">Upload Items CSV</button><button class="btn primary" id="fsStockNew">+ Add Item</button></div><div id="fsStockList"></div>`);
      const render=()=>{
-       const term=norm(q('#fsStockSearch').value),show=rows.filter(x=>!term||norm(x.name).includes(term));
-       q('#fsStockList').innerHTML=show.length?show.map(x=>`<div class="manage-row" style="grid-template-columns:1fr auto"><div><b>${esc(x.name)}</b><div class="small-note">${esc(x.unit||'Unit')} · Track Variance: ${x.track_variance===false?'No':'Yes'} · ${x.is_active===false?'Inactive':'Active'}</div></div><button class="mini-btn" data-stock-edit="${x.id}">Edit</button></div>`).join(''):'<div class="empty-state">No Purchase / Recipe Items.</div>';
+       const term=norm(q('#fsStockSearch').value),show=rows.filter(x=>!term||(norm(x.name).includes(term)||norm(x.stock_take_category).includes(term)));
+       q('#fsStockList').innerHTML=show.length?show.map(x=>`<div class="manage-row" style="grid-template-columns:1fr auto"><div><b>${esc(x.name)}</b><div class="small-note">${esc(x.unit||'Unit')} · ${esc(x.stock_take_category||'Uncategorised')} · Track Variance: ${x.track_variance===false?'No':'Yes'} · ${x.is_active===false?'Inactive':'Active'}</div></div><button class="mini-btn" data-stock-edit="${x.id}">Edit</button></div>`).join(''):'<div class="empty-state">No Purchase / Recipe Items.</div>';
        qa('[data-stock-edit]').forEach(b=>b.onclick=()=>editor(rows.find(x=>x.id===b.dataset.stockEdit)));
      };
      const editor=(item=null)=>{
        openModal(item?'Edit Purchase / Recipe Item':'Add Purchase / Recipe Item','',`<div class="fs-stock-edit-grid">
          <div class="field"><label>Item Name</label><input class="input" id="fsiName" value="${esc(item?.name||'')}"></div>
          <div class="field"><label>Unit</label><select class="input" id="fsiUnit">${unitOpts(item?.unit||'Pcs')}</select></div>
+         <div class="field"><label>Stock Category</label><div class="inline-add"><select class="input" id="fsiCategory">${categoryOpts(rows,item?.stock_take_category||'')}</select><button class="btn" id="fsiQuickCategory" type="button">+ Add</button></div></div>
          <div class="field"><label>Track Variance</label><select class="input" id="fsiTrack"><option value="true" ${item?.track_variance!==false?'selected':''}>Yes</option><option value="false" ${item?.track_variance===false?'selected':''}>No</option></select></div>
          <div class="field"><label>Status</label><select class="input" id="fsiActive"><option value="true" ${item?.is_active!==false?'selected':''}>Active</option><option value="false" ${item?.is_active===false?'selected':''}>Inactive</option></select></div>
        </div><div class="modal-actions"><button class="btn primary" id="fsiSave">Save</button></div>`);
+       q('#fsiQuickCategory').onclick=()=>{
+         const value=prompt('New stock category name:');if(value===null)return;
+         const cat=value.trim();if(!cat||cat.length>60)return toast('Enter a category (up to 60 characters).');
+         let opt=[...q('#fsiCategory').options].find(o=>norm(o.value)===norm(cat));
+         if(!opt){opt=document.createElement('option');opt.value=cat;opt.textContent=cat;q('#fsiCategory').add(opt)}
+         q('#fsiCategory').value=opt.value;
+       };
        q('#fsiSave').onclick=async()=>{
          const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId,name=q('#fsiName').value.trim();
          if(!name)return toast('Enter the item name.');
+         const category=q('#fsiCategory').value.trim();if(!category&&!item)return toast('Stock Category is required for new items.');
          const payload={name,unit:q('#fsiUnit').value,track_variance:q('#fsiTrack').value==='true',is_active:q('#fsiActive').value==='true'};
          const dup=rows.find(x=>x.id!==item?.id&&norm(x.name)===norm(name));if(dup)return toast('This Purchase / Recipe Item already exists.');
          const btn=q('#fsiSave');btn.disabled=true;btn.textContent='Saving…';
          try{
            let r;
            if(item)r=await sb.from('stock_items').update(payload).eq('company_id',cid).eq('id',item.id);
-           else r=await sb.from('stock_items').insert({company_id:cid,...payload});
+           else r=await sb.from('stock_items').insert({company_id:cid,...payload}).select('id').single();
            if(r.error)throw r.error;
+           const id=item?.id||r.data?.id;
+           if(category!==String(item?.stock_take_category||'')){
+             const catSave=await sb.rpc('stock_take_assign_category',{p_company:cid,p_item:id,p_category:category});
+             if(catSave.error)throw new Error('Item saved but category could not be assigned: '+catSave.error.message);
+           }
            await window.finsightReloadCloudState?.();toast('Purchase / Recipe Item saved');closeModal();setTimeout(()=>window.openStockItemManagerV18593(),100);
          }catch(e){toast(e.message||String(e))}
          finally{btn.disabled=false;btn.textContent='Save'}
        };
      };
      q('#fsStockSetupTemplate').onclick=()=>{
-       const csv='Item,Unit\n';
+       const csv='Item,Unit,Category,Track Variance\n';
        const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FinSight_Purchase_Recipe_Item_Setup.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},100);
      };
      q('#fsStockSetupUpload').onclick=()=>{
@@ -8634,21 +8651,30 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
            const text=await f.text(),lines=text.replace(/\r/g,'').split('\n').filter(x=>x.trim());
            if(lines.length<2)return toast('The setup CSV has no item rows.');
            const parse=line=>{let a=[],cur='',quote=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){if(quote&&line[i+1]==='"'){cur+='"';i++}else quote=!quote}else if(c===','&&!quote){a.push(cur);cur=''}else cur+=c}a.push(cur);return a.map(x=>x.trim())};
-           const h=parse(lines[0]).map(norm),ni=h.indexOf('item')>=0?h.indexOf('item'):h.indexOf('item name'),ui=h.indexOf('unit'),ti=h.indexOf('track variance');
+           const h=parse(lines[0]).map(norm),ni=h.indexOf('item')>=0?h.indexOf('item'):h.indexOf('item name'),ui=h.indexOf('unit'),ti=h.indexOf('track variance'),ci=h.indexOf('category');
            if(ni<0||ui<0)return toast('Items CSV must contain Item and Unit.');
            const allowed=new Set(units.map(norm)),seen=new Set(),payload=[];
-           for(let i=1;i<lines.length;i++){const r=parse(lines[i]),name=(r[ni]||'').trim(),unit=(r[ui]||'').trim(),tv=ti<0?'yes':norm(r[ti]);if(!name)continue;
+           if(ci<0)return toast('Items CSV must contain Category.');
+           for(let i=1;i<lines.length;i++){const r=parse(lines[i]),name=(r[ni]||'').trim(),unit=(r[ui]||'').trim(),tv=ti<0?'yes':norm(r[ti]),category=(r[ci]||'').trim();if(!name)continue;
+             const existing=rows.find(x=>norm(x.name)===norm(name));
+             if(!category&&!existing)throw new Error(`${name}: Category is required for new items.`);
+             if(category.length>60)throw new Error(`${name}: Category is too long.`);
              if(seen.has(norm(name)))throw new Error(`Duplicate item in setup CSV: ${name}`);seen.add(norm(name));
              if(!allowed.has(norm(unit)))throw new Error(`${name}: invalid Unit "${unit}".`);
              if(!['yes','no','true','false'].includes(tv))throw new Error(`${name}: Track Variance must be Yes or No.`);
              const canonical=units.find(x=>norm(x)===norm(unit))||unit;
-             payload.push({name,unit:canonical,track_variance:tv==='yes'||tv==='true',is_active:true});
+             payload.push({name,unit:canonical,track_variance:tv==='yes'||tv==='true',is_active:true,category});
            }
            const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
            for(const p of payload){
              const ex=rows.find(x=>norm(x.name)===norm(p.name));
-             let r=ex?await sb.from('stock_items').update(p).eq('company_id',cid).eq('id',ex.id):await sb.from('stock_items').insert({company_id:cid,...p});
+             const {category,...fields}=p;
+             let r=ex?await sb.from('stock_items').update(fields).eq('company_id',cid).eq('id',ex.id):await sb.from('stock_items').insert({company_id:cid,...fields}).select('id').single();
              if(r.error)throw r.error;
+             if(category && category!==String(ex?.stock_take_category||'')){
+               const result=await sb.rpc('stock_take_assign_category',{p_company:cid,p_item:ex?.id||r.data?.id,p_category:category});
+               if(result.error)throw new Error(`Category assignment failed for ${p.name}: ${result.error.message}`);
+             }
            }
            await window.finsightReloadCloudState?.();toast(`${payload.length} Purchase / Recipe Item(s) imported`);closeModal();setTimeout(()=>window.openStockItemManagerV18593(),100);
          }catch(e){toast(e.message||String(e))}
