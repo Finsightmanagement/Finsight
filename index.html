@@ -8641,7 +8641,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
        };
      };
      q('#fsStockSetupTemplate').onclick=()=>{
-       const csv='Item,Unit,Category,Track Variance\n';
+       const csv='Item,Unit,Category,Track Variance\nTomatoes,Kg,Vegetables,Yes\nChicken,Kg,Perishables,Yes\nSoda,Bottle,Drinks,Yes\nBurger Boxes,Pcs,Packaging,Yes\n';
        const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FinSight_Purchase_Recipe_Item_Setup.csv';document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},100);
      };
      q('#fsStockSetupUpload').onclick=()=>{
@@ -9473,7 +9473,7 @@ document.addEventListener('focusout',e=>{const el=e.target;if(el instanceof HTML
 })();
 </script>
 <script id="finsight-batch12-item-csv-access">(()=>{'use strict';
-function attach(){const a=document.getElementById('openItemCsvManager12'),b=document.getElementById('downloadItemCsvTemplate12');if(a)a.onclick=()=>{if(typeof window.openStockItemManagerV18593==='function')window.openStockItemManagerV18593();else alert('Open Inventory & COGS to load the item manager first.')};if(b)b.onclick=()=>{const blob=new Blob(['Item,Unit\n'],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='FinSight_Items_Template.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}}
+function attach(){const a=document.getElementById('openItemCsvManager12'),b=document.getElementById('downloadItemCsvTemplate12');if(a)a.onclick=()=>{if(typeof window.openStockItemManagerV18593==='function')window.openStockItemManagerV18593();else alert('Open Inventory & COGS to load the item manager first.')};if(b)b.onclick=()=>{const blob=new Blob(['Item,Unit,Category,Track Variance\nTomatoes,Kg,Vegetables,Yes\nChicken,Kg,Perishables,Yes\nSoda,Bottle,Drinks,Yes\nBurger Boxes,Pcs,Packaging,Yes\n'],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='FinSight_Purchase_Recipe_Item_Setup.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',attach);else attach();
 })();</script>
 <style id="fs15-accounting-css">
