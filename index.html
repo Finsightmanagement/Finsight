@@ -8689,7 +8689,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
  window.openRecipeManager=async function(){
    try{
      const d=await load();
-     openModal('Menu Items & Recipes','',`<div id="fsMenuGrid"><div><div style="display:flex;gap:8px;margin-bottom:10px"><input class="input" id="fsMenuSearch" placeholder="Search menu items"><button class="btn primary" id="fsMenuNew">+ Add Menu Item</button></div><div id="fsMenuList"></div></div><div id="fsMenuEditor"><div class="empty-state">Select a menu item or add a new one.</div></div></div>`);
+     openModal('Menu Items & Recipes','',`<div id="fsMenuGrid"><div><div style="display:flex;gap:8px;margin-bottom:10px"><input class="input" id="fsMenuSearch" placeholder="Search menu items"><button class="btn" id="fsMenuImport">Import Menu Items CSV</button><button class="btn primary" id="fsMenuNew">+ Add Menu Item</button></div><div id="fsMenuList"></div></div><div id="fsMenuEditor"><div class="empty-state">Select a menu item or add a new one.</div></div></div>`);
      const renderList=(selected='')=>{
        const term=norm(q('#fsMenuSearch').value),rows=d.menu.filter(x=>!term||norm(x.name).includes(term));
        q('#fsMenuList').innerHTML=rows.length?rows.map(x=>`<div class="fs-menu-card ${x.id===selected?'active':''}" data-mid="${x.id}"><b>${esc(x.name)}</b><small>${esc(d.cats.find(c=>c.id===x.category_id)?.name||'No category')} · ${d.lines.filter(l=>l.menu_item_id===x.id).length} ingredient(s) · ${x.is_active===false?'Inactive':'Active'}</small></div>`).join(''):'<div class="empty-state">No menu items.</div>';
@@ -8725,7 +8725,85 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
          finally{btn.disabled=false;btn.textContent='Save Menu Item & Recipe'}
        };
      };
-     q('#fsMenuSearch').oninput=()=>renderList();q('#fsMenuNew').onclick=()=>edit(null);renderList();
+     q('#fsMenuSearch').oninput=()=>renderList();q('#fsMenuNew').onclick=()=>edit(null);q('#fsMenuImport').onclick=()=>window.openMenuItemsCsvImport();renderList();
+   }catch(e){toast(e.message||String(e))}
+ };
+
+ // Batch 20: Menu-item names only; category and income are selected once for the entire import.
+ window.openMenuItemsCsvImport=async function(){
+   try{
+     const d=await load();
+     if(!d.cats.length||!d.accounts.length)return toast('Create a Sales Category and Income account before importing menu items.');
+     openModal('Import Menu Items','',`<div class="form-grid">
+       <div class="field full"><label>Menu Items CSV (Item column)</label><input class="input" type="file" id="fsMenuCsvFile" accept=".csv,text/csv"></div>
+       <div class="field"><label>Sales Category</label><select class="input" id="fsMenuCsvCat">${d.cats.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
+       <div class="field"><label>Income Account</label><select class="input" id="fsMenuCsvIncome">${d.accounts.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
+       <div class="field full" id="fsMenuCsvStatus"></div>
+       </div><div class="modal-actions"><button class="btn primary" id="fsMenuCsvPost" disabled>Import Menu Items</button></div>`);
+     const file=q('#fsMenuCsvFile'),status=q('#fsMenuCsvStatus'),btn=q('#fsMenuCsvPost');
+     let names=[];
+     // Dedicated one-column CSV parser, accepting quoted commas and doubled quotes.
+     function parseCsv(text){
+       const records=[];let fields=[],value='',quoted=false;
+       text=String(text).replace(/^\uFEFF/,'');
+       for(let i=0;i<text.length;i++){
+         const c=text[i];
+         if(c==='"'){if(quoted&&text[i+1]==='"'){value+='"';i++}else quoted=!quoted}
+         else if(!quoted&&c===','){fields.push(value);value=''}
+         else if(!quoted&&(c==='\n'||c==='\r')){if(c==='\r'&&text[i+1]==='\n')i++;fields.push(value);value='';if(fields.some(v=>v.trim()))records.push(fields);fields=[]}
+         else value+=c;
+       }
+       if(quoted)throw Error('Unclosed quote in CSV.');
+       fields.push(value);if(fields.some(v=>v.trim()))records.push(fields);
+       return records;
+     }
+     file.onchange=async()=>{
+       btn.disabled=true;names=[];
+       try{
+         if(!file.files?.[0])return;
+         const rows=parseCsv(await file.files[0].text());
+         if(!rows.length)throw Error('CSV is empty.');
+         const header=rows[0].map(x=>norm(x));const ix=header.findIndex(x=>['item','item name','menu item','menu item name'].includes(x));
+         if(ix<0)throw Error('CSV requires an Item column.');
+         const seen=new Set(),existing=new Set(d.menu.map(x=>norm(x.name)));const duplicates=[];
+         for(let i=1;i<rows.length;i++){
+           const name=String(rows[i][ix]||'').trim();
+           if(!name)throw Error(`Row ${i+1}: item name is blank.`);
+           if(rows[i].some((v,j)=>j!==ix&&String(v).trim()))throw Error(`Row ${i+1}: extra values found. Use only the Item column.`);
+           const key=norm(name);
+           if(seen.has(key)||existing.has(key)){duplicates.push(name);continue}
+           seen.add(key);names.push(name);
+         }
+         if(duplicates.length)throw Error(`Duplicate items: ${duplicates.slice(0,5).join(', ')}${duplicates.length>5?'…':''}. Remove existing/repeated items before importing.`);
+         if(!names.length)throw Error('No menu items to import.');
+         status.textContent=`${names.length} menu items ready to import. No recipes will be created.`;btn.disabled=false;
+       }catch(e){status.textContent=e.message||String(e)}
+     };
+     btn.onclick=async()=>{
+       if(!names.length)return;
+       const category_id=q('#fsMenuCsvCat').value,income_account_id=q('#fsMenuCsvIncome').value;
+       if(!category_id||!income_account_id)return toast('Select a category and income account.');
+       const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+       if(!sb||!cid)return toast('Please sign in to import menu items.');
+       btn.disabled=true;
+       let saved=0;
+       try{
+         // Recheck existing names before posting. A DB-level uniqueness constraint is still recommended.
+         const refreshed=await sb.from('menu_items').select('name').eq('company_id',cid);
+         if(refreshed.error)throw refreshed.error;
+         const existing=new Set((refreshed.data||[]).map(x=>norm(x.name)));
+         if(names.some(x=>existing.has(norm(x))))throw Error('Some menu items now exist. Re-select your CSV and review duplicates.');
+         for(let i=0;i<names.length;i+=100){
+           const batch=names.slice(i,i+100).map(name=>({company_id:cid,name,category_id,income_account_id,is_active:true}));
+           const result=await sb.from('menu_items').insert(batch);
+           if(result.error)throw result.error;
+           saved+=batch.length;status.textContent=`Imported ${saved} of ${names.length} menu items.`;
+         }
+         status.textContent=`Import complete: ${saved} menu items.`;
+         btn.textContent='Finish';btn.disabled=false;
+         btn.onclick=()=>{closeModal();window.finsightReloadCloudState?.()};
+       }catch(e){status.textContent=`Imported ${saved} of ${names.length}. ${e.message||e}. Check the list before retrying.`;btn.disabled=false}
+     };
    }catch(e){toast(e.message||String(e))}
  };
  function bind(){const b=q('#recipeManagerBtn');if(b)b.onclick=()=>window.openRecipeManager()}
