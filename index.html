@@ -5660,9 +5660,10 @@ async function rpc(name,args){const sb=window.finsightSupabase,cid=window.finsig
 function dates(f,t){const now=new Date(),end=t||now.toISOString().slice(0,10),start=f||new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString().slice(0,10);return {start,end};}
 function hdr(title,start,end){return typeof reportHeader==='function'?reportHeader(title,start,end):`<div class="report-headline"><h3>${esc(title)}</h3><div>${esc(start)} to ${esc(end)}</div></div>`;}
 async function pnl(start,end){return Promise.all([rpc('get_profit_and_loss',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end}),rpc('get_profit_and_loss_summary',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end})]);}
-function pnlHTML(rows,summary,inventory,inventoryError){
+function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingError){
   // Live journal figures are authoritative for profit. Stock figures are a separate calculation.
   const s=first(summary), detail=arr(rows);
+  const isPeriodPosted=String(periodPosting?.status||'').toLowerCase()==='posted';
   const rev=n(s,'total_revenue','revenue');
   const postedCogs=n(s,'total_cost_of_sales','total_cogs','cost_of_sales');
   const gross=n(s,'gross_profit');
@@ -5682,20 +5683,32 @@ function pnlHTML(rows,summary,inventory,inventoryError){
   body+=heading('Cost of Sales');
   if(inventory){
     const opening=n(inventory,'opening_stock'),purchases=n(inventory,'purchases'),closing=n(inventory,'closing_stock'),calc=n(inventory,'cost_of_sales');
-    body+=`<tr><td colspan="3"><strong>Inventory calculation — Not Posted</strong></td></tr>`;
+    body+=`<tr><td colspan="3"><strong>${isPeriodPosted?'Inventory calculation — Period posting recorded':(postingError?'Inventory calculation — Posting status unavailable':'Inventory calculation — Not Posted')}</strong></td></tr>`;
     body+=tr('Opening Stock (Calculated)',opening,'',false);
     body+=tr('Add: Purchases (Calculated, VAT Exclusive)',purchases,'',false);
     body+=tr('Goods Available for Sale (Calculated)',opening+purchases,'',false);
     body+=tr('Less: Closing Stock (Calculated)',-closing,'',false);
-    body+=tr('Calculated Cost of Sales — Not Posted',calc,'subtotal',false);
+    body+=tr(isPeriodPosted?'Calculated Cost of Sales — Posting recorded':(postingError?'Calculated Cost of Sales — Status unavailable':'Calculated Cost of Sales — Not Posted'),calc,'subtotal',false);
   }else{
     body+=`<tr><td colspan="3" class="small-note">Inventory calculation unavailable${inventoryError?': '+esc(inventoryError):''}. Posted P&amp;L totals are unaffected.</td></tr>`;
   }
-  body+=`<tr><td colspan="3" class="small-note">Calculated inventory amounts above are for review only and do not change posted gross profit or net profit.</td></tr>`;
+  body+=`<tr><td colspan="3" class="small-note">${isPeriodPosted?'A COGS posting is recorded for this exact period. The calculated figures may differ from the stored posting; posted journal amounts determine gross and net profit.':(postingError?'Posting status could not be checked. Calculated amounts do not change journal-based profit.':'Calculated inventory amounts are for review only and have not been posted for this exact period. They do not change posted gross profit or net profit.')}</td></tr>`;
   body+=accountRows(section('Cost of Sales'))+tr('Total Posted Cost of Sales',postedCogs,'subtotal');
   body+=tr('Gross Profit / (Loss) — Posted',gross,'grand');
   body+=heading('Operating Expenses')+accountRows(section('Expenses'))+tr('Total Expenses',expenses,'subtotal')+tr('Net Profit / (Loss) — Posted',net,'grand');
   return `<table class="live-fin-table pnl-statement"><thead><tr><th>Account</th><th>Amount</th><th>% of Revenue</th></tr></thead><tbody>${body}</tbody></table>`;
+}
+async function postingForPnl(start,end){
+  const sb=window.finsightSupabase,companyId=window.finsightOnline?.companyId;
+  if(!sb||!companyId)return {data:null,error:'Company is not selected'};
+  try{
+    const {data,error}=await sb.from('cogs_period_postings')
+      .select('status,period_start,period_end,opening_stock,purchases,closing_stock,calculated_cogs')
+      .eq('company_id',companyId).eq('period_start',start).eq('period_end',end)
+      .eq('status','Posted').limit(1);
+    if(error)throw error;
+    return {data:data?.[0]||null,error:null};
+  }catch(e){return {data:null,error:e.message||String(e)};}
 }
 async function inventoryForPnl(start,end){
   try{
@@ -5736,8 +5749,8 @@ async function renderAccountingLive(){
  pbox.innerHTML='<div class="live-fin-loading">Loading live P&amp;L…</div>';
  cbox.innerHTML='<div class="live-fin-loading">Loading live cash flow…</div>';
  try{
-  const [pr,cr,inv]=await Promise.all([pnl(pd.start,pd.end),cash(cd.start,cd.end),inventoryForPnl(pd.start,pd.end)]);
-  pbox.innerHTML=pnlHTML(pr[0],pr[1],inv.data,inv.error);
+  const [pr,cr,inv,posting]=await Promise.all([pnl(pd.start,pd.end),cash(cd.start,cd.end),inventoryForPnl(pd.start,pd.end),postingForPnl(pd.start,pd.end)]);
+  pbox.innerHTML=pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error);
   cbox.innerHTML='<div class="live-fin-note">Live from posted accounting journals.</div>'+cashHTML(cr[0],cr[1]);
  }catch(e){console.error('[FinSight Accounting P&L]',e);const h=`<div class="live-fin-error">${esc(e.message||String(e))}</div>`;pbox.innerHTML=h;cbox.innerHTML=h;}
 }
@@ -5746,8 +5759,8 @@ async function renderFinancialReportsLive(){
  ensureTrialTab();const d=dates(q('#reportFrom')?.value,q('#reportTo')?.value);
  for(const id of ['reportPl','reportCashFlow','reportBalance','reportTrial']){const x=q('#'+id);if(x)x.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading live financial report…</div></div>';}
  try{
-  const [pr,cr,br,tr,inv]=await Promise.all([pnl(d.start,d.end),cash(d.start,d.end),balance(d.end),trial(d.start,d.end),inventoryForPnl(d.start,d.end)]);
-  q('#reportPl').innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error)}</div>`;
+  const [pr,cr,br,tr,inv,posting]=await Promise.all([pnl(d.start,d.end),cash(d.start,d.end),balance(d.end),trial(d.start,d.end),inventoryForPnl(d.start,d.end),postingForPnl(d.start,d.end)]);
+  q('#reportPl').innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error)}</div>`;
   q('#reportCashFlow').innerHTML=`<div class="report-card">${hdr('CASH FLOW',d.start,d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${cashHTML(cr[0],cr[1])}</div>`;
   q('#reportBalance').innerHTML=`<div class="report-card">${hdr('BALANCE SHEET','As at',d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${balanceHTML(br[0],br[1])}</div>`;
   q('#reportTrial').innerHTML=`<div class="report-card">${hdr('TRIAL BALANCE',d.start,d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${trialHTML(tr)}</div>`;
