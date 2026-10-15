@@ -8629,6 +8629,14 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
      q('#fsStockSetupUpload').onclick=()=>{
        const inp=document.createElement('input');inp.type='file';inp.accept='.csv,text/csv';inp.onchange=async()=>{
          const f=inp.files?.[0];if(!f)return;
+         const host=q('#fsStockList');
+         const oldHTML=host?.innerHTML||'';
+         const showProgress=(done,total,msg,failed=false)=>{
+           if(!host)return;
+           const pct=total?Math.round(done/total*100):0;
+           host.innerHTML=`<div role="status" aria-live="polite" style="padding:20px;border:1px solid var(--line);border-radius:12px;background:var(--card)"><b>${esc(msg)}</b><div style="margin-top:12px;height:12px;background:#e5e7eb;border-radius:20px;overflow:hidden"><div style="height:100%;width:${pct}%;background:${failed?'#dc2626':'#2563eb'};transition:width .2s"></div></div><div style="margin-top:8px;font-weight:600">${done} of ${total} items · ${pct}%</div></div>`;
+         };
+         showProgress(0,0,'Reading CSV…');
          try{
            const text=await f.text(),lines=text.replace(/\r/g,'').split('\n').filter(x=>x.trim());
            if(lines.length<2)return toast('The setup CSV has no item rows.');
@@ -8641,20 +8649,40 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
              if(!allowed.has(norm(unit)))throw new Error(`${name}: invalid Unit "${unit}".`);
              if(!['yes','no','true','false'].includes(tv))throw new Error(`${name}: Track Variance must be Yes or No.`);
              const canonical=units.find(x=>norm(x)===norm(unit))||unit;
-             const costRaw=ci<0?'':String(r[ci]??'').trim();
+             const costRaw=ci<0?'':String(r[ci]??'').trim().replace(/,/g,'');
              if(costRaw!==''&&(!Number.isFinite(Number(costRaw))||Number(costRaw)<0))throw new Error(`${name}: Unit Cost must be a non-negative number.`);
              const entry={name,unit:canonical,track_variance:tv==='yes'||tv==='true',is_active:true};
              if(costRaw!=='')entry.unit_cost=Number(costRaw);
              payload.push(entry);
            }
            const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+           let completed=0;
+           showProgress(0,payload.length,'Uploading purchase / recipe items…');
+           // Let the browser paint progress before starting network requests.
+           await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
            for(const p of payload){
              const ex=rows.find(x=>norm(x.name)===norm(p.name));
              let r=ex?await sb.from('stock_items').update(p).eq('company_id',cid).eq('id',ex.id):await sb.from('stock_items').insert({company_id:cid,...p});
-             if(r.error)throw r.error;
+             if(r.error)throw new Error(`${p.name}: ${r.error.message||String(r.error)}`);
+             completed++;
+             showProgress(completed,payload.length,'Uploading purchase / recipe items…');
            }
-           await window.finsightReloadCloudState?.();toast(`${payload.length} Purchase / Recipe Item(s) imported`);closeModal();setTimeout(()=>window.openStockItemManagerV18593(),100);
-         }catch(e){toast(e.message||String(e))}
+           showProgress(completed,payload.length,'Upload complete. Refreshing items…');
+           try{await window.finsightReloadCloudState?.()}catch(refreshError){
+             showProgress(completed,payload.length,'Items saved. Refresh failed; reopen the page to view them.',true);
+             toast('Items saved, but screen refresh failed: '+(refreshError?.message||String(refreshError)));
+             return;
+           }
+           showProgress(completed,payload.length,`${completed} Purchase / Recipe Items saved successfully`);
+           toast(`${completed} Purchase / Recipe Item(s) imported`);
+           // Keep confirmation visible; reopen only when user chooses to close the manager.
+           setTimeout(()=>window.openStockItemManagerV18593(),1400);
+         }catch(e){
+           const message=e?.message||String(e);
+           if(host)host.innerHTML=`<div role="alert" style="padding:16px;border:1px solid #dc2626;border-radius:10px"><b>Import stopped</b><p>${esc(message)}</p><p>Previously saved rows may already be in FinSight. Verify before re-uploading.</p><button class="btn" id="fsStockRetryView">Return to items</button></div>`;
+           q('#fsStockRetryView')?.addEventListener('click',()=>{if(host)host.innerHTML=oldHTML;render()});
+           toast(message);
+         }
        };inp.click();
      };
      q('#fsStockSearch').oninput=render;q('#fsStockNew').onclick=()=>editor(null);render();
