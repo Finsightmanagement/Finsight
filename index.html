@@ -7384,47 +7384,7 @@ const clean=v=>String(v??'').trim(),norm=v=>clean(v).toLowerCase(),num=v=>Number
 const html=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let recipeData={menu:[],lines:[]};window.finsightRecipeData=recipeData;
 function cloud(){const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;if(!sb||!cid)throw new Error('FinSight cloud connection is not ready.');return{sb,cid}}
-function catName(id){return recipeData.categories?.find(x=>x.id===id)?.name||''}function accName(id){return (state.accounts||[]).find(x=>x.id===id)?.name||''}// V24 legacy verification UI. No direct table writes; verification goes through secured RPC.
-async function loadLegacy24(){
- const el=$('#stock24legacy');if(!el)return;el.textContent='Loading historical counts…';
- try{
-  const sb=window.finsightSupabase;
-  const {data:recs,error:e1}=await sb.from('inventory_reconciliations').select('id,stock_date,reconciliation_no,reconciliation_type').eq('company_id',company()).eq('reconciliation_type','closing').order('stock_date',{ascending:false}).limit(100);
-  if(e1)throw Error(e1.message);
-  const {data:subs,error:e2}=await sb.from('inventory_stock_take_submissions').select('official_reconciliation_id,status,expected_stock_items').eq('company_id',company()).eq('status','Approved');
-  if(e2)throw Error(e2.message);
-  const modern=new Set((subs||[]).filter(x=>x.expected_stock_items!==null).map(x=>String(x.official_reconciliation_id)));
-  const legacy=(recs||[]).filter(x=>!modern.has(String(x.id)));
-  if(!legacy.length){el.textContent='No historical counts requiring verification.';return}
-  el.innerHTML='<table><thead><tr><th>Date</th><th>Reference</th><th>Action</th></tr></thead><tbody>'+legacy.map(r=>`<tr><td>${esc(r.stock_date)}</td><td>${esc(r.reconciliation_no)}</td><td><button class="btn" type="button" data-v24review="${esc(r.id)}">View Counts</button></td></tr>`).join('')+'</tbody></table><div id="stock24details"></div>';
-  $$('[data-v24review]',el).forEach(b=>b.onclick=()=>openLegacy24(legacy.find(r=>r.id===b.dataset.v24review)));
- }catch(e){el.textContent='Unable to load historical counts: '+e.message+'. No verification was recorded.'}
-}
-async function openLegacy24(r){
- const el=$('#stock24details');if(!el||!r)return;el.textContent='Loading recorded quantities…';
- try{
-  const {data:lines,error}=await window.finsightSupabase.from('inventory_reconciliation_lines').select('stock_item_id,quantity,unit_cost,explanation').eq('company_id',company()).eq('reconciliation_id',r.id);
-  if(error)throw Error(error.message);
-  if(!lines?.length){el.textContent='No official stock lines available; cannot verify.';return}
-  el.innerHTML=`<h4>${esc(r.reconciliation_no)} — ${esc(r.stock_date)}</h4><table><thead><tr><th>Item</th><th>Quantity</th><th>Unit Cost</th></tr></thead><tbody>${lines.map(l=>`<tr><td>${esc(stockName(l.stock_item_id))}</td><td>${esc(l.quantity)}</td><td>${esc(l.unit_cost)}</td></tr>`).join('')}</tbody></table><label>Verification Reason / Evidence<textarea id="stock24note" rows="3" placeholder="Describe how completeness was manually confirmed"></textarea></label><button class="btn primary" id="stock24verify" type="button">Confirm Historical Count</button><div id="stock24verifymsg"></div>`;
-  $('#stock24verify').onclick=async()=>{
-   const note=$('#stock24note').value.trim(),message=$('#stock24verifymsg');
-   if(note.length<10){message.textContent='Provide a meaningful verification note (at least 10 characters).';return}
-   if(!confirm(`Verify historical stock count ${r.reconciliation_no} for ${r.stock_date}? This records your attestation; it does not post COGS.`))return;
-   const b=$('#stock24verify');b.disabled=true;
-   try{await rpc('verify_legacy_stock_take_for_cogs',{p_company:company(),p_reconciliation:r.id,p_note:note});message.textContent='Historical verification recorded. This does not post COGS.';b.remove()}
-   catch(e){message.textContent=e.message;b.disabled=false}
-  };
- }catch(e){el.textContent='Unable to retrieve recorded quantities: '+e.message}
-}
-async function checkEligibility24(){
- const date=$('#stock24end')?.value,out=$('#stock24result');if(!out)return;
- if(!date){out.textContent='Select a period end date.';return}
- out.textContent='Checking…';
- try{await rpc('validate_cogs_stock_take_completeness',{p_company:company(),p_period_end:date});out.textContent='Stock Take completeness check passed for '+date+'. This does not confirm period locks, accounts or whether the period is already posted.'}
- catch(e){out.textContent='Not eligible: '+e.message}
-}
-function stockName(id){return (state.stockItems||[]).find(x=>x.id===id)?.name||''}
+function catName(id){return recipeData.categories?.find(x=>x.id===id)?.name||''}function accName(id){return (state.accounts||[]).find(x=>x.id===id)?.name||''}function stockName(id){return (state.stockItems||[]).find(x=>x.id===id)?.name||''}
 async function loadRecipes(){
   const {sb,cid}=cloud();
   const [m,l,c]=await Promise.all([
@@ -9699,6 +9659,46 @@ async function review(){
  $$('[data-print]',host).forEach(btn=>btn.onclick=()=>printTake(reviewRows.find(r=>r.id===btn.dataset.print)));
  $('#stock24load',host).onclick=loadLegacy24;$('#stock24check',host).onclick=checkEligibility24;
  }catch(e){host.textContent=e.message}}
+// V24 legacy verification UI. No direct table writes; verification goes through secured RPC.
+async function loadLegacy24(){
+ const el=$('#stock24legacy');if(!el)return;el.textContent='Loading historical counts…';
+ try{
+  const sb=window.finsightSupabase;
+  const {data:recs,error:e1}=await sb.from('inventory_reconciliations').select('id,stock_date,reconciliation_no,reconciliation_type').eq('company_id',company()).eq('reconciliation_type','closing').order('stock_date',{ascending:false}).limit(100);
+  if(e1)throw Error(e1.message);
+  const {data:subs,error:e2}=await sb.from('inventory_stock_take_submissions').select('official_reconciliation_id,status,expected_stock_items').eq('company_id',company()).eq('status','Approved');
+  if(e2)throw Error(e2.message);
+  const modern=new Set((subs||[]).filter(x=>x.expected_stock_items!==null).map(x=>String(x.official_reconciliation_id)));
+  const legacy=(recs||[]).filter(x=>!modern.has(String(x.id)));
+  if(!legacy.length){el.textContent='No historical counts requiring verification.';return}
+  el.innerHTML='<table><thead><tr><th>Date</th><th>Reference</th><th>Action</th></tr></thead><tbody>'+legacy.map(r=>`<tr><td>${esc(r.stock_date)}</td><td>${esc(r.reconciliation_no)}</td><td><button class="btn" type="button" data-v24review="${esc(r.id)}">View Counts</button></td></tr>`).join('')+'</tbody></table><div id="stock24details"></div>';
+  $$('[data-v24review]',el).forEach(b=>b.onclick=()=>openLegacy24(legacy.find(r=>r.id===b.dataset.v24review)));
+ }catch(e){el.textContent='Unable to load historical counts: '+e.message+'. No verification was recorded.'}
+}
+async function openLegacy24(r){
+ const el=$('#stock24details');if(!el||!r)return;el.textContent='Loading recorded quantities…';
+ try{
+  const {data:lines,error}=await window.finsightSupabase.from('inventory_reconciliation_lines').select('stock_item_id,quantity,unit_cost,explanation').eq('company_id',company()).eq('reconciliation_id',r.id);
+  if(error)throw Error(error.message);
+  if(!lines?.length){el.textContent='No official stock lines available; cannot verify.';return}
+  el.innerHTML=`<h4>${esc(r.reconciliation_no)} — ${esc(r.stock_date)}</h4><table><thead><tr><th>Item</th><th>Quantity</th><th>Unit Cost</th></tr></thead><tbody>${lines.map(l=>`<tr><td>${esc(stockName(l.stock_item_id))}</td><td>${esc(l.quantity)}</td><td>${esc(l.unit_cost)}</td></tr>`).join('')}</tbody></table><label>Verification Reason / Evidence<textarea id="stock24note" rows="3" placeholder="Describe how completeness was manually confirmed"></textarea></label><button class="btn primary" id="stock24verify" type="button">Confirm Historical Count</button><div id="stock24verifymsg"></div>`;
+  $('#stock24verify').onclick=async()=>{
+   const note=$('#stock24note').value.trim(),message=$('#stock24verifymsg');
+   if(note.length<10){message.textContent='Provide a meaningful verification note (at least 10 characters).';return}
+   if(!confirm(`Verify historical stock count ${r.reconciliation_no} for ${r.stock_date}? This records your attestation; it does not post COGS.`))return;
+   const b=$('#stock24verify');b.disabled=true;
+   try{await rpc('verify_legacy_stock_take_for_cogs',{p_company:company(),p_reconciliation:r.id,p_note:note});message.textContent='Historical verification recorded. This does not post COGS.';b.remove()}
+   catch(e){message.textContent=e.message;b.disabled=false}
+  };
+ }catch(e){el.textContent='Unable to retrieve recorded quantities: '+e.message}
+}
+async function checkEligibility24(){
+ const date=$('#stock24end')?.value,out=$('#stock24result');if(!out)return;
+ if(!date){out.textContent='Select a period end date.';return}
+ out.textContent='Checking…';
+ try{await rpc('validate_cogs_stock_take_completeness',{p_company:company(),p_period_end:date});out.textContent='Stock Take completeness check passed for '+date+'. This does not confirm period locks, accounts or whether the period is already posted.'}
+ catch(e){out.textContent='Not eligible: '+e.message}
+}
 function stockName(id){return items().find(i=>String(i.id)===String(id))?.name||String(id)}
 function printTake(r,overrides){const entries=(overrides||r.lines).map((l,i)=>{const o=r.lines.find(x=>x.stock_item_id===l.stock_item_id)||{};return `<tr><td>${i+1}</td><td>${esc(stockName(l.stock_item_id))}</td><td>${esc(o.quantity)}</td><td>${esc(l.quantity)}</td><td>${esc(l.review_reason||'')}</td></tr>`}).join('');const w=window.open('','_blank');if(!w)return alert('Allow popups to print the review PDF');w.document.write(`<!DOCTYPE html><html><head><title>Stock Take ${esc(r.stock_date)}</title><style>body{font:12px Arial;margin:30px;color:#111}h1,h2{text-align:center}h1{font-size:19px}h2{font-size:15px}table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #888;padding:7px;text-align:left}th{background:#eee}.sign{display:flex;gap:50px;margin-top:65px}.sign div{flex:1;border-top:1px solid #333;padding-top:7px}@page{size:A4;margin:14mm}</style></head><body><h1>${esc(window.state?.company?.name||document.title||'Company')}</h1><h2>STOCK TAKE — ${esc(r.status).toUpperCase()} REVIEW</h2><p>Date: ${esc(r.stock_date)} | Reference: ${esc(r.id)}</p><p>Notes: ${esc(r.notes||'')}</p><p>Prepared by staff: ${esc(r.preparer_staff_id||r.submitted_by||'')}</p><table><thead><tr><th>#</th><th>Item</th><th>Submitted</th><th>Reviewed</th><th>Reason</th></tr></thead><tbody>${entries}</tbody></table><p><b>Pending approval — Not yet posted</b> (unless marked Approved).</p><div class="sign"><div>Prepared by / Signature / Date</div><div>Reviewed by / Signature / Date</div><div>Approved by / Signature / Date</div></div><script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close()}
 function openReview(r){if(!r)return;const host=$('#stock13review');host.innerHTML=`<div class="stock12-panel"><h3>Review — ${esc(r.stock_date)}</h3><div style="overflow:auto"><table><thead><tr><th>Category</th><th>Item</th><th>Submitted Qty</th><th>Reviewed Qty</th><th>Adjustment Reason</th></tr></thead><tbody>${r.lines.map((l,i)=>`<tr data-idx="${i}"><td>${esc(categoryOf(l.stock_item_id))}</td><td>${esc(stockName(l.stock_item_id))}</td><td>${esc(l.quantity)}</td><td><input type="number" min="0" step="any" class="review13qty" value="${esc(l.quantity)}"></td><td><input class="review13reason" placeholder="Reason if changed"></td></tr>`).join('')}</tbody></table></div><label>Review remarks<textarea id="review13note" style="display:block;width:100%;min-height:65px"></textarea></label><div style="display:flex;gap:8px;margin-top:12px"><button class="btn" id="review13print">PDF / Print</button><button class="btn" id="review13return">Return</button><button class="btn primary" id="review13approve">Approve Reviewed Stock</button><button class="btn" id="review13cancel">Close</button></div><div id="review13msg"></div></div>`;
