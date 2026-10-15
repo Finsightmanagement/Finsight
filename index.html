@@ -8584,7 +8584,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
  const units=['Kg','g','Litre','ml','Pcs','Pack','Box','Bottle','Tray','Other'];
  async function fetchItems(){
    const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
-   const {data,error}=await sb.from('stock_items').select('id,name,unit,is_active,track_variance').eq('company_id',cid).order('name');
+   const {data,error}=await sb.from('stock_items').select('id,name,unit,is_active,track_variance,unit_cost').eq('company_id',cid).order('name');
    if(error)throw error;return data||[];
  }
  function unitOpts(current){return units.map(u=>`<option ${String(current||'')===u?'selected':''}>${u}</option>`).join('')}
@@ -8667,7 +8667,24 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
              completed++;
              showProgress(completed,payload.length,'Uploading purchase / recipe items…');
            }
-           showProgress(completed,payload.length,'Upload complete. Refreshing items…');
+           showProgress(completed,payload.length,'Verifying saved unit costs…');
+           const savedItems=await fetchItems();
+           const savedByName=new Map(savedItems.map(x=>[norm(x.name),x]));
+           const missing=[],costDifferences=[];
+           for(const imported of payload){
+             const saved=savedByName.get(norm(imported.name));
+             if(!saved){missing.push(imported.name);continue;}
+             if(Object.prototype.hasOwnProperty.call(imported,'unit_cost') &&
+                (saved.unit_cost===null || saved.unit_cost===undefined ||
+                 Math.abs(Number(saved.unit_cost)-Number(imported.unit_cost))>0.0001)){
+               costDifferences.push(`${imported.name}: expected ${imported.unit_cost}, saved ${saved.unit_cost??'blank'}`);
+             }
+           }
+           if(missing.length || costDifferences.length){
+             throw new Error(`Upload verification failed. Missing items: ${missing.length}. Unit costs not matching: ${costDifferences.length}. `+
+               [...missing.slice(0,3),...costDifferences.slice(0,5)].join('; '));
+           }
+           showProgress(completed,payload.length,'Upload verified. Refreshing items…');
            try{await window.finsightReloadCloudState?.()}catch(refreshError){
              showProgress(completed,payload.length,'Items saved. Refresh failed; reopen the page to view them.',true);
              toast('Items saved, but screen refresh failed: '+(refreshError?.message||String(refreshError)));
