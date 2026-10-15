@@ -9634,6 +9634,26 @@ body.sr-clerk-session .sidebar .nav-item[data-page="stock-take-clerk"]{display:f
 #stock-take-clerk input,#stock-take-clerk select{width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:9px}
 #stock-take-clerk table{width:100%}
 </style>
+
+<style id="finsight-v24-historical-layout-fix">
+#stockApprovalQueue12{display:flex;flex-direction:column;gap:18px;padding:24px!important}
+#stockApprovalQueue12>.stock24-head h3,#stockApprovalQueue12>.stock24-panel h3{font-size:17px;line-height:1.35;margin:0 0 14px;font-weight:700}
+#stockApprovalQueue12>.stock24-panel{border:1px solid #e1e7ef;border-radius:14px;background:#fff;padding:20px 22px;margin:0;min-width:0}
+#stockApprovalQueue12 .stock24-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+#stockApprovalQueue12 .stock24-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:12px}
+#stockApprovalQueue12 .stock24-controls label{display:flex;flex-direction:column;gap:7px;flex:0 1 235px;font-weight:600;font-size:13px}
+#stockApprovalQueue12 .stock24-controls input{height:43px;width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid #d9e1ec;border-radius:10px}
+#stockApprovalQueue12 .stock24-controls button{height:43px;margin:0}
+#stockApprovalQueue12 .stock24-content{margin-top:14px;line-height:1.5;overflow-x:auto}
+#stockApprovalQueue12 .stock24-content:empty{display:none}
+#stockApprovalQueue12 .stock24-content table{width:100%;border-collapse:collapse;margin-top:10px}
+#stockApprovalQueue12 .stock24-content th,#stockApprovalQueue12 .stock24-content td{text-align:left;padding:12px;border-bottom:1px solid #e5eaf1}
+#stockApprovalQueue12 #stock24details{margin-top:16px;padding-top:16px;border-top:1px solid #e5eaf1}
+#stockApprovalQueue12 #stock24details textarea{display:block;width:100%;min-height:85px;box-sizing:border-box;margin:8px 0 14px;padding:10px;border:1px solid #d9e1ec;border-radius:10px}
+#stockApprovalQueue12 #stock13review:empty{display:none}
+#stockApprovalQueue12 #stock13review:not(:empty){margin:0}
+@media(max-width:640px){#stockApprovalQueue12{padding:14px!important}#stockApprovalQueue12>.stock24-panel{padding:16px}#stockApprovalQueue12 .stock24-controls label{flex:1 1 100%}}
+</style>
 <script id="finsight-stock-approval-v13">
 (()=>{'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)], esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -9654,7 +9674,7 @@ if(clerk())$('#stock12lock').onclick=()=>{staffId='';pin='';draftId=null;display
 async function review(){
  const host=$('#stockApprovalQueue12');if(!host||!manager()||!company())return;
  try{const rows=await rpc('stock_take_list',{p_company:company()});reviewRows=rows.filter(r=>r.status==='Pending');
- host.innerHTML=`<h3>Pending Stock Takes</h3>${reviewRows.length?`<table><thead><tr><th>Date</th><th>Items</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${reviewRows.map(r=>`<tr><td>${esc(r.stock_date)}</td><td>${r.lines.length}</td><td>${esc(r.notes||'')}</td><td><button class="btn" data-review="${r.id}">Review</button><button class="btn" data-print="${r.id}">PDF / Print</button></td></tr>`).join('')}</tbody></table>`:'No pending stock takes'}<div id="stock13review"></div><div class="stock12-panel"><h3>Historical Stock Take Verification</h3><button class="btn" id="stock24load" type="button">Review Historical Counts</button><div id="stock24legacy"></div></div><div class="stock12-panel"><h3>COGS Eligibility Check</h3><div class="stock12-row"><label>Period End Date<input id="stock24end" type="date"></label><button class="btn" id="stock24check" type="button">Check Eligibility</button></div><div id="stock24result"></div></div>`;
+ host.innerHTML=`<div class="stock24-head"><h3>Pending Stock Takes</h3></div>${reviewRows.length?`<table><thead><tr><th>Date</th><th>Items</th><th>Notes</th><th>Actions</th></tr></thead><tbody>${reviewRows.map(r=>`<tr><td>${esc(r.stock_date)}</td><td>${r.lines.length}</td><td>${esc(r.notes||'')}</td><td><button class="btn" data-review="${r.id}">Review</button><button class="btn" data-print="${r.id}">PDF / Print</button></td></tr>`).join('')}</tbody></table>`:'No pending stock takes'}<div id="stock13review"></div><div class="stock24-panel"><h3>Historical Stock Take Verification</h3><div class="stock24-actions"><button class="btn" id="stock24load" type="button">Review Historical Counts</button></div><div id="stock24legacy" class="stock24-content"></div></div><div class="stock24-panel"><h3>COGS Eligibility Check</h3><div class="stock24-controls"><label for="stock24end">Period End Date<input id="stock24end" type="date"></label><button class="btn" id="stock24check" type="button">Check Eligibility</button></div><div id="stock24result" class="stock24-content"></div></div>`;
  $$('[data-review]',host).forEach(btn=>btn.onclick=()=>openReview(reviewRows.find(r=>r.id===btn.dataset.review)));
  $$('[data-print]',host).forEach(btn=>btn.onclick=()=>printTake(reviewRows.find(r=>r.id===btn.dataset.print)));
  $('#stock24load',host).onclick=loadLegacy24;$('#stock24check',host).onclick=checkEligibility24;
@@ -9666,10 +9686,10 @@ async function loadLegacy24(){
   const sb=window.finsightSupabase;
   const {data:recs,error:e1}=await sb.from('inventory_reconciliations').select('id,stock_date,reconciliation_no,reconciliation_type').eq('company_id',company()).eq('reconciliation_type','closing').order('stock_date',{ascending:false}).limit(100);
   if(e1)throw Error(e1.message);
-  const {data:subs,error:e2}=await sb.from('inventory_stock_take_submissions').select('official_reconciliation_id,status,expected_stock_items').eq('company_id',company()).eq('status','Approved');
-  if(e2)throw Error(e2.message);
-  const modern=new Set((subs||[]).filter(x=>x.expected_stock_items!==null).map(x=>String(x.official_reconciliation_id)));
-  const legacy=(recs||[]).filter(x=>!modern.has(String(x.id)));
+  // Query legacy IDs through an authorized SECURITY DEFINER RPC; do not grant browser SELECT on protected submissions.
+  const legacyIds=await rpc('list_legacy_stock_counts_for_verification',{p_company:company()});
+  const allowed=new Set((legacyIds||[]).map(x=>String(x.reconciliation_id)));
+  const legacy=(recs||[]).filter(x=>allowed.has(String(x.id)));
   if(!legacy.length){el.textContent='No historical counts requiring verification.';return}
   el.innerHTML='<table><thead><tr><th>Date</th><th>Reference</th><th>Action</th></tr></thead><tbody>'+legacy.map(r=>`<tr><td>${esc(r.stock_date)}</td><td>${esc(r.reconciliation_no)}</td><td><button class="btn" type="button" data-v24review="${esc(r.id)}">View Counts</button></td></tr>`).join('')+'</tbody></table><div id="stock24details"></div>';
   $$('[data-v24review]',el).forEach(b=>b.onclick=()=>openLegacy24(legacy.find(r=>r.id===b.dataset.v24review)));
