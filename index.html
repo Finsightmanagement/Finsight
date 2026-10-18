@@ -9713,7 +9713,17 @@ function stockTemplateCsv(){
 function stockTemplatePrint(){
  const w=window.open('','_blank');if(!w){notify('Allow pop-ups to print the template.');return}
  const rows=stockTemplateRows();
- w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Stock Take Template</title><style>body{font:12px Arial,sans-serif;color:#111;margin:22px}h2{text-align:center;margin:0 0 15px}.meta{display:flex;justify-content:space-between;gap:24px;margin:18px 0}table{border-collapse:collapse;width:100%}th,td{border:1px solid #777;padding:7px;text-align:left}th{background:#eee}td.write{height:26px}.sign{display:flex;justify-content:space-between;margin-top:38px}@page{size:A4 landscape;margin:12mm}</style></head><body><h2>STOCK TAKE TEMPLATE</h2><div class="meta"><span>Stock Date: __________________</span><span>Counted By: __________________</span><span>Checked By: __________________</span></div><table><thead><tr><th>Item</th><th>Unit</th><th>Opening Stock</th><th>Closing Stock</th><th>Comment</th></tr></thead><tbody>${rows.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.unit||x.uom||'')}</td><td class="write"></td><td class="write"></td><td class="write"></td></tr>`).join('')}</tbody></table><div class="sign"><span>Prepared By: __________________</span><span>Verified By: __________________</span></div><script>window.onload=()=>window.print()<\/script></body></html>`);
+ // Three portrait A4 sheets maximum. Keep all rows (do not silently truncate the stock list).
+ const pages=Math.min(3,Math.max(1,Math.ceil(rows.length/34)));
+ const perPage=Math.max(1,Math.ceil(rows.length/pages));
+ const tight=perPage>38;
+ const font=perPage>80?5.2:perPage>60?6.2:perPage>45?7:perPage>38?8:10;
+ const height=Math.max(2.3,Math.min(6.5,235/Math.max(1,perPage)));
+ const sheets=Array.from({length:pages},(_,page)=>{
+   const list=rows.slice(page*perPage,(page+1)*perPage);
+   return `<section class="sheet"><h2>STOCK TAKE TEMPLATE</h2><div class="meta"><span>Stock Date: ______________</span><span>Counted By: ______________</span><span>Page ${page+1} of ${pages}</span></div><table><thead><tr><th>Item</th><th>Unit</th><th>Opening Stock</th><th>Closing Stock</th><th>Comment</th></tr></thead><tbody>${list.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.unit||x.uom||'')}</td><td></td><td></td><td></td></tr>`).join('')}</tbody></table><div class="sign">Prepared By: __________________ &nbsp;&nbsp; Verified By: __________________</div></section>`;
+ }).join('');
+ w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Stock Take Template</title><style>*{box-sizing:border-box}html,body{margin:0;padding:0;color:#111;font-family:Arial,sans-serif;font-size:${font}px}.sheet{width:186mm;height:273mm;overflow:hidden;margin:0 auto;padding:2mm 0;page-break-after:always;break-after:page}.sheet:last-child{page-break-after:auto;break-after:auto}h2{text-align:center;font-size:14px;margin:0 0 4mm}.meta{display:flex;justify-content:space-between;gap:6px;margin:0 0 3mm;font-size:10px}table{border-collapse:collapse;table-layout:fixed;width:100%}th,td{border:1px solid #777;text-align:left;padding:0 2px;height:${height}mm;max-height:${height}mm;overflow:hidden;line-height:1.05}th{background:#eee;height:5mm}th:nth-child(1){width:29%}th:nth-child(2){width:10%}th:nth-child(3),th:nth-child(4){width:16%}th:nth-child(5){width:29%}.sign{margin-top:3mm;font-size:9px}@page{size:A4 portrait;margin:12mm}@media print{body{margin:0}.sheet{margin:0}}</style></head><body>${sheets}<script>window.onload=()=>window.print()<\/script></body></html>`);
  w.document.close();
 }
 async function csvUpload(){const inp=document.createElement('input');inp.type='file';inp.accept='.csv';inp.onchange=async()=>{try{const text=await inp.files[0].text();const parse=text=>{const a=[];let r=[],x='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){x+='"';i++}else quoted=!quoted}else if(c===','&&!quoted){r.push(x);x=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;r.push(x);if(r.some(z=>z.trim()))a.push(r);r=[];x=''}else x+=c}r.push(x);if(r.some(z=>z.trim()))a.push(r);return a};const rows=parse(text),hdr=rows.shift().map(v=>v.trim().toLowerCase());const ni=hdr.indexOf('item'),qi=hdr.indexOf('closing stock')>=0?hdr.indexOf('closing stock'):(hdr.indexOf('physical quantity')>=0?hdr.indexOf('physical quantity'):hdr.indexOf('quantity')),ci=hdr.indexOf('comment')>=0?hdr.indexOf('comment'):hdr.indexOf('explanation');if(ni<0||qi<0)throw Error('CSV requires Item and Closing Stock (or Physical Quantity) columns');const data=[],seen=new Set();for(const r of rows){const name=(r[ni]||'').trim(),quantity=(r[qi]||'').trim();if(!name||!quantity)continue;const it=items().find(x=>x.name.trim().toLowerCase()===name.toLowerCase());if(!it)throw Error('Unknown stock item: '+name);if(seen.has(it.id))throw Error('Duplicate stock item: '+name);seen.add(it.id);if(!Number.isFinite(Number(quantity))||Number(quantity)<0)throw Error('Invalid quantity for '+name);data.push({stock_item_id:it.id,quantity:Number(quantity),explanation:ci>=0?(r[ci]||''):''})}if(!data.length)throw Error('No quantities in CSV');renderLines(data);notify(data.length+' stock quantities loaded for preview. Not submitted.')}catch(e){notify(e.message)}};inp.click()}
@@ -9801,5 +9811,41 @@ function install(){const table=document.getElementById('salesTable');if(!table)r
  apply();}
  document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(install,150));document.addEventListener('click',e=>{if(e.target.closest('[data-page="sales"]'))setTimeout(install,150)});
  setTimeout(install,750);
+})();
+</script>
+<script>
+/* Index65 targeted fix: Reports > Cost of Sales uses the same live Supabase COGS as Inventory. */
+(()=>{
+ const $=id=>document.getElementById(id);
+ let pending=0,writing=false,lastKey='';
+ const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const num=x=>Number(x)||0;
+ const cash=x=>num(x).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const choose=(x,...keys)=>{for(const k of keys){if(x&&x[k]!==null&&x[k]!==undefined&&x[k]!=='')return num(x[k])}return 0};
+ const company=()=>window.finsightOnline?.companyId||(typeof state!=='undefined'?(state.company?.id||state.companyId):null)||null;
+ const rpc=async (name,args)=>{const {data,error}=await window.finsightSupabase.rpc(name,args);if(error)throw error;return data};
+ async function refresh(){
+  const panel=$('reportCogs'),from=$('reportFrom')?.value,to=$('reportTo')?.value,cid=company();
+  if(!panel||!from||!to||!cid||!window.finsightSupabase)return;
+  const key=[cid,from,to].join('|');const serial=++pending;
+  writing=true;panel.dataset.liveKey='loading';panel.innerHTML='<div class="report-card"><div class="empty-state">Loading live Cost of Sales report…</div></div>';writing=false;
+  try{
+   const [raw,summary]=await Promise.all([
+    rpc('get_cogs_report',{p_company_id:cid,p_start_date:from,p_end_date:to}),
+    rpc('get_cogs_period_summary',{p_company_id:cid,p_start_date:from,p_end_date:to})
+   ]);
+   if(serial!==pending)return;
+   const rows=Array.isArray(raw)?raw:(raw?[raw]:[]),total=Array.isArray(summary)?(summary[0]||{}):(summary||{});
+   const out=rows.map(r=>{const oq=choose(r,'opening_qty','opening_quantity'),oc=choose(r,'opening_unit_cost','opening_cost'),pq=choose(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=choose(r,'purchases','purchase_value','purchases_value'),cq=choose(r,'closing_qty','closing_quantity'),cc=choose(r,'closing_unit_cost','closing_cost','closing_wac'),cv=choose(r,'closing_value','closing_stock_value')||(cq*cc),cos=choose(r,'consumption','cost_of_sales','cogs','consumption_value');return `<tr><td>${safe(r.item_name||r.stock_item_name||r.name||'Stock Item')}</td><td>${oq.toFixed(3)}</td><td>${cash(oc)}</td><td>${cash(oq*oc)}</td><td>${pq.toFixed(3)}</td><td>${cash(pv)}</td><td>${cq.toFixed(3)}</td><td>${cash(cc)}</td><td>${cash(cv)}</td><td>${cash(cos)}</td></tr>`}).join('');
+   const html=`<div class="report-card" data-live-cogs-report="1"><h3>COST OF SALES REPORT</h3><p>${safe(from)} to ${safe(to)}</p><div style="overflow-x:auto"><table class="cogs-report-table"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Unit Cost</th><th>Opening Value</th><th>Purchased Units</th><th>Purchases Value</th><th>Closing Units</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Cost of Sales</th></tr></thead><tbody>${out||'<tr><td colspan="10">No inventory activity for this period.</td></tr>'}</tbody><tfoot><tr><th colspan="3">Total</th><th>${cash(choose(total,'opening_stock','opening_stock_value'))}</th><th></th><th>${cash(choose(total,'purchases','purchase_value'))}</th><th colspan="2"></th><th>${cash(choose(total,'closing_stock','closing_stock_value'))}</th><th>${cash(choose(total,'cost_of_sales','calculated_cogs','cogs'))}</th></tr></tfoot></table></div></div>`;
+   writing=true;panel.innerHTML=html;panel.dataset.liveKey=key;writing=false;lastKey=key;
+  }catch(e){if(serial!==pending)return;writing=true;panel.innerHTML=`<div class="report-card"><h3>COST OF SALES REPORT</h3><div class="empty-state">Unable to load live COGS: ${safe(e.message||e)}</div></div>`;panel.dataset.liveKey='error';writing=false}
+ }
+ function install(){const panel=$('reportCogs');if(!panel||panel.dataset.liveWatcher65)return;panel.dataset.liveWatcher65='1';new MutationObserver(()=>{if(writing)return;if(panel.dataset.liveKey!=='loading' && panel.dataset.liveKey!=='error' && !panel.querySelector('[data-live-cogs-report]')){refresh()}}).observe(panel,{childList:true});
+  document.addEventListener('click',e=>{if(e.target.closest('#refreshReportsBtn,[data-report="cogs"]'))setTimeout(refresh,60)});
+  ['reportFrom','reportTo'].forEach(id=>$(id)?.addEventListener('change',()=>setTimeout(refresh,60)));
+  if(panel.innerHTML.trim())refresh();
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(install,500));else setTimeout(install,500);
 })();
 </script>
