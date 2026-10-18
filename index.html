@@ -6848,7 +6848,7 @@ async function fsCoaLoadStatement(accountId){
   try{
     const entries=[];
     for(let offset=0;;offset+=750){
-      let qy=sb.from('journal_entries').select('id,entry_date,reference,journal_no,memo,description,source_type,entry_type,created_at').eq('company_id',cid).order('entry_date',{ascending:true}).order('created_at',{ascending:true}).range(offset,offset+749);
+      let qy=sb.from('journal_entries').select('*').eq('company_id',cid).order('entry_date',{ascending:true}).order('created_at',{ascending:true}).range(offset,offset+749);
       if(to)qy=qy.lte('entry_date',to);
       const {data,error}=await qy;if(error)throw error;
       entries.push(...(data||[]));if(!data||data.length<750)break;
@@ -6857,7 +6857,7 @@ async function fsCoaLoadStatement(accountId){
     const movements=[];
     const ids=entries.map(e=>e.id);
     for(let offset=0;offset<ids.length;offset+=100){
-      const {data,error}=await sb.from('journal_lines').select('journal_entry_id,account_id,debit,credit,description').eq('account_id',accountId).in('journal_entry_id',ids.slice(offset,offset+100));
+      const {data,error}=await sb.from('journal_lines').select('*').eq('account_id',accountId).in('journal_entry_id',ids.slice(offset,offset+100));
       if(error)throw error;
       movements.push(...(data||[]));
     }
