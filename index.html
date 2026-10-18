@@ -765,6 +765,19 @@ body.online-loading .app{visibility:hidden}
     <div class="upload"><div style="font-size:30px">⇧</div><h4>Petty Cash CSV</h4><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary uploadBtn" data-kind="petty">Upload CSV</button><button class="btn sampleBtn" data-kind="petty">Sample CSV</button></div></div>
   </div>
   <div class="upload" style="margin-top:14px"><h4>Purchase / Recipe Items CSV</h4><div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button type="button" class="btn primary" id="openItemCsvManager12">Upload Items CSV</button><button type="button" class="btn" id="downloadItemCsvTemplate12">Sample CSV</button></div></div>
+  <div class="upload" id="fsBankImport26" style="margin-top:14px;text-align:left">
+    <h4 style="margin:0 0 12px">Bank Statement CSV</h4>
+    <div class="fs-bank-fields">
+      <label>Bank Account<select id="fsBankAccount26"><option value="">Select bank account</option></select></label>
+      <label>Upload Mode<select id="fsBankMode26"><option value="raw">Raw bank statement — classify after upload</option><option value="classified">Pre-classified CSV</option></select></label>
+      <button class="btn primary" type="button" id="fsBankUpload26">Choose CSV</button>
+      <button class="btn" type="button" id="fsBankSample26">Sample CSV</button>
+    </div>
+    <input type="file" id="fsBankFile26" accept=".csv,text/csv" style="display:none">
+    <div id="fsBankMessage26" role="status" style="margin-top:12px"></div>
+    <div id="fsBankMapping26" style="display:none;margin-top:12px"></div>
+    <div id="fsBankPreview26" style="margin-top:12px"></div>
+  </div>
   <input id="csvInput" type="file" accept=".csv,text/csv" class="hidden">
 
   <div style="margin-top:18px">
@@ -9847,5 +9860,50 @@ function install(){const table=document.getElementById('salesTable');if(!table)r
   if(panel.innerHTML.trim())refresh();
  }
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>setTimeout(install,500));else setTimeout(install,500);
+})();
+</script>
+
+<style id="fs-bank-import-26-css">
+#fsBankImport26 .fs-bank-fields{display:flex;flex-wrap:wrap;gap:12px;align-items:end}
+#fsBankImport26 .fs-bank-fields label{display:flex;flex-direction:column;gap:5px;min-width:220px;font-weight:600}
+#fsBankImport26 select,#fsBankImport26 input{padding:9px;border:1px solid #d8ddeb;border-radius:8px;background:white;max-width:100%}
+#fsBankImport26 .fs-bank-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+#fsBankImport26 .fs-bank-grid label{display:flex;flex-direction:column;gap:5px}
+#fsBankImport26 .fs-bank-table{max-height:420px;overflow:auto;border:1px solid #e1e5ef;border-radius:10px}
+#fsBankImport26 table{width:100%;border-collapse:collapse;font-size:12px}
+#fsBankImport26 th,#fsBankImport26 td{padding:8px;border-bottom:1px solid #e1e5ef;text-align:left;white-space:nowrap}
+#fsBankImport26 td input,#fsBankImport26 td select{width:160px;min-width:120px}
+#fsBankImport26 th{position:sticky;top:0;background:#f5f6fa}
+#fsBankImport26 .fs-bank-actions{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+</style>
+<script>
+/* FinSight Bank Statement CSV: local review-only pilot; deliberately creates no DB records. */
+(function(){
+'use strict';
+const root=document.getElementById('fsBankImport26');if(!root)return;
+const el=id=>document.getElementById(id);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fields=['Date','Description','Reference','Money In','Money Out','Transaction Type','Account','Supplier / Payee','Invoice Reference','Balance'];
+const types=['','Supplier Payment','Expense','Bank Transfer','Customer Receipt','Sales Settlement','Fund Deposit','Bank Charges','Other General Ledger Account'];
+let raw=[],heads=[],records=[],accounts=[],bankAccounts=[],company='',fileName='';
+function msg(t){el('fsBankMessage26').textContent=t;}
+function csvRows(t){const result=[];let r=[],v='',quoted=false;for(let i=0;i<t.length;i++){const c=t[i];if(c==='"'){if(quoted&&t[i+1]==='"'){v+='"';i++;}else quoted=!quoted;}else if(c===','&&!quoted){r.push(v);v='';}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&t[i+1]==='\n')i++;r.push(v);v='';if(r.some(x=>x.trim()))result.push(r);r=[];}else v+=c;}if(quoted)throw Error('CSV has an unclosed quotation mark.');r.push(v);if(r.some(x=>x.trim()))result.push(r);return result;}
+function csvOut(rows){return rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(',')).join('\r\n');}
+function download(name,txt){let a=document.createElement('a'),u=URL.createObjectURL(new Blob([txt],{type:'text/csv;charset=utf-8;'}));a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);}
+function normal(t){return String(t||'').toLowerCase().replace(/[^a-z0-9]/g,'');}
+const aliases={'Date':['Date','Transaction Date','Value Date','Posting Date'],'Description':['Description','Narration','Details','Particulars','Transaction Details'],'Reference':['Reference','Transaction ID','Ref','Cheque Number'],'Money In':['Money In','Credit','Deposits','Paid In','Received'],'Money Out':['Money Out','Debit','Withdrawals','Paid Out','Payments'],'Transaction Type':['Transaction Type','Type'],'Account':['Account','GL Account','Ledger Account'],'Supplier / Payee':['Supplier / Payee','Payee','Supplier','Beneficiary'],'Invoice Reference':['Invoice Reference','Invoice','Bill Reference'],'Balance':['Balance','Running Balance']};
+function optionList(list,value){return list.map(x=>'<option value="'+esc(x)+'"'+(x===value?' selected':'')+'>'+esc(x||'Unassigned')+'</option>').join('');}
+async function loadAccounts(){const sb=window.finsightSupabase,id=window.finsightOnline?.companyId;if(!sb||!id){msg('Sign in and select a company to choose a bank account.');return;}if(id===company&&accounts.length)return;company=id;const {data,error}=await sb.from('accounts').select('id,name,account_type,sub_type,is_active').eq('company_id',id).order('name');if(error){msg('Unable to read Chart of Accounts: '+error.message);return;}accounts=(data||[]).filter(a=>a.is_active!==false);bankAccounts=accounts.filter(a=>/bank/i.test(String(a.sub_type||'')));el('fsBankAccount26').innerHTML='<option value="">Select bank account</option>'+bankAccounts.map(a=>'<option value="'+esc(a.id)+'">'+esc(a.name)+'</option>').join('');msg(bankAccounts.length?'Select the bank account used for this statement.':'No active Bank subtype accounts found in Chart of Accounts.');}
+function mapping(){let h='<div class="fs-bank-grid">';for(const k of fields){const chosen=heads.find(x=>(aliases[k]||[]).some(a=>normal(a)===normal(x)))||'';h+='<label>'+esc(k)+'<select data-map="'+esc(k)+'"><option value="">Not supplied</option>'+optionList(heads,chosen)+'</select></label>';}h+='</div><div class="fs-bank-actions"><button class="btn primary" id="fsBankPreviewBtn26" type="button">Preview Rows</button></div>';el('fsBankMapping26').innerHTML=h;el('fsBankMapping26').style.display='block';}
+function amount(v){let s=String(v??'').trim();if(!s)return 0;let neg=/^\(.*\)$/.test(s);s=s.replace(/[(),\s]/g,'').replace(/(?:KES|KSH)/ig,'');let n=Number(s);if(!Number.isFinite(n)||n<0)throw Error('Invalid monetary amount: '+v);return neg?-n:n;}
+function preview(){try{if(!el('fsBankAccount26').value){msg('Select the statement bank account first.');return;}const m={};el('fsBankMapping26').querySelectorAll('[data-map]').forEach(x=>m[x.dataset.map]=x.value);if(!m.Date||!m.Description||(!m['Money In']&&!m['Money Out'])){msg('Map Date, Description and at least one of Money In / Money Out.');return;}records=raw.map((row,i)=>{let r={_row:i+2};for(const k of fields)r[k]=m[k]?row[heads.indexOf(m[k])]||'':'';r['Money In']=amount(r['Money In']);r['Money Out']=amount(r['Money Out']);r._error=(r['Money In']>0&&r['Money Out']>0)||(!r['Money In']&&!r['Money Out'])?'Enter a positive amount in exactly one direction':'';if(!String(r.Date).trim())r._error='Missing date';if(!String(r.Description).trim())r._error='Missing description';return r;});draw();}catch(e){msg(e.message||String(e));}}
+function draw(){let bank=bankAccounts.find(a=>a.id===el('fsBankAccount26').value);let opts=optionList(types,'');let accopts=optionList(['',...accounts.map(a=>a.name)],'');let invalid=records.filter(r=>r._error).length;let html='<div><strong>'+records.length+' rows</strong> · '+invalid+' row(s) requiring correction · '+esc(bank?.name||'No bank selected')+'</div><div class="fs-bank-table"><table><thead><tr>'+['Date','Description','Reference','Money In','Money Out','Transaction Type','Account','Supplier / Payee','Invoice Reference','Balance','Check'].map(k=>'<th>'+esc(k)+'</th>').join('')+'</tr></thead><tbody>';
+records.forEach((r,i)=>{html+='<tr>'+['Date','Description','Reference','Money In','Money Out'].map(k=>'<td>'+esc(r[k])+'</td>').join('');html+='<td><select data-edit="Transaction Type" data-i="'+i+'">'+optionList(types,r['Transaction Type'])+'</select></td><td><select data-edit="Account" data-i="'+i+'">'+optionList(['',...accounts.map(a=>a.name)],r.Account)+'</select></td>'+['Supplier / Payee','Invoice Reference'].map(k=>'<td><input data-edit="'+esc(k)+'" data-i="'+i+'" value="'+esc(r[k])+'"></td>').join('')+'<td>'+esc(r.Balance)+'</td><td>'+esc(r._error||'Ready for review')+'</td></tr>';});html+='</tbody></table></div><div class="fs-bank-actions"><button class="btn primary" id="fsBankExport26" type="button">Download Reviewed CSV</button><button class="btn" id="fsBankClear26" type="button">Clear Preview</button></div><div style="font-weight:600">Preview only — no transactions, journals, or bank balances have been posted.</div>';
+el('fsBankPreview26').innerHTML=html;msg('Check classification and accounts, then download the reviewed CSV. Accounting posting will be implemented separately after testing.');}
+root.addEventListener('input',ev=>{let x=ev.target;if(x.dataset.edit!==undefined&&records[Number(x.dataset.i)])records[Number(x.dataset.i)][x.dataset.edit]=x.value;});
+root.addEventListener('change',ev=>{let x=ev.target;if(x.dataset.edit!==undefined&&records[Number(x.dataset.i)])records[Number(x.dataset.i)][x.dataset.edit]=x.value;if(x.id==='fsBankAccount26'&&records.length)draw();});
+root.addEventListener('click',async ev=>{const id=ev.target.id;if(id==='fsBankUpload26'){await loadAccounts();el('fsBankFile26').click();}if(id==='fsBankSample26')download('FinSight_Bank_Statement_Sample.csv',csvOut([fields,['2026-10-15','Supplier payment','TRX001','0','12500','Supplier Payment','Accounts Payable','Example Supplier','INV-001','137500'],['2026-10-16','Bank charges','TRX002','0','250','Bank Charges','Bank Charges Expense','','','137250']]));if(id==='fsBankPreviewBtn26')preview();if(id==='fsBankClear26'){records=[];raw=[];el('fsBankPreview26').innerHTML='';el('fsBankMapping26').style.display='none';msg('Preview cleared.');}if(id==='fsBankExport26'){const errors=records.filter(r=>r._error);if(errors.length){msg('Correct '+errors.length+' invalid row(s) before exporting.');return;}download('FinSight_Bank_Reviewed_'+new Date().toISOString().slice(0,10)+'.csv',csvOut([['Bank Account',...fields],...records.map(r=>[bankAccounts.find(a=>a.id===el('fsBankAccount26').value)?.name||'',...fields.map(k=>r[k])])]));}});
+el('fsBankFile26').addEventListener('change',async e=>{let f=e.target.files?.[0];if(!f)return;try{await loadAccounts();fileName=f.name;let arr=csvRows((await f.text()).replace(/^\ufeff/,''));if(arr.length<2)throw Error('CSV must contain a header and at least one data row.');heads=arr[0].map(x=>x.trim());if(new Set(heads.map(normal)).size!==heads.length)throw Error('CSV contains repeated column headings.');raw=arr.slice(1);records=[];mapping();el('fsBankPreview26').innerHTML='';msg('Loaded '+raw.length+' rows from '+fileName+'. Map the CSV columns and click Preview Rows.');}catch(ex){msg(ex.message||String(ex));}finally{e.target.value='';}});
+el('fsBankAccount26').addEventListener('focus',loadAccounts);document.addEventListener('finsight:cloud-state-loaded',()=>{company='';loadAccounts();});setTimeout(loadAccounts,800);
 })();
 </script>
