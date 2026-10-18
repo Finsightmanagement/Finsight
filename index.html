@@ -6897,7 +6897,28 @@ async function fsCoaLoadStatement(accountId){
       if(error)throw error;
       movements.push(...(data||[]));
     }
+    // Fetch the other journal lines for the same entries to show the actual double-entry account(s).
+    // Batch by journal ID and company, so an account statement never reads another company's entries.
+    const relatedByJournal=new Map();
+    const movementIds=[...new Set(movements.map(l=>String(l.journal_entry_id)))];
+    for(let offset=0;offset<movementIds.length;offset+=100){
+      const {data,error}=await sb.from('journal_lines').select('journal_entry_id,account_id,debit,credit')
+        .eq('company_id',cid).in('journal_entry_id',movementIds.slice(offset,offset+100));
+      if(error)throw error;
+      for(const line of (data||[])){
+        const key=String(line.journal_entry_id);
+        if(!relatedByJournal.has(key))relatedByJournal.set(key,[]);
+        relatedByJournal.get(key).push(line);
+      }
+    }
     if(request!==fsCoaStatementRequest||window.finsightOnline?.companyId!==cid||!document.getElementById('fsCoaStatementOverlay'))return;
+    const accountNames=new Map((state.accounts||[]).map(acc=>[String(acc.id),acc.name]));
+    const counterpartNames=line=>{
+      const other=(relatedByJournal.get(String(line.journal_entry_id))||[])
+        .filter(x=>String(x.account_id)!==String(accountId));
+      const names=[...new Set(other.map(x=>accountNames.get(String(x.account_id))||'Account '+String(x.account_id).slice(0,8)))];
+      return names.length?names.join(', '):'—';
+    };
     movements.sort((x,y)=>{
       const e1=entryMap.get(String(x.journal_entry_id)),e2=entryMap.get(String(y.journal_entry_id));
       return String(e1?.entry_date||'').localeCompare(String(e2?.entry_date||''))||String(e1?.created_at||'').localeCompare(String(e2?.created_at||''))||String(x.journal_entry_id).localeCompare(String(y.journal_entry_id));
@@ -6908,20 +6929,21 @@ async function fsCoaLoadStatement(accountId){
     balance=opening;
     let rows='';
     fsCoaStatementTitle=a.name;
-    fsCoaStatementData=[['Date','Reference','Description','Debit','Credit','Running Balance'],['','Opening Balance','', '', '',opening.toFixed(2)]];
+    fsCoaStatementData=[['Date','Reference','Description','Corresponding Account','Debit','Credit','Running Balance'],['','Opening Balance','','', '', '',opening.toFixed(2)]];
     for(const l of movements){
       const e=entryMap.get(String(l.journal_entry_id));if(!e||from&&e.entry_date<from)continue;
       const d=Number(l.debit||0),c=Number(l.credit||0);deb+=d;cred+=c;
       balance+=(creditNormal?-1:1)*(d-c);
       const ref=e.reference||e.journal_no||e.id.slice(0,8);
       const desc=l.description||e.memo||e.description||e.source_type||e.entry_type||'Journal Entry';
-      fsCoaStatementData.push([e.entry_date,ref,desc,d.toFixed(2),c.toFixed(2),balance.toFixed(2)]);
-      rows+=`<tr><td>${esc(e.entry_date||'')}</td><td>${esc(ref)}</td><td>${esc(desc)}</td><td style="text-align:right">${fsCoaAmount(d)}</td><td style="text-align:right">${fsCoaAmount(c)}</td><td style="text-align:right">${fsCoaAmount(balance)}</td></tr>`;
+      const counterpart=counterpartNames(l);
+      fsCoaStatementData.push([e.entry_date,ref,desc,counterpart,d.toFixed(2),c.toFixed(2),balance.toFixed(2)]);
+      rows+=`<tr><td>${esc(e.entry_date||'')}</td><td>${esc(ref)}</td><td>${esc(desc)}</td><td>${esc(counterpart)}</td><td style="text-align:right">${fsCoaAmount(d)}</td><td style="text-align:right">${fsCoaAmount(c)}</td><td style="text-align:right">${fsCoaAmount(balance)}</td></tr>`;
     }
-    fsCoaStatementData.push(['','Period Totals','',deb.toFixed(2),cred.toFixed(2),balance.toFixed(2)]);
-    const tableStyle='width:100%;border-collapse:collapse;min-width:700px';
+    fsCoaStatementData.push(['','Period Totals','','',deb.toFixed(2),cred.toFixed(2),balance.toFixed(2)]);
+    const tableStyle='width:100%;border-collapse:collapse;min-width:870px';
     out.innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px"><b>Opening: KSh ${fsCoaAmount(opening)}</b><b>Debits: KSh ${fsCoaAmount(deb)}</b><b>Credits: KSh ${fsCoaAmount(cred)}</b><b>Closing: KSh ${fsCoaAmount(balance)}</b></div>
-       <div style="overflow-x:auto"><table style="${tableStyle}"><thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Debit</th><th>Credit</th><th>Running Balance</th></tr></thead><tbody><tr><td></td><td><b>Opening Balance</b></td><td></td><td></td><td></td><td style="text-align:right"><b>${fsCoaAmount(opening)}</b></td></tr>${rows||'<tr><td colspan="6">No posted transactions in selected period.</td></tr>'}<tr><td colspan="3"><b>Period Totals / Closing Balance</b></td><td style="text-align:right"><b>${fsCoaAmount(deb)}</b></td><td style="text-align:right"><b>${fsCoaAmount(cred)}</b></td><td style="text-align:right"><b>${fsCoaAmount(balance)}</b></td></tr></tbody></table></div>`;
+       <div style="overflow-x:auto"><table style="${tableStyle}"><thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Corresponding Account</th><th>Debit</th><th>Credit</th><th>Running Balance</th></tr></thead><tbody><tr><td></td><td><b>Opening Balance</b></td><td></td><td></td><td></td><td></td><td style="text-align:right"><b>${fsCoaAmount(opening)}</b></td></tr>${rows||'<tr><td colspan="7">No posted transactions in selected period.</td></tr>'}<tr><td colspan="4"><b>Period Totals / Closing Balance</b></td><td style="text-align:right"><b>${fsCoaAmount(deb)}</b></td><td style="text-align:right"><b>${fsCoaAmount(cred)}</b></td><td style="text-align:right"><b>${fsCoaAmount(balance)}</b></td></tr></tbody></table></div>`;
   }catch(error){if(request!==fsCoaStatementRequest)return;out.textContent='Unable to load account statement: '+(error.message||String(error));console.error('[FinSight account statement]',error);}
 }
 function renderCloudCoaActions(){
