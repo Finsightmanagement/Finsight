@@ -6795,6 +6795,99 @@ async function fsLoadCoaBalances(){
     console.error('[FinSight COA balances]',error);
   }
 }
+// Account statement is a read-only view of the same company-scoped posted journals.
+let fsCoaStatementData=[];
+let fsCoaStatementTitle='';
+const fsCoaAmount=n=>Number(n||0).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fsCoaCsvField=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+function fsCoaCloseStatement(){document.getElementById('fsCoaStatementOverlay')?.remove();}
+function fsCoaStatementModal(){
+  let overlay=document.getElementById('fsCoaStatementOverlay');
+  if(overlay)return overlay;
+  overlay=document.createElement('div');overlay.id='fsCoaStatementOverlay';
+  overlay.style.cssText='position:fixed;inset:0;z-index:12000;background:rgba(15,23,42,.63);display:flex;align-items:center;justify-content:center;padding:18px';
+  overlay.innerHTML=`<section role="dialog" aria-modal="true" aria-label="Account Statement" style="background:var(--card,#fff);color:var(--text,#172033);border-radius:16px;max-width:1130px;width:100%;max-height:92vh;overflow:auto;padding:22px;box-shadow:0 24px 70px #0003">
+   <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap"><h2 id="fsCoaStatementHeading" style="margin:0">Account Statement</h2><button type="button" id="fsCoaStatementClose" class="mini-btn">Close</button></div>
+   <div style="display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:16px 0"><label>From <input id="fsCoaStatementFrom" type="date" style="display:block;margin-top:5px"></label><label>To <input id="fsCoaStatementTo" type="date" style="display:block;margin-top:5px"></label><button id="fsCoaStatementRefresh" class="mini-btn" type="button">Apply</button><button id="fsCoaStatementExport" class="mini-btn" type="button">Export CSV</button></div>
+   <div id="fsCoaStatementResult" aria-live="polite">Loading…</div>
+  </section>`;
+  overlay.addEventListener('click',e=>{if(e.target===overlay)fsCoaCloseStatement()});
+  overlay.querySelector('#fsCoaStatementClose').onclick=fsCoaCloseStatement;
+  overlay.querySelector('#fsCoaStatementExport').onclick=()=>{
+    if(!fsCoaStatementData.length)return;
+    const csv=fsCoaStatementData.map(row=>row.map(fsCoaCsvField).join(',')).join('\r\n');
+    const blob=new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob);
+    const a=document.createElement('a');a.href=url;a.download='Account_Statement_'+fsCoaStatementTitle.replace(/[^a-z0-9_-]/gi,'_')+'.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  };
+  document.body.appendChild(overlay);
+  return overlay;
+}
+let fsCoaStatementRequest=0;
+async function fsCoaOpenStatement(accountId){
+  const a=(state.accounts||[]).find(x=>String(x.id)===String(accountId));
+  if(!a)return;
+  const overlay=fsCoaStatementModal();
+  overlay.dataset.accountId=String(accountId);
+  overlay.querySelector('#fsCoaStatementHeading').textContent='Account Statement — '+a.name;
+  // A blank From date includes the entire posted journal history.
+  const to=overlay.querySelector('#fsCoaStatementTo');if(!to.value)to.value=new Date().toISOString().slice(0,10);
+  overlay.querySelector('#fsCoaStatementRefresh').onclick=()=>fsCoaLoadStatement(String(accountId));
+  await fsCoaLoadStatement(String(accountId));
+}
+async function fsCoaLoadStatement(accountId){
+  const request=++fsCoaStatementRequest;
+  const overlay=document.getElementById('fsCoaStatementOverlay');if(!overlay)return;
+  const out=overlay.querySelector('#fsCoaStatementResult');
+  const from=overlay.querySelector('#fsCoaStatementFrom').value;
+  const to=overlay.querySelector('#fsCoaStatementTo').value;
+  if(from&&to&&from>to){out.textContent='From date must not be after To date.';return;}
+  const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+  const a=(state.accounts||[]).find(x=>String(x.id)===accountId);
+  if(!sb||!cid||!a){out.textContent='Select a company and try again.';return;}
+  out.textContent='Loading posted journal transactions…';fsCoaStatementData=[];
+  try{
+    const entries=[];
+    for(let offset=0;;offset+=750){
+      let qy=sb.from('journal_entries').select('id,entry_date,reference,journal_no,memo,description,source_type,entry_type,created_at').eq('company_id',cid).order('entry_date',{ascending:true}).order('created_at',{ascending:true}).range(offset,offset+749);
+      if(to)qy=qy.lte('entry_date',to);
+      const {data,error}=await qy;if(error)throw error;
+      entries.push(...(data||[]));if(!data||data.length<750)break;
+    }
+    const entryMap=new Map(entries.map(e=>[String(e.id),e]));
+    const movements=[];
+    const ids=entries.map(e=>e.id);
+    for(let offset=0;offset<ids.length;offset+=100){
+      const {data,error}=await sb.from('journal_lines').select('journal_entry_id,account_id,debit,credit,description').eq('account_id',accountId).in('journal_entry_id',ids.slice(offset,offset+100));
+      if(error)throw error;
+      movements.push(...(data||[]));
+    }
+    if(request!==fsCoaStatementRequest||window.finsightOnline?.companyId!==cid||!document.getElementById('fsCoaStatementOverlay'))return;
+    movements.sort((x,y)=>{
+      const e1=entryMap.get(String(x.journal_entry_id)),e2=entryMap.get(String(y.journal_entry_id));
+      return String(e1?.entry_date||'').localeCompare(String(e2?.entry_date||''))||String(e1?.created_at||'').localeCompare(String(e2?.created_at||''))||String(x.journal_entry_id).localeCompare(String(y.journal_entry_id));
+    });
+    const creditNormal=['Liability','Equity','Income'].includes(a.type);
+    let opening=0,deb=0,cred=0,balance=0;
+    for(const l of movements){const e=entryMap.get(String(l.journal_entry_id));if(e&&from&&e.entry_date<from)opening+=(creditNormal?-1:1)*(Number(l.debit||0)-Number(l.credit||0));}
+    balance=opening;
+    let rows='';
+    fsCoaStatementTitle=a.name;
+    fsCoaStatementData=[['Date','Reference','Description','Debit','Credit','Running Balance'],['','Opening Balance','', '', '',opening.toFixed(2)]];
+    for(const l of movements){
+      const e=entryMap.get(String(l.journal_entry_id));if(!e||from&&e.entry_date<from)continue;
+      const d=Number(l.debit||0),c=Number(l.credit||0);deb+=d;cred+=c;
+      balance+=(creditNormal?-1:1)*(d-c);
+      const ref=e.reference||e.journal_no||e.id.slice(0,8);
+      const desc=l.description||e.memo||e.description||e.source_type||e.entry_type||'Journal Entry';
+      fsCoaStatementData.push([e.entry_date,ref,desc,d.toFixed(2),c.toFixed(2),balance.toFixed(2)]);
+      rows+=`<tr><td>${esc(e.entry_date||'')}</td><td>${esc(ref)}</td><td>${esc(desc)}</td><td style="text-align:right">${fsCoaAmount(d)}</td><td style="text-align:right">${fsCoaAmount(c)}</td><td style="text-align:right">${fsCoaAmount(balance)}</td></tr>`;
+    }
+    fsCoaStatementData.push(['','Period Totals','',deb.toFixed(2),cred.toFixed(2),balance.toFixed(2)]);
+    const tableStyle='width:100%;border-collapse:collapse;min-width:700px';
+    out.innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px"><b>Opening: KSh ${fsCoaAmount(opening)}</b><b>Debits: KSh ${fsCoaAmount(deb)}</b><b>Credits: KSh ${fsCoaAmount(cred)}</b><b>Closing: KSh ${fsCoaAmount(balance)}</b></div>
+       <div style="overflow-x:auto"><table style="${tableStyle}"><thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Debit</th><th>Credit</th><th>Running Balance</th></tr></thead><tbody><tr><td></td><td><b>Opening Balance</b></td><td></td><td></td><td></td><td style="text-align:right"><b>${fsCoaAmount(opening)}</b></td></tr>${rows||'<tr><td colspan="6">No posted transactions in selected period.</td></tr>'}<tr><td colspan="3"><b>Period Totals / Closing Balance</b></td><td style="text-align:right"><b>${fsCoaAmount(deb)}</b></td><td style="text-align:right"><b>${fsCoaAmount(cred)}</b></td><td style="text-align:right"><b>${fsCoaAmount(balance)}</b></td></tr></tbody></table></div>`;
+  }catch(error){if(request!==fsCoaStatementRequest)return;out.textContent='Unable to load account statement: '+(error.message||String(error));console.error('[FinSight account statement]',error);}
+}
 function renderCloudCoaActions(){
   const tbody=q('#coaTable');
   if(!tbody)return;
@@ -6807,11 +6900,13 @@ function renderCloudCoaActions(){
       <td style="text-align:right;font-variant-numeric:tabular-nums"><span data-fs-coa-balance="${esc(a.id)}">Loading…</span></td>
       <td><span class="badge ${a.active===false?'amber':'green'}">${a.active===false?'Inactive':'Active'}</span></td>
       <td><div class="account-actions">
+        <button class="mini-btn fsCoaViewStatement" data-id="${esc(a.id)}" type="button">View Statement</button>
         <button class="mini-btn cloudEditAccount" data-id="${esc(a.id)}" type="button">Edit</button>
         ${a.active===false?'':`<button class="mini-btn danger cloudDeactivateAccount" data-id="${esc(a.id)}" type="button">Deactivate</button>`}
       </div></td>
     </tr>`).join('');
 
+  qa('.fsCoaViewStatement').forEach(b=>b.onclick=()=>fsCoaOpenStatement(b.dataset.id));
   qa('.cloudEditAccount').forEach(b=>b.onclick=()=>{
     const a=(state.accounts||[]).find(x=>x.id===b.dataset.id);
     if(a)saveCloudAccount(a);
