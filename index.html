@@ -1145,7 +1145,8 @@ function renderDashboard(){
  $("#topItems").innerHTML=items.length?items.slice(0,5).map(([n,v],i)=>`<div class="rank-row"><div class="rank-no">${i+1}</div><div><b>${n}</b><small>${v.qty} units · ${v.category}</small></div><b>${fmt(v.revenue)}</b></div>`).join(""):`<div class="empty-state">No item-level sales yet.</div>`;
  $("#bottomItems").innerHTML=items.length?items.slice(-2).reverse().map(([n,v],i)=>`<div class="rank-row bottom"><div class="rank-no">${i+1}</div><div><b>${n}</b><small>${v.qty} units · ${v.category}</small></div><b>${fmt(v.revenue)}</b></div>`).join(""):`<div class="empty-state">No item-level sales yet.</div>`;
  const cat={};state.saleItems.filter(x=>inRange(x.date,f,t)).forEach(x=>cat[x.category]=(cat[x.category]||0)+x.revenue);const cats=Object.entries(cat).sort((a,b)=>b[1]-a[1]),colors=["#4f46e5","#06b6d4","#16a34a","#f59e0b","#ec4899","#8b5cf6","#64748b"],tot=cats.reduce((a,b)=>a+b[1],0);let acc=0,stops=[];cats.forEach(([n,v],i)=>{const a=acc/tot*360;acc+=v;const b=acc/tot*360;stops.push(`${colors[i%colors.length]} ${a}deg ${b}deg`)});if($("#categoryPie"))$("#categoryPie").style.background=cats.length?`conic-gradient(${stops.join(",")})`:"#e5e7eb";if($("#categoryLegend"))$("#categoryLegend").innerHTML=cats.length?cats.map(([n,v],i)=>`<div class="legend-row"><span class="legend-key"><i class="legend-swatch" style="background:${colors[i%colors.length]}"></i>${n}</span><b>${(v/tot*100).toFixed(1)}%</b></div>`).join(""):`<div class="empty-state">No category data yet.</div>`;
- $("#bankCards").innerHTML=banks().length?banks().map(b=>`<div class="card kpi"><div class="label">${b.name}</div><div class="value">${fmt(accountBalance(b.id))}</div><div class="sub">Book balance</div></div>`).join(""):`<div class="card empty-state">No bank accounts have been created in the Chart of Accounts.</div>`
+ $("#bankCards").innerHTML=banks().length?banks().map(b=>`<div class="card kpi"><div class="label">${b.name}</div><div class="value" data-fs-bank-ledger="${b.id}">Loading…</div><div class="sub">Book balance</div></div>`).join(""):`<div class="card empty-state">No bank accounts have been created in the Chart of Accounts.</div>`
+  window.fsRefreshDashboardBankGL?.();
 }
 $("#dashboardRange").onchange=renderDashboard;
 
@@ -1447,8 +1448,9 @@ renderDashboard=function(){
  }
 
  $('#bankCards').innerHTML=banks().length
-   ?banks().map(b=>`<div class="card kpi"><div class="label">${b.name}</div><div class="value">${fmt(accountBalance(b.id,'9999-12-31'))}</div><div class="sub">Book balance</div></div>`).join('')
+   ?banks().map(b=>`<div class="card kpi"><div class="label">${b.name}</div><div class="value" data-fs-bank-ledger="${b.id}">Loading…</div><div class="sub">Book balance</div></div>`).join('')
    :'<div class="card empty-state">No bank accounts configured.</div>';
+  window.fsRefreshDashboardBankGL?.();
 };
 $('#dashboardRange').onchange=renderDashboard;
 
@@ -6795,6 +6797,38 @@ async function fsLoadCoaBalances(){
     console.error('[FinSight COA balances]',error);
   }
 }
+// Dashboard bank cards: always show posted GL balances, never stale local receipts/cheques.
+let fsDashBankRun=0;
+window.fsRefreshDashboardBankGL=async function(){
+ const run=++fsDashBankRun;
+ const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+ const nodes=[...document.querySelectorAll('#bankCards [data-fs-bank-ledger]')];
+ if(!sb||!cid||!nodes.length)return;
+ try{
+  const ids=[];
+  for(let offset=0;;offset+=750){
+   const {data,error}=await sb.from('journal_entries').select('id').eq('company_id',cid).range(offset,offset+749);
+   if(error)throw error;
+   ids.push(...(data||[]).map(j=>j.id));
+   if((data||[]).length<750)break;
+  }
+  const totals=new Map();
+  for(let start=0;start<ids.length;start+=100){
+   const {data,error}=await sb.from('journal_lines').select('account_id,debit,credit').in('journal_entry_id',ids.slice(start,start+100));
+   if(error)throw error;
+   for(const r of data||[])totals.set(String(r.account_id),(totals.get(String(r.account_id))||0)+Number(r.debit||0)-Number(r.credit||0));
+  }
+  if(run!==fsDashBankRun||window.finsightOnline?.companyId!==cid)return;
+  for(const node of document.querySelectorAll('#bankCards [data-fs-bank-ledger]')){
+   const value=totals.get(node.dataset.fsBankLedger)||0;
+   node.textContent='KSh '+value.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+ }catch(err){
+  if(run!==fsDashBankRun)return;
+  for(const node of document.querySelectorAll('#bankCards [data-fs-bank-ledger]'))node.textContent='Unavailable';
+  console.error('[FinSight Dashboard bank GL]',err);
+ }
+};
 // Account statement is a read-only view of the same company-scoped posted journals.
 let fsCoaStatementData=[];
 let fsCoaStatementTitle='';
@@ -7573,7 +7607,8 @@ function renderDashboardV1854(){
   const paymentTypes=[...new Set([...(state.paymentTypes||[]),...sales.map(x=>x.paymentType).filter(Boolean)])],matrix=paymentTypes.map(pt=>({pt,vals:dates.map(d=>sales.filter(x=>x.date===d&&x.paymentType===pt).reduce((a,b)=>a+num(b.amount),0))}));q('#paymentMixPeriod').textContent=`${f} to ${t}`;q('#salesAnalysis').innerHTML=`<div style="overflow:auto"><table class="payment-mix-table"><thead><tr><th>Payment Type</th>${dates.map(d=>`<th>${new Date(d+'T12:00:00').toLocaleDateString(undefined,{day:'2-digit',month:'short'})}</th>`).join('')}<th>Period Total</th></tr></thead><tbody>${matrix.map(r=>`<tr><td><b>${html(r.pt)}</b></td>${r.vals.map(v=>`<td>${money(v)}</td>`).join('')}<td><b>${money(r.vals.reduce((a,b)=>a+b,0))}</b></td></tr>`).join('')}<tr class="subtotal"><td><b>Total</b></td>${dates.map((d,i)=>`<td><b>${money(matrix.reduce((a,r)=>a+r.vals[i],0))}</b></td>`).join('')}<td><b>${money(cur)}</b></td></tr></tbody></table></div>`;
   const im={};items.forEach(x=>{im[x.item]=im[x.item]||{qty:0,revenue:0,category:x.category||'Uncategorised'};im[x.item].qty+=num(x.qty);im[x.item].revenue+=num(x.revenue)});const ranked=Object.entries(im).sort((a,b)=>b[1].revenue-a[1].revenue);q('#topItems').innerHTML=ranked.length?ranked.slice(0,5).map(([n,v],i)=>`<div class="rank-row"><div class="rank-no">${i+1}</div><div><b>${html(n)}</b><small>${v.qty} units · ${html(v.category)}</small></div><b>${money(v.revenue)}</b></div>`).join(''):'<div class="empty-state">No item sales yet.</div>';q('#bottomItems').innerHTML=ranked.length?ranked.slice(-2).reverse().map(([n,v],i)=>`<div class="rank-row bottom"><div class="rank-no">${i+1}</div><div><b>${html(n)}</b><small>${v.qty} units · ${html(v.category)}</small></div><b>${money(v.revenue)}</b></div>`).join(''):'<div class="empty-state">No item sales yet.</div>';
   const cats={};items.forEach(x=>cats[x.category||'Uncategorised']=(cats[x.category||'Uncategorised']||0)+num(x.revenue));const ce=Object.entries(cats).sort((a,b)=>b[1]-a[1]),tot=ce.reduce((a,b)=>a+b[1],0),colors=['#4f46e5','#06b6d4','#16a34a','#f59e0b','#ec4899','#8b5cf6','#ef4444','#14b8a6'];if(ce.length&&tot){let a=0,st=[];ce.forEach(([n,v],i)=>{const s=a/tot*360;a+=v;st.push(`${colors[i%colors.length]} ${s}deg ${a/tot*360}deg`)});if(q('#categoryPie'))q('#categoryPie').style.background=`conic-gradient(${st.join(',')})`;if(q('#categoryLegend'))q('#categoryLegend').innerHTML=ce.map(([n,v],i)=>`<div class="legend-row"><span class="legend-key"><i class="legend-swatch" style="background:${colors[i%colors.length]}"></i>${html(n)}</span><b>${(v/tot*100).toFixed(1)}%</b></div>`).join('')}else{if(q('#categoryPie'))q('#categoryPie').style.background='#e5e7eb';if(q('#categoryLegend'))q('#categoryLegend').innerHTML='<div class="empty-state">No category sales data.</div>'}
-  q('#bankCards').innerHTML=banks().length?banks().map(b=>`<div class="card kpi"><div class="label">${html(b.name)}</div><div class="value">${money(accountBalance(b.id,'9999-12-31'))}</div><div class="sub">Book balance</div></div>`).join(''):'<div class="card empty-state">No bank accounts configured.</div>';
+  q('#bankCards').innerHTML=banks().length?banks().map(b=>`<div class="card kpi"><div class="label">${html(b.name)}</div><div class="value" data-fs-bank-ledger="${b.id}">Loading…</div><div class="sub">Book balance</div></div>`).join(''):'<div class="card empty-state">No bank accounts configured.</div>';
+  window.fsRefreshDashboardBankGL?.();
 }
 window.renderDashboard=renderDashboardV1854;try{renderDashboard=renderDashboardV1854}catch(_){}
 
