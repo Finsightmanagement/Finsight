@@ -656,7 +656,7 @@ body.online-loading .app{visibility:hidden}
 
 <section class="page" id="accounting">
   <div class="section-title"><div><h3>Chart of Accounts</h3><div class="small-note">Accounts are saved online. Used accounts should be deactivated rather than deleted.</div></div><button class="btn primary" id="addAccountBtn">+ Add Account</button></div>
-  <div class="card table-card"><table><thead><tr><th>Account Name</th><th>Type</th><th>Sub-Type</th><th>Cash Flow</th><th>Status</th><th>Actions</th></tr></thead><tbody id="coaTable"></tbody></table></div>
+  <div class="card table-card"><table><thead><tr><th>Account Name</th><th>Type</th><th>Sub-Type</th><th>Cash Flow</th><th>Balance (KSh)</th><th>Status</th><th>Actions</th></tr></thead><tbody id="coaTable"></tbody></table></div>
 
   <div class="grid two" style="margin-top:16px">
     <div class="card panel">
@@ -6753,6 +6753,48 @@ async function deactivateAccount(id){
   toast('Account deactivated');
 }
 
+// Bank/Chart of Accounts balances: read posted ledger journals, company-scoped.
+let fsCoaBalanceRun=0;
+async function fsLoadCoaBalances(){
+  const run=++fsCoaBalanceRun;
+  const sb=window.finsightSupabase, cid=window.finsightOnline?.companyId;
+  if(!sb||!cid)return;
+  const cells=[...document.querySelectorAll('#coaTable [data-fs-coa-balance]')];
+  if(!cells.length)return;
+  cells.forEach(n=>n.textContent='Loading…');
+  try{
+    const ids=[];
+    for(let offset=0;;offset+=750){
+      const {data,error}=await sb.from('journal_entries').select('id').eq('company_id',cid).range(offset,offset+749);
+      if(error)throw error;
+      ids.push(...(data||[]).map(x=>x.id));
+      if(!data||data.length<750)break;
+    }
+    const totals=new Map();
+    for(let offset=0;offset<ids.length;offset+=100){
+      const {data,error}=await sb.from('journal_lines').select('account_id,debit,credit').in('journal_entry_id',ids.slice(offset,offset+100));
+      if(error)throw error;
+      for(const l of data||[]){
+        const t=totals.get(l.account_id)||{dr:0,cr:0};
+        t.dr+=Number(l.debit||0);t.cr+=Number(l.credit||0);totals.set(l.account_id,t);
+      }
+    }
+    if(run!==fsCoaBalanceRun||window.finsightOnline?.companyId!==cid)return;
+    for(const n of document.querySelectorAll('#coaTable [data-fs-coa-balance]')){
+      const a=(state.accounts||[]).find(x=>String(x.id)===n.dataset.fsCoaBalance);
+      if(!a)continue;
+      const t=totals.get(a.id)||{dr:0,cr:0};
+      const creditNormal=['Liability','Equity','Income'].includes(a.type);
+      const balance=creditNormal?t.cr-t.dr:t.dr-t.cr;
+      n.textContent=balance.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+      n.title='Ledger balance from posted journal lines: debit '+t.dr.toFixed(2)+' / credit '+t.cr.toFixed(2);
+    }
+  }catch(error){
+    if(run!==fsCoaBalanceRun)return;
+    document.querySelectorAll('#coaTable [data-fs-coa-balance]').forEach(n=>{n.textContent='Unavailable';n.title=error.message||String(error)});
+    console.error('[FinSight COA balances]',error);
+  }
+}
 function renderCloudCoaActions(){
   const tbody=q('#coaTable');
   if(!tbody)return;
@@ -6762,6 +6804,7 @@ function renderCloudCoaActions(){
       <td>${esc(a.type)}</td>
       <td>${esc(a.sub)}</td>
       <td>${esc(a.cashflow)}</td>
+      <td style="text-align:right;font-variant-numeric:tabular-nums"><span data-fs-coa-balance="${esc(a.id)}">Loading…</span></td>
       <td><span class="badge ${a.active===false?'amber':'green'}">${a.active===false?'Inactive':'Active'}</span></td>
       <td><div class="account-actions">
         <button class="mini-btn cloudEditAccount" data-id="${esc(a.id)}" type="button">Edit</button>
@@ -6774,6 +6817,7 @@ function renderCloudCoaActions(){
     if(a)saveCloudAccount(a);
   });
   qa('.cloudDeactivateAccount').forEach(b=>b.onclick=()=>deactivateAccount(b.dataset.id));
+  fsLoadCoaBalances();
 }
 
 /* -------- BLOCK LEGACY LOCAL EDIT/DELETE ON POSTED TRANSACTIONS -------- */
@@ -9907,7 +9951,7 @@ async function postBankRows(){
   const payload=rows.map(r=>({date:r.Date,bank:r.Bank,description:r.Description,reference:r.Reference,money_in:r.in,money_out:r.out,account:r.Account,supplier:r.Supplier,invoice_reference:r['Invoice Reference']}));
   const {data,error}=await sb.rpc('fs_post_bank_csv_batch',{p_company:company,p_rows:payload});
   if(error)throw Error(error.message);
-  msg('SUCCESS: '+(data?.posted??rows.length)+' bank transactions posted as balanced journals. Re-uploading the same bank references is blocked.');
+  msg('SUCCESS: '+(data?.posted??rows.length)+' bank transactions posted as balanced journals. Check Reports → General Journal and Chart of Accounts balances. Re-uploading the same references is blocked.');
   rows=[];el('fsBankPreview26').innerHTML='';
   if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
  }catch(err){msg('Posting rejected; no new batch should be committed: '+(err.message||String(err)));if(btn)btn.disabled=false;}
