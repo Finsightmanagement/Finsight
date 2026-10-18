@@ -9892,17 +9892,29 @@ function pageOpen(){const p=$('#stock-take-clerk');if(!p)return;$$('.page').forE
 function notify(s){const x=$('#stock12msg');if(x)x.textContent=s;else alert(s)}
 function renderLines(lines){const body=$('#stock12lines');if(!body)return;body.innerHTML=lines.map(x=>`<tr data-id="${esc(x.stock_item_id)}"><td>${esc(items().find(i=>String(i.id)===String(x.stock_item_id))?.name||x.stock_item_id)}</td><td><input type="number" min="0" step="any" class="stock12qty" value="${x.quantity??''}" placeholder="Quantity"></td><td><input class="stock12exp" value="${esc(x.explanation||'')}"></td></tr>`).join('')}
 function lines(){return $$('#stock12lines tr').filter(r=>$('.stock12qty',r).value.trim()!=='').map(r=>({stock_item_id:r.dataset.id,quantity:Number($('.stock12qty',r).value),explanation:$('.stock12exp',r).value}))}
-function stockTemplateRows(){return items().slice().sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')))}
-function stockTemplateCsv(){
+async function stockTemplateRows(){
+ const db=window.finsightSupabase,companyId=company();
+ if(!db||!companyId)throw Error('Select a company and connect to Supabase before downloading the Stock Take template.');
+ const {data,error}=await db.from('stock_items').select('id,name,unit,is_active').eq('company_id',companyId).eq('is_active',true).order('name');
+ if(error)throw Error('Unable to sync Purchase Items: '+error.message);
+ const rows=(data||[]).filter(x=>x.id&&String(x.name||'').trim());
+ if(!rows.length)throw Error('No active Purchase Items were found for this company.');
+ return rows.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
+}
+async function stockTemplateCsv(){
+ try{
+ const synced=await stockTemplateRows();
  const quote=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
- const data=[['Item','Unit','Opening Stock','Closing Stock','Comment'],...stockTemplateRows().map(x=>[x.name,x.unit||x.uom||'', '', '', ''])];
+ const data=[['Item','Unit','Opening Stock','Closing Stock','Comment'],...synced.map(x=>[x.name,x.unit||x.uom||'', '', '', ''])];
  const csv='\uFEFF'+data.map(r=>r.map(quote).join(',')).join('\r\n');
  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
  const a=document.createElement('a');a.href=url;a.download='FinSight_Stock_Take_Template.csv';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);
+ }catch(e){notify(e.message||String(e));}
 }
-function stockTemplatePrint(){
+async function stockTemplatePrint(){
+ try{
+ const rows=await stockTemplateRows();
  const w=window.open('','_blank');if(!w){notify('Allow pop-ups to print the template.');return}
- const rows=stockTemplateRows();
  // Three portrait A4 sheets maximum. Keep all rows (do not silently truncate the stock list).
  const pages=Math.min(3,Math.max(1,Math.ceil(rows.length/34)));
  const perPage=Math.max(1,Math.ceil(rows.length/pages));
@@ -9915,6 +9927,7 @@ function stockTemplatePrint(){
  }).join('');
  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Stock Take Template</title><style>*{box-sizing:border-box}html,body{margin:0;padding:0;color:#111;font-family:Arial,sans-serif;font-size:${font}px}.sheet{width:186mm;height:273mm;overflow:hidden;margin:0 auto;padding:2mm 0;page-break-after:always;break-after:page}.sheet:last-child{page-break-after:auto;break-after:auto}h2{text-align:center;font-size:14px;margin:0 0 4mm}.meta{display:flex;justify-content:space-between;gap:6px;margin:0 0 3mm;font-size:10px}table{border-collapse:collapse;table-layout:fixed;width:100%}th,td{border:1px solid #777;text-align:left;padding:0 2px;height:${height}mm;max-height:${height}mm;overflow:hidden;line-height:1.05}th{background:#eee;height:5mm}th:nth-child(1){width:29%}th:nth-child(2){width:10%}th:nth-child(3),th:nth-child(4){width:16%}th:nth-child(5){width:29%}.sign{margin-top:3mm;font-size:9px}@page{size:A4 portrait;margin:12mm}@media print{body{margin:0}.sheet{margin:0}}</style></head><body>${sheets}<script>window.onload=()=>window.print()<\/script></body></html>`);
  w.document.close();
+ }catch(e){notify(e.message||String(e));}
 }
 async function csvUpload(){const inp=document.createElement('input');inp.type='file';inp.accept='.csv';inp.onchange=async()=>{try{const text=await inp.files[0].text();const parse=text=>{const a=[];let r=[],x='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){x+='"';i++}else quoted=!quoted}else if(c===','&&!quoted){r.push(x);x=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;r.push(x);if(r.some(z=>z.trim()))a.push(r);r=[];x=''}else x+=c}r.push(x);if(r.some(z=>z.trim()))a.push(r);return a};const rows=parse(text),hdr=rows.shift().map(v=>v.trim().toLowerCase());const ni=hdr.indexOf('item'),qi=hdr.indexOf('closing stock')>=0?hdr.indexOf('closing stock'):(hdr.indexOf('physical quantity')>=0?hdr.indexOf('physical quantity'):hdr.indexOf('quantity')),ci=hdr.indexOf('comment')>=0?hdr.indexOf('comment'):hdr.indexOf('explanation');if(ni<0||qi<0)throw Error('CSV requires Item and Closing Stock (or Physical Quantity) columns');const data=[],seen=new Set();for(const r of rows){const name=(r[ni]||'').trim(),quantity=(r[qi]||'').trim();if(!name||!quantity)continue;const it=items().find(x=>x.name.trim().toLowerCase()===name.toLowerCase());if(!it)throw Error('Unknown stock item: '+name);if(seen.has(it.id))throw Error('Duplicate stock item: '+name);seen.add(it.id);if(!Number.isFinite(Number(quantity))||Number(quantity)<0)throw Error('Invalid quantity for '+name);data.push({stock_item_id:it.id,quantity:Number(quantity),explanation:ci>=0?(r[ci]||''):''})}if(!data.length)throw Error('No quantities in CSV');renderLines(data);notify(data.length+' stock quantities loaded for preview. Not submitted.')}catch(e){notify(e.message)}};inp.click()}
 async function showHistory(){try{const rows=await rpc('stock_take_list',{p_company:company(),p_staff_id:clerk()?staffId:null,p_pin:clerk()?pin:null});const el=$('#stock12history');if(!el)return;el.innerHTML=rows.length?`<table><thead><tr><th>Date</th><th>Status</th><th>Items</th><th>Actions</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.stock_date)}</td><td>${esc(r.status)}</td><td>${r.lines?.length||0}</td><td>${['Draft','Returned'].includes(r.status)?`<button class="btn" data-reedit="${r.id}">Continue</button>`:''}</td></tr>`).join('')}</tbody></table>`:'No stock takes yet';$$('[data-reedit]',el).forEach(b=>b.onclick=()=>{const r=rows.find(z=>z.id===b.dataset.reedit);draftId=r.id;$('#stock12form').style.display='';$('#stock12newbar').style.display='none';$('#stock12date').value=r.stock_date;$('#stock12notes').value=r.notes||'';renderLines(r.lines);showCategoryTools();applyCategoryFilter();notify('Draft loaded')})}catch(e){notify(e.message)}}
