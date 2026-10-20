@@ -4677,13 +4677,11 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
 
   function addCloudBillLine(tb){
     const tr=document.createElement('tr');
-    // Populate each newly added line immediately; do not rely on a later DOM enhancement.
-    const initialStockOptions=(state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
     tr.innerHTML=`
       <td><select class="line-group input"><option>Purchase Item</option><option>Expenditure</option></select></td>
-      <td class="line-item"><select class="purchase-item-select input">${initialStockOptions}</select></td>
+      <td class="line-item"><select class="purchase-item-select input">${(state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></td>
       <td><input class="line-desc input" placeholder="Description"></td>
-      <td class="line-account-cell"><span class="small-note">Food Cost</span></td>
+      <td class="line-account-cell"></td>
       <td><input class="line-qty input" type="number" min="0" step="0.001" value="1"></td>
       <td><input class="line-rate input" type="number" min="0" step="0.01" value="0"></td>
       <td><select class="line-vat input"><option value="0">No VAT</option><option value="0.16">16% VAT</option></select></td>
@@ -4716,10 +4714,9 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
       calc();
     };
     $('.line-group',tr).onchange=config;
-    $$('.line-qty,.line-rate,.line-vat',tr).forEach(x=>{x.oninput=calc;x.onchange=calc;});
+    $$('.line-qty,.line-rate,.line-vat',tr).forEach(x=>{x.addEventListener('input',calc);x.addEventListener('change',calc);});
     $('.removeLine',tr).onclick=()=>{tr.remove();calc();};
-    calc();
-    window.finsightQuickAdd?.enhance?.();
+    config();
   }
 
   function collectLines(tb){
@@ -8757,18 +8754,9 @@ function enhance(){
  wrapSelect(q('#sPayment'),'payment');wrapSelect(q('#sCategory'),'category');wrapSelect(q('#bSupplier'),'supplier');
  qa('.purchase-item-select,.recipeStock,.iri').forEach(s=>wrapSelect(s,'stock'));
 }
-let enhanceQueued=false;
-const scheduleEnhance=()=>{
-  if(enhanceQueued)return;
-  enhanceQueued=true;
-  setTimeout(()=>{enhanceQueued=false;enhance();},40);
-};
-const mo=new MutationObserver(mutations=>{
-  if(mutations.some(m=>[...m.addedNodes].some(n=>n.nodeType===1 && (n.matches?.('.purchase-item-select,.recipeStock,.iri,#bSupplier,#sPayment,#sCategory,tr,.modal') || n.querySelector?.('.purchase-item-select,.recipeStock,.iri,#bSupplier,#sPayment,#sCategory'))))) scheduleEnhance();
-});
-mo.observe(document.body,{childList:true,subtree:true});
+const mo=new MutationObserver(()=>setTimeout(enhance,0));mo.observe(document.body,{childList:true,subtree:true});
 document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(()=>{refreshAllSelects();enhance()},300));
-// Quick Add is initialized on demand and on relevant DOM insertions; no continuous polling.
+setInterval(enhance,1200);
 window.finsightQuickAdd={addSimple,enhance,refreshAllSelects};
 })();
 </script>
