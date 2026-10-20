@@ -4717,6 +4717,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     $$('.line-qty,.line-rate,.line-vat',tr).forEach(x=>{x.oninput=calc;x.onchange=calc;});
     $('.removeLine',tr).onclick=()=>{tr.remove();calc();};
     config();
+    window.finsightQuickAdd?.enhance?.();
   }
 
   function collectLines(tb){
@@ -8754,9 +8755,18 @@ function enhance(){
  wrapSelect(q('#sPayment'),'payment');wrapSelect(q('#sCategory'),'category');wrapSelect(q('#bSupplier'),'supplier');
  qa('.purchase-item-select,.recipeStock,.iri').forEach(s=>wrapSelect(s,'stock'));
 }
-const mo=new MutationObserver(()=>setTimeout(enhance,0));mo.observe(document.body,{childList:true,subtree:true});
+let enhanceQueued=false;
+const scheduleEnhance=()=>{
+  if(enhanceQueued)return;
+  enhanceQueued=true;
+  setTimeout(()=>{enhanceQueued=false;enhance();},40);
+};
+const mo=new MutationObserver(mutations=>{
+  if(mutations.some(m=>[...m.addedNodes].some(n=>n.nodeType===1 && (n.matches?.('.purchase-item-select,.recipeStock,.iri,#bSupplier,#sPayment,#sCategory,tr,.modal') || n.querySelector?.('.purchase-item-select,.recipeStock,.iri,#bSupplier,#sPayment,#sCategory'))))) scheduleEnhance();
+});
+mo.observe(document.body,{childList:true,subtree:true});
 document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(()=>{refreshAllSelects();enhance()},300));
-setInterval(enhance,1200);
+// Quick Add is initialized on demand and on relevant DOM insertions; no continuous polling.
 window.finsightQuickAdd={addSimple,enhance,refreshAllSelects};
 })();
 </script>
