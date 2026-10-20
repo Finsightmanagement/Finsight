@@ -4677,11 +4677,13 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
 
   function addCloudBillLine(tb){
     const tr=document.createElement('tr');
+    // Populate each newly added line immediately; do not rely on a later DOM enhancement.
+    const initialStockOptions=(state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
     tr.innerHTML=`
       <td><select class="line-group input"><option>Purchase Item</option><option>Expenditure</option></select></td>
-      <td class="line-item"></td>
+      <td class="line-item"><select class="purchase-item-select input">${initialStockOptions}</select></td>
       <td><input class="line-desc input" placeholder="Description"></td>
-      <td class="line-account-cell"></td>
+      <td class="line-account-cell"><span class="small-note">Food Cost</span></td>
       <td><input class="line-qty input" type="number" min="0" step="0.001" value="1"></td>
       <td><input class="line-rate input" type="number" min="0" step="0.01" value="0"></td>
       <td><select class="line-vat input"><option value="0">No VAT</option><option value="0.16">16% VAT</option></select></td>
@@ -4716,7 +4718,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     $('.line-group',tr).onchange=config;
     $$('.line-qty,.line-rate,.line-vat',tr).forEach(x=>{x.oninput=calc;x.onchange=calc;});
     $('.removeLine',tr).onclick=()=>{tr.remove();calc();};
-    config();
+    calc();
     window.finsightQuickAdd?.enhance?.();
   }
 
