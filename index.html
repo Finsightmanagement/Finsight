@@ -2293,7 +2293,7 @@ renderAll();
     const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     let sheet=`<html><head><meta charset="UTF-8"></head><body><table border="1" cellspacing="0" cellpadding="6"><tr><th colspan="20" style="font-size:16pt;text-align:left">${esc(title)}</th></tr>`;
     rows.forEach(r=>{sheet+="<tr>"+r.map((c,i)=>`<${i===0?"td":"td"}>${esc(c)}</td>`).join("")+"</tr>"});
-    sheet+=`</table>\n\n</body></html>`;
+    sheet+="</table>\n\n</body></html>";
     const blob=new Blob([sheet],{type:"application/vnd.ms-excel;charset=utf-8"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=title.replace(/[^a-z0-9]+/gi,"_")+".xls";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500);
   }
@@ -4673,44 +4673,60 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     return (state.accounts||[]).find(a=>a.active!==false&&String(a.name).toLowerCase()===String(name).toLowerCase())?.id||'';
   }
 
-  // Supplier bill rows: one event source for new and existing lines.
-  function recalcCloudBill(tb){
+  // Supplier Bill line controls: one handler set per live table.
+  function billRecalculate(tb){
     let total=0;
     $$('tr',tb).forEach(r=>{
       const qty=Number($('.line-qty',r)?.value||0);
       const rate=Number($('.line-rate',r)?.value||0);
       const vat=Number($('.line-vat',r)?.value||0);
       const gross=(Number.isFinite(qty)&&Number.isFinite(rate))?qty*rate:0;
-      const amount=$('.line-net',r);
-      if(amount)amount.textContent=money(vatExclusive(gross,vat));
+      const value=vatExclusive(gross,vat);
+      const cell=$('.line-net',r);
+      if(cell)cell.textContent=money(value);
       total+=gross;
     });
-    const totalElement=document.querySelector('#appModal .lineTotal')
-      || tb.closest('.modal')?.querySelector('.lineTotal')
-      || document.querySelector('.lineTotal');
-    if(totalElement)totalElement.textContent=money(total);
+    const display=tb.closest('.modal')?.querySelector('.lineTotal');
+    if(display)display.textContent=money(total);
   }
 
-  function bindCloudBillRows(tb){
-    if(tb.dataset.billRowsBound==='1')return;
-    tb.dataset.billRowsBound='1';
-    const update=e=>{
-      if(e.target.closest('.line-qty,.line-rate,.line-vat'))recalcCloudBill(tb);
+  function ensureBillTableHandlers(tb){
+    if(tb.dataset.billHandlersReady==='yes')return;
+    tb.dataset.billHandlersReady='yes';
+    const respond=e=>{
+      const row=e.target.closest('tr');
+      if(!row || !tb.contains(row))return;
+      if(e.target.matches('.line-group')){
+        configureCloudBillRow(row);
+      }
+      if(e.target.matches('.line-qty,.line-rate,.line-vat,.line-group'))billRecalculate(tb);
     };
-    tb.addEventListener('input',update);
-    tb.addEventListener('change',update);
+    tb.addEventListener('input',respond);
+    tb.addEventListener('change',respond);
     tb.addEventListener('click',e=>{
-      const remove=e.target.closest('button.removeLine');
-      if(!remove||!tb.contains(remove))return;
+      const remove=e.target.closest('.removeLine');
+      if(!remove || !tb.contains(remove))return;
       e.preventDefault();
-      e.stopPropagation();
       remove.closest('tr')?.remove();
-      recalcCloudBill(tb);
+      billRecalculate(tb);
     });
+  }
+
+  function configureCloudBillRow(tr){
+    const purchase=$('.line-group',tr).value==='Purchase Item';
+    if(purchase){
+      const options=(state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+      $('.line-item',tr).innerHTML=`<select class="purchase-item-select input">${options}</select>`;
+      $('.line-account-cell',tr).innerHTML='<span class="small-note">Food Cost</span>';
+    }else{
+      const options=(state.accounts||[]).filter(a=>a.active!==false&&(a.type==='Expense'||a.type==='Cost of Sales')).map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
+      $('.line-item',tr).innerHTML='<span class="small-note">—</span>';
+      $('.line-account-cell',tr).innerHTML=`<select class="line-account input">${options}</select>`;
+    }
   }
 
   function addCloudBillLine(tb){
-    bindCloudBillRows(tb);
+    ensureBillTableHandlers(tb);
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td><select class="line-group input"><option>Purchase Item</option><option>Expenditure</option></select></td>
@@ -4723,22 +4739,8 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
       <td class="line-net">KSh 0</td>
       <td><button class="btn removeLine" type="button">×</button></td>`;
     tb.appendChild(tr);
-    const stockOpts=()=> (state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
-    const expenseOpts=()=> (state.accounts||[]).filter(a=>a.active!==false&&(a.type==='Expense'||a.type==='Cost of Sales')).map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
-    const config=()=>{
-      const purchase=$('.line-group',tr).value==='Purchase Item';
-      if(purchase){
-        $('.line-item',tr).innerHTML=`<select class="purchase-item-select input">${stockOpts()}</select>`;
-        $('.line-account-cell',tr).innerHTML='<span class="small-note">Food Cost</span>';
-      }else{
-        $('.line-item',tr).innerHTML='<span class="small-note">—</span>';
-        $('.line-account-cell',tr).innerHTML=`<select class="line-account input">${expenseOpts()}</select>`;
-      }
-      recalcCloudBill(tb);
-    };
-    $('.line-group',tr).addEventListener('change',config);
-    config();
-    return tr;
+    configureCloudBillRow(tr);
+    billRecalculate(tb);
   }
 
   function collectLines(tb){
