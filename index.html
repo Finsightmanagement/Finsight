@@ -2293,9 +2293,7 @@ renderAll();
     const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     let sheet=`<html><head><meta charset="UTF-8"></head><body><table border="1" cellspacing="0" cellpadding="6"><tr><th colspan="20" style="font-size:16pt;text-align:left">${esc(title)}</th></tr>`;
     rows.forEach(r=>{sheet+="<tr>"+r.map((c,i)=>`<${i===0?"td":"td"}>${esc(c)}</td>`).join("")+"</tr>"});
-    sheet+="</table>
-
-</body></html>";
+    sheet+=`</table>\n\n</body></html>`;
     const blob=new Blob([sheet],{type:"application/vnd.ms-excel;charset=utf-8"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=title.replace(/[^a-z0-9]+/gi,"_")+".xls";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500);
   }
@@ -4675,11 +4673,48 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     return (state.accounts||[]).find(a=>a.active!==false&&String(a.name).toLowerCase()===String(name).toLowerCase())?.id||'';
   }
 
+  // Supplier bill rows: one event source for new and existing lines.
+  function recalcCloudBill(tb){
+    let total=0;
+    $$('tr',tb).forEach(r=>{
+      const qty=Number($('.line-qty',r)?.value||0);
+      const rate=Number($('.line-rate',r)?.value||0);
+      const vat=Number($('.line-vat',r)?.value||0);
+      const gross=(Number.isFinite(qty)&&Number.isFinite(rate))?qty*rate:0;
+      const amount=$('.line-net',r);
+      if(amount)amount.textContent=money(vatExclusive(gross,vat));
+      total+=gross;
+    });
+    const totalElement=document.querySelector('#appModal .lineTotal')
+      || tb.closest('.modal')?.querySelector('.lineTotal')
+      || document.querySelector('.lineTotal');
+    if(totalElement)totalElement.textContent=money(total);
+  }
+
+  function bindCloudBillRows(tb){
+    if(tb.dataset.billRowsBound==='1')return;
+    tb.dataset.billRowsBound='1';
+    const update=e=>{
+      if(e.target.closest('.line-qty,.line-rate,.line-vat'))recalcCloudBill(tb);
+    };
+    tb.addEventListener('input',update);
+    tb.addEventListener('change',update);
+    tb.addEventListener('click',e=>{
+      const remove=e.target.closest('button.removeLine');
+      if(!remove||!tb.contains(remove))return;
+      e.preventDefault();
+      e.stopPropagation();
+      remove.closest('tr')?.remove();
+      recalcCloudBill(tb);
+    });
+  }
+
   function addCloudBillLine(tb){
+    bindCloudBillRows(tb);
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td><select class="line-group input"><option>Purchase Item</option><option>Expenditure</option></select></td>
-      <td class="line-item"><select class="purchase-item-select input">${(state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></td>
+      <td class="line-item"></td>
       <td><input class="line-desc input" placeholder="Description"></td>
       <td class="line-account-cell"></td>
       <td><input class="line-qty input" type="number" min="0" step="0.001" value="1"></td>
@@ -4688,20 +4723,8 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
       <td class="line-net">KSh 0</td>
       <td><button class="btn removeLine" type="button">×</button></td>`;
     tb.appendChild(tr);
-
     const stockOpts=()=> (state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
     const expenseOpts=()=> (state.accounts||[]).filter(a=>a.active!==false&&(a.type==='Expense'||a.type==='Cost of Sales')).map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
-    const calc=()=>{
-      let total=0;
-      $$('tr',tb).forEach(r=>{
-        const gross=Number($('.line-qty',r)?.value||0)*Number($('.line-rate',r)?.value||0);
-        const vr=Number($('.line-vat',r)?.value||0);
-        const net=vatExclusive(gross,vr);
-        if($('.line-net',r))$('.line-net',r).textContent=money(net);
-        total+=gross;
-      });
-      const box=tb.closest('.modal')?.querySelector('.lineTotal'); if(box)box.textContent=money(total);
-    };
     const config=()=>{
       const purchase=$('.line-group',tr).value==='Purchase Item';
       if(purchase){
@@ -4711,12 +4734,11 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
         $('.line-item',tr).innerHTML='<span class="small-note">—</span>';
         $('.line-account-cell',tr).innerHTML=`<select class="line-account input">${expenseOpts()}</select>`;
       }
-      calc();
+      recalcCloudBill(tb);
     };
-    $('.line-group',tr).onchange=config;
-    $$('.line-qty,.line-rate,.line-vat',tr).forEach(x=>{x.addEventListener('input',calc);x.addEventListener('change',calc);});
-    $('.removeLine',tr).onclick=()=>{tr.remove();calc();};
+    $('.line-group',tr).addEventListener('change',config);
     config();
+    return tr;
   }
 
   function collectLines(tb){
