@@ -1678,8 +1678,8 @@ window.editPostedSale=function(id){
         });
         if(error)throw error;
         closeModal();toast('Sale updated in Supabase');
-        if(typeof window.loadOnlineCompanyData==='function')await window.loadOnlineCompanyData();
-        else window.location.reload();
+        if(typeof window.finsightReloadCloudState==='function') await window.finsightReloadCloudState();
+        else toast('Saved in Supabase. Reopen Sales to refresh; no page reload was performed.');
       }catch(e){toast('Sale update failed: '+(e.message||e));btn.disabled=false;btn.textContent='Save Changes'}
     }},0);
   });
@@ -1694,8 +1694,8 @@ window.deletePostedSale=function(id){
      const {error}=await sb.rpc('fs_change_posted_sale',{p_company:cid,p_sale:id,p_action:'delete',p_reason:reason});
      if(error)throw error;
      closeModal();toast('Sale deleted from Supabase');
-     if(typeof window.loadOnlineCompanyData==='function')await window.loadOnlineCompanyData();
-     else window.location.reload();
+     if(typeof window.finsightReloadCloudState==='function') await window.finsightReloadCloudState();
+     else toast('Deleted in Supabase. Reopen Sales to refresh; no page reload was performed.');
    }catch(e){toast('Sale delete failed: '+(e.message||e));}
  });
 };
@@ -2310,9 +2310,7 @@ renderAll();
     const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     let sheet=`<html><head><meta charset="UTF-8"></head><body><table border="1" cellspacing="0" cellpadding="6"><tr><th colspan="20" style="font-size:16pt;text-align:left">${esc(title)}</th></tr>`;
     rows.forEach(r=>{sheet+="<tr>"+r.map((c,i)=>`<${i===0?"td":"td"}>${esc(c)}</td>`).join("")+"</tr>"});
-    sheet+="</table>
-
-</body></html>";
+    sheet+="</table>\n\n</body></html>";
     const blob=new Blob([sheet],{type:"application/vnd.ms-excel;charset=utf-8"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=title.replace(/[^a-z0-9]+/gi,"_")+".xls";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500);
   }
@@ -10041,18 +10039,56 @@ document.addEventListener('finsight:cloud-state-loaded',async()=>{stockCategorie
 
 <script id="finsight-v15-sales-payment-filter">
 (()=>{'use strict';
-const section=document.getElementById('sales');if(!section)return;
-const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let busy=false;
-function install(){const table=document.getElementById('salesTable');if(!table)return;
+ const section=document.getElementById('sales');
+ if(!section)return;
+ const table=document.getElementById('salesTable');
+ if(!table)return;
+ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ // This applies only to the Sales table, not the Daily Sales or Dashboard reports.
+ const style=document.createElement('style');
+ style.textContent='#salesTable tr.fs-sales-payment-hidden{display:none!important}';
+ document.head.appendChild(style);
+ let selected='',queued=false;
  let filter=document.getElementById('fsSalesPaymentFilterV15');
- if(!filter){const box=document.createElement('div');box.style.cssText='display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0';box.innerHTML='<label for="fsSalesPaymentFilterV15">Payment Type</label><select class="input" id="fsSalesPaymentFilterV15" style="min-width:180px"><option value="">All Payment Types</option></select><span id="fsSalesFilterCountV15" style="font-size:12px"></span>';section.querySelector('.summary-strip')?.insertAdjacentElement('afterend',box);filter=box.querySelector('select');filter.onchange=apply;}
- function apply(){if(busy)return;busy=true;try{const trs=[...table.querySelectorAll('tr')];const names=[...new Set(trs.map(tr=>tr.cells?.[1]?.textContent.trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));const old=filter.value;const opts=['<option value="">All Payment Types</option>',...names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`)];const next=opts.join('');if(filter.innerHTML!==next)filter.innerHTML=next;filter.value=names.includes(old)?old:'';let visible=0;for(const tr of trs){const match=!filter.value||tr.cells?.[1]?.textContent.trim()===filter.value;tr.style.display=match?'':'none';if(match)visible++;}const count=document.getElementById('fsSalesFilterCountV15');if(count)count.textContent=filter.value?`${visible} matching entries (summary totals show all payments)`:`${visible} entries`;}
- finally{busy=false}}
- if(!table.dataset.fsPaymentObserverV15){table.dataset.fsPaymentObserverV15='1';new MutationObserver(()=>{if(!busy)apply()}).observe(table,{childList:true,subtree:true});}
- apply();}
- document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(install,150));document.addEventListener('click',e=>{if(e.target.closest('[data-page="sales"]'))setTimeout(install,150)});
- setTimeout(install,750);
+ if(!filter){
+   const wrap=document.createElement('div');
+   wrap.style.cssText='display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0';
+   wrap.innerHTML='<label for="fsSalesPaymentFilterV15">Payment Type</label><select class="input" id="fsSalesPaymentFilterV15" style="min-width:180px"><option value="">All Payment Types</option></select><span id="fsSalesFilterCountV15" style="font-size:12px"></span>';
+   const anchor=section.querySelector('.summary-strip');
+   if(anchor)anchor.insertAdjacentElement('afterend',wrap);
+   else table.closest('.table-card')?.insertAdjacentElement('beforebegin',wrap);
+   filter=wrap.querySelector('select');
+ }
+ if(!filter)return;
+ selected=filter.value||'';
+ const normalized=v=>String(v??'').trim().replace(/\s+/g,' ').toLocaleLowerCase();
+ const payment=tr=>tr.cells?.[1]?.textContent?.trim()||'';
+ function refresh(){
+   queued=false;
+   const rows=[...table.querySelectorAll('tr')].filter(tr=>tr.cells?.length>1);
+   const names=[...new Set(rows.map(payment).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+   const options=['<option value="">All Payment Types</option>',...names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`)].join('');
+   if(filter.innerHTML!==options)filter.innerHTML=options;
+   // Retain a deliberate selection even if a cloud refresh momentarily empties the table.
+   if(selected&&!names.some(n=>normalized(n)===normalized(selected))){
+     filter.insertAdjacentHTML('beforeend',`<option value="${esc(selected)}">${esc(selected)}</option>`);
+   }
+   filter.value=selected;
+   let visible=0;
+   for(const tr of rows){
+     const match=!selected||normalized(payment(tr))===normalized(selected);
+     tr.classList.toggle('fs-sales-payment-hidden',!match);
+     if(match && tr.style.display!=='none')visible++;
+   }
+   const count=document.getElementById('fsSalesFilterCountV15');
+   if(count)count.textContent=`${visible} ${selected?'matching ':''}entr${visible===1?'y':'ies'} (summary totals show all payments)`;
+ }
+ function schedule(){if(queued)return;queued=true;requestAnimationFrame(refresh)}
+ filter.addEventListener('change',()=>{selected=filter.value;schedule()});
+ new MutationObserver(schedule).observe(table,{childList:true,subtree:true});
+ document.addEventListener('finsight:cloud-state-loaded',schedule);
+ document.addEventListener('click',e=>{if(e.target.closest('[data-page="sales"]'))schedule()});
+ schedule();
 })();
 </script>
 <script>
