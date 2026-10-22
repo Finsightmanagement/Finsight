@@ -4684,7 +4684,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
   function addCloudBillLine(tb){
     const tr=document.createElement('tr');
     tr.innerHTML=`
-      <td><select class="line-group input"><option value="">Select Group</option><option>Purchase Item</option><option>Expenditure</option></select></td>
+      <td><select class="line-group input"><option value="Purchase Item" selected>Purchase Item</option><option>Expenditure</option></select></td>
       <td class="line-item"></td>
       <td><input class="line-desc input" placeholder="Description"></td>
       <td class="line-account-cell"></td>
@@ -5771,11 +5771,19 @@ async function renderAccountingLive(){
  const pd=dates(q('#plFrom')?.value,q('#plTo')?.value),cd=dates(q('#cfFrom')?.value,q('#cfTo')?.value);
  pbox.innerHTML='<div class="live-fin-loading">Loading live P&amp;L…</div>';
  cbox.innerHTML='<div class="live-fin-loading">Loading live cash flow…</div>';
- try{
-  const [pr,cr,inv,posting]=await Promise.all([pnl(pd.start,pd.end),cash(cd.start,cd.end),inventoryForPnl(pd.start,pd.end),postingForPnl(pd.start,pd.end)]);
-  pbox.innerHTML=pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error);
-  cbox.innerHTML='<div class="live-fin-note">Live from posted accounting journals.</div>'+cashHTML(cr[0],cr[1]);
- }catch(e){console.error('[FinSight Accounting P&L]',e);const h=`<div class="live-fin-error">${esc(e.message||String(e))}</div>`;pbox.innerHTML=h;cbox.innerHTML=h;}
+ const [pr,cr,inv,posting]=await Promise.allSettled([
+   pnl(pd.start,pd.end),cash(cd.start,cd.end),inventoryForPnl(pd.start,pd.end),postingForPnl(pd.start,pd.end)
+ ]);
+ if(pr.status==='fulfilled'){
+   const inventory=inv.status==='fulfilled'?inv.value:{data:null,error:'COGS summary unavailable'};
+   const posted=posting.status==='fulfilled'?posting.value:{data:null,error:'COGS posting unavailable'};
+   try{pbox.innerHTML=pnlHTML(pr.value[0],pr.value[1],inventory.data,inventory.error,posted.data,posted.error)}
+   catch(e){pbox.innerHTML='<div class="live-fin-error">P&L rendering failed: '+esc(e.message||String(e))+'</div>'}
+ }else{console.error('[FinSight P&L]',pr.reason);pbox.innerHTML='<div class="live-fin-error">P&L could not load: '+esc(pr.reason?.message||String(pr.reason))+' (database query may have timed out)</div>'}
+ if(cr.status==='fulfilled'){
+   try{cbox.innerHTML='<div class="live-fin-note">Live from posted accounting journals.</div>'+cashHTML(cr.value[0],cr.value[1])}
+   catch(e){cbox.innerHTML='<div class="live-fin-error">Cash Flow rendering failed: '+esc(e.message||String(e))+'</div>'}
+ }else{console.error('[FinSight Cash Flow]',cr.reason);cbox.innerHTML='<div class="live-fin-error">Cash Flow could not load: '+esc(cr.reason?.message||String(cr.reason))+' (database query may have timed out)</div>'}
 }
 function ensureTrialTab(){if(!q('.report-tab[data-report="trial"]')){const tabs=q('.report-tabs');if(tabs)tabs.insertAdjacentHTML('beforeend','<button class="report-tab" data-report="trial">Trial Balance</button>');const reports=q('#reports');if(reports&&!q('#reportTrial'))reports.insertAdjacentHTML('beforeend','<div class="report-panel hidden" id="reportTrial"></div>');}q('.report-tab[data-report="trial"]')?.addEventListener('click',()=>{document.querySelectorAll('.report-tab').forEach(x=>x.classList.remove('active'));q('.report-tab[data-report="trial"]').classList.add('active');document.querySelectorAll('.report-panel').forEach(x=>{x.classList.add('hidden');x.classList.remove('active')});q('#reportTrial')?.classList.remove('hidden');q('#reportTrial')?.classList.add('active');});}
 async function renderFinancialReportsLive(){
@@ -8111,6 +8119,18 @@ function stabilizeDashboard(){
   const apply=q('#applyDashboardDates');if(apply&&!apply.dataset.v1855){apply.dataset.v1855='1';apply.addEventListener('click',()=>setTimeout(renderDashboardV1855,180),true)}
   const todayBtn=q('#dashboardTodayBtn');if(todayBtn&&!todayBtn.dataset.v1855){todayBtn.dataset.v1855='1';todayBtn.addEventListener('click',()=>{const d=iso(new Date());if(from)from.value=d;if(to)to.value=d;setTimeout(renderDashboardV1855,180)},true)}
   const pay=q('#salesAnalysis');if(pay&&!pay.dataset.v1855observer){pay.dataset.v1855observer='1';new MutationObserver(()=>{if(!dashPainting&&pay.querySelector('.payment-total-grid'))setTimeout(renderPaymentTableV1855,0)}).observe(pay,{childList:true,subtree:true})}
+  // Old Dashboard render paths still run during cloud refresh. Restore period totals
+  // whenever they overwrite this panel, without scheduling another full dashboard paint.
+  if(pay&&!pay.dataset.fsPeriodGuard){
+    pay.dataset.fsPeriodGuard='1';
+    let pending=false;
+    new MutationObserver(()=>{
+      if(dashPainting||pending||!activePage('dashboard'))return;
+      if(pay.querySelector('table.payment-v1855'))return;
+      pending=true;
+      requestAnimationFrame(()=>{pending=false;if(activePage('dashboard'))renderPaymentTableV1855()});
+    }).observe(pay,{childList:true,subtree:true});
+  }
   renderDashboardV1855();
 }
 
@@ -10108,8 +10128,8 @@ document.addEventListener('finsight:cloud-state-loaded',async()=>{stockCategorie
    ]);
    if(serial!==pending)return;
    const rows=Array.isArray(raw)?raw:(raw?[raw]:[]),total=Array.isArray(summary)?(summary[0]||{}):(summary||{});
-   const out=rows.map(r=>{const oq=choose(r,'opening_qty','opening_quantity'),oc=choose(r,'opening_unit_cost','opening_cost'),pq=choose(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=choose(r,'purchases','purchase_value','purchases_value'),cq=choose(r,'closing_qty','closing_quantity'),cc=choose(r,'closing_unit_cost','closing_cost','closing_wac'),cv=choose(r,'closing_value','closing_stock_value')||(cq*cc),cos=choose(r,'consumption','cost_of_sales','cogs','consumption_value');return `<tr><td>${safe(r.item_name||r.stock_item_name||r.name||'Stock Item')}</td><td>${oq.toFixed(3)}</td><td>${cash(oc)}</td><td>${cash(oq*oc)}</td><td>${pq.toFixed(3)}</td><td>${cash(pv)}</td><td>${cq.toFixed(3)}</td><td>${cash(cc)}</td><td>${cash(cv)}</td><td>${cash(cos)}</td></tr>`}).join('');
-   const html=`<div class="report-card" data-live-cogs-report="1"><h3>COST OF SALES REPORT</h3><p>${safe(from)} to ${safe(to)}</p><div style="overflow-x:auto"><table class="cogs-report-table"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Unit Cost</th><th>Opening Value</th><th>Purchased Units</th><th>Purchases Value</th><th>Closing Units</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Cost of Sales</th></tr></thead><tbody>${out||'<tr><td colspan="10">No inventory activity for this period.</td></tr>'}</tbody><tfoot><tr><th colspan="3">Total</th><th>${cash(choose(total,'opening_stock','opening_stock_value'))}</th><th></th><th>${cash(choose(total,'purchases','purchase_value'))}</th><th colspan="2"></th><th>${cash(choose(total,'closing_stock','closing_stock_value'))}</th><th>${cash(choose(total,'cost_of_sales','calculated_cogs','cogs'))}</th></tr></tfoot></table></div></div>`;
+   const rowTotals={opening:0,purchases:0,closing:0,consumption:0};const out=rows.map(r=>{const oq=choose(r,'opening_qty','opening_quantity'),oc=choose(r,'opening_unit_cost','opening_cost'),pq=choose(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=choose(r,'purchases','purchase_value','purchases_value'),cq=choose(r,'closing_qty','closing_quantity'),cc=choose(r,'closing_unit_cost','closing_cost','closing_wac'),cv=choose(r,'closing_value','closing_stock_value')||(cq*cc),cos=choose(r,'consumption','cost_of_sales','cogs','consumption_value');rowTotals.opening+=oq*oc;rowTotals.purchases+=pv;rowTotals.closing+=cv;rowTotals.consumption+=cos;return `<tr><td>${safe(r.item_name||r.stock_item_name||r.name||'Stock Item')}</td><td>${oq.toFixed(3)}</td><td>${cash(oc)}</td><td>${cash(oq*oc)}</td><td>${pq.toFixed(3)}</td><td>${cash(pv)}</td><td>${cq.toFixed(3)}</td><td>${cash(cc)}</td><td>${cash(cv)}</td><td>${cash(cos)}</td></tr>`}).join('');
+   const html=`<div class="report-card" data-live-cogs-report="1"><h3>COST OF SALES REPORT</h3><p>${safe(from)} to ${safe(to)}</p><div class="fs-cogs-key"><span>Opening Stock</span><span>Purchases</span><span>Closing Stock</span><span>Cost of Sales</span><span>Consumption</span></div><div style="overflow-x:auto"><table class="cogs-report-table fs-cogs-report-tinted"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Unit Cost</th><th>Opening Value</th><th>Purchased Units</th><th>Purchases Value</th><th>Closing Units</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Consumption / COGS</th></tr></thead><tbody>${out||'<tr><td colspan="10">No inventory activity for this period.</td></tr>'}</tbody><tfoot><tr><th colspan="3">Total</th><th>${cash(rowTotals.opening)}</th><th></th><th>${cash(rowTotals.purchases)}</th><th colspan="2"></th><th>${cash(rowTotals.closing)}</th><th>${cash(rowTotals.consumption)}</th></tr></tfoot></table></div><div class="fs-cogs-totals"><div><b>Opening Stock</b><strong>${cash(rowTotals.opening)}</strong></div><div><b>Purchases</b><strong>${cash(rowTotals.purchases)}</strong></div><div><b>Closing Stock</b><strong>${cash(rowTotals.closing)}</strong></div><div><b>COGS (period summary)</b><strong>${cash(choose(total,'cost_of_sales','calculated_cogs','cogs'))}</strong></div><div><b>Consumption (item rows)</b><strong>${cash(rowTotals.consumption)}</strong></div></div></div>`;
    writing=true;panel.innerHTML=html;panel.dataset.liveKey=key;writing=false;lastKey=key;
   }catch(e){if(serial!==pending)return;writing=true;panel.innerHTML=`<div class="report-card"><h3>COST OF SALES REPORT</h3><div class="empty-state">Unable to load live COGS: ${safe(e.message||e)}</div></div>`;panel.dataset.liveKey='error';writing=false}
  }
@@ -10198,7 +10218,7 @@ el('fsBankFile26').addEventListener('change',async e=>{const f=e.target.files?.[
 #reportCashFlow .live-fin-table,#reportCashFlow table{min-width:650px}
 .fs88-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;margin:10px 0 15px}.fs88-filters label{display:block;margin-bottom:5px;font-size:12px}
 .fs88-filters select{min-width:190px;max-width:280px}
-#data .grid.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:14px}#data .upload{min-width:0;box-sizing:border-box}#data .upload button{white-space:normal}#data .upload>div[style*=flex]{flex-wrap:wrap}#data .card{min-width:0}
+#data .grid.two{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}#data .upload{min-width:0;box-sizing:border-box}#data .upload button{white-space:normal}#data .upload>div[style*=flex]{flex-wrap:wrap}#data .card{min-width:0}
 .nav-item .fs88-icon{width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center;flex:none}
 .nav-item .fs88-icon svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .sidebar .nav-item .dot{display:none!important}
@@ -10216,7 +10236,7 @@ el('fsBankFile26').addEventListener('change',async e=>{const f=e.target.files?.[
  for(const [key,val] of [['salesTotal',total],['salesReceived',received],['salesOutstanding',total-received],['salesCount',match.length]]){const e=$('#'+key);if(e)e.textContent=key==='salesCount'?String(val):cash(val)}
  const t=$('#sales .summary-box span');if(t)t.textContent='Selected Period Sales';
  }
- function setupSales(){const table=$('#salesTable');if(!table)return;const host=selectFilter('fs88SalesFilter',$('#fs510Sales')||table.closest('.table-card'),'Payment Type');let sel=$('select',host),prior=sel.value;const p=[...new Set(((typeof state!=='undefined'?state.paymentTypes:[])||[]).concat(((typeof state!=='undefined'?state.sales:[])||[]).map(x=>x.paymentType)).filter(Boolean))].sort((a,b)=>a.localeCompare(b));const signature=p.join('|');if(host.dataset.options!==signature){sel.innerHTML='<option value="">All Payment Types</option>'+p.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');sel.value=prior;host.dataset.options=signature}if(!host.dataset.bound){host.dataset.bound='1';new MutationObserver(()=>setTimeout(filterSales,0)).observe(table,{childList:true});sel.addEventListener('change',filterSales);$('#fs510Sales')?.addEventListener('change',filterSales);$('#fs510Sales')?.addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(filterSales,60)})}filterSales()}
+ function setupSales(){const table=$('#salesTable');if(!table)return;const redundant=$('#fs88SalesFilter');if(redundant)redundant.remove();return;const host=selectFilter('fs88SalesFilter',$('#fs510Sales')||table.closest('.table-card'),'Payment Type');let sel=$('select',host),prior=sel.value;const p=[...new Set(((typeof state!=='undefined'?state.paymentTypes:[])||[]).concat(((typeof state!=='undefined'?state.sales:[])||[]).map(x=>x.paymentType)).filter(Boolean))].sort((a,b)=>a.localeCompare(b));const signature=p.join('|');if(host.dataset.options!==signature){sel.innerHTML='<option value="">All Payment Types</option>'+p.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');sel.value=prior;host.dataset.options=signature}if(!host.dataset.bound){host.dataset.bound='1';new MutationObserver(()=>setTimeout(filterSales,0)).observe(table,{childList:true});sel.addEventListener('change',filterSales);$('#fs510Sales')?.addEventListener('change',filterSales);$('#fs510Sales')?.addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(filterSales,60)})}filterSales()}
  function filterBills(){const tb=$('#billTable'),host=$('#fs88BillFilter');if(!tb||!host)return;const {a,b}=dates('fs510Bills'),v=$('select',host)?.value||'';$$('tr',tb).forEach(tr=>{const cols=$$('td',tr),d=cols[0]?.textContent.trim()||'',sup=cols[1]?.textContent.trim()||'';tr.style.display=inPeriod(d,a,b)&&(!v||v===sup)?'':'none'})}
  function setupBills(){const tb=$('#billTable');if(!tb)return;const host=selectFilter('fs88BillFilter',$('#fs510Bills')||tb.closest('.table-card'),'Supplier');let sel=$('select',host),old=sel.value;const names=[...new Set(((typeof state!=='undefined'?state.suppliers:[])||[]).map(s=>typeof s==='string'?s:s.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b));const sign=names.join('|');if(host.dataset.options!==sign){sel.innerHTML='<option value="">All Suppliers</option>'+names.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');sel.value=old;host.dataset.options=sign}if(!host.dataset.bound){host.dataset.bound='1';new MutationObserver(()=>setTimeout(filterBills,0)).observe(tb,{childList:true});sel.addEventListener('change',filterBills);$('#fs510Bills')?.addEventListener('change',filterBills);$('#fs510Bills')?.addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(filterBills,60)})}filterBills()}
  window.fs88JournalHistory=async function(){const host=$('#fs88-journal-history'),sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;if(!host||!sb||!cid)return;const {data,error}=await sb.from('journal_entries').select('id,entry_date,reference,memo,source_type,created_at').eq('company_id',cid).order('created_at',{ascending:false}).limit(5);if(!host.isConnected)return;if(error){host.textContent=error.message;return}if(!data?.length){host.textContent='No posted journals yet.';return}const ids=data.map(x=>x.id);const res=await sb.from('journal_lines').select('journal_entry_id,debit,credit').eq('company_id',cid).in('journal_entry_id',ids);if(!host.isConnected)return;const sums=new Map(ids.map(id=>[id,{d:0,c:0}]));if(!res.error)(res.data||[]).forEach(x=>{let v=sums.get(x.journal_entry_id);if(v){v.d+=num(x.debit);v.c+=num(x.credit)}});host.innerHTML='<table><thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Debit</th><th>Credit</th></tr></thead><tbody>'+data.map(x=>{const v=sums.get(x.id)||{d:0,c:0};return '<tr><td>'+esc(x.entry_date)+'</td><td>'+esc(x.reference||x.id.slice(0,8))+'</td><td>'+esc(x.memo||x.source_type||'')+'</td><td>'+cash(v.d)+'</td><td>'+cash(v.c)+'</td></tr>'}).join('')+'</tbody></table>'};
@@ -10228,3 +10248,33 @@ el('fsBankFile26').addEventListener('change',async e=>{const f=e.target.files?.[
  const root=$('#sales')?.parentElement||document.body;new MutationObserver(schedule).observe(root,{childList:true,subtree:false});
 })();
 </script>
+
+
+<style id="fs-index88-followup-layout">
+#data .grid.two,#imports .grid.two{display:grid!important;grid-template-columns:minmax(0,1fr)!important;gap:12px!important}
+#data .upload,#imports .upload{width:100%;max-width:100%;box-sizing:border-box}
+#data .card,#imports .card{max-width:100%;box-sizing:border-box}
+.fs-cogs-key{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.fs-cogs-key span{font-size:12px;padding:6px 11px;border-radius:7px;font-weight:600}
+.fs-cogs-key span:nth-child(1){background:#e8f3ff;color:#24496d}
+.fs-cogs-key span:nth-child(2){background:#e8f7ea;color:#2d6135}
+.fs-cogs-key span:nth-child(3){background:#fff1df;color:#835720}
+.fs-cogs-key span:nth-child(4){background:#f0e9ff;color:#5b4087}
+.fs-cogs-key span:nth-child(5){background:#ffecee;color:#853e4b}
+.fs-cogs-report-tinted th:nth-child(4),.fs-cogs-report-tinted td:nth-child(4){background:#eaf4ff}
+.fs-cogs-report-tinted th:nth-child(6),.fs-cogs-report-tinted td:nth-child(6){background:#eaf8ed}
+.fs-cogs-report-tinted th:nth-child(9),.fs-cogs-report-tinted td:nth-child(9){background:#fff3e4}
+.fs-cogs-report-tinted th:nth-child(10),.fs-cogs-report-tinted td:nth-child(10){background:#f2ecff}
+.fs-cogs-report-tinted tfoot th{font-weight:800;border-top:2px solid #aeb9cc}
+body.fs-dark .fs-cogs-report-tinted td,body.fs-dark .fs-cogs-report-tinted th{color:#1e2a3b}
+</style>
+<script id="fs-index88-followup-journal-title">
+(function(){
+ const rename=()=>{document.querySelectorAll('#fs15-accounting h1,#fs15-accounting h2,#fs15-accounting h3,#fs15-accounting h4,#fs15-content h1,#fs15-content h2,#fs15-content h3,#fs15-content h4').forEach(e=>{if(/^five recent journal entries$/i.test(e.textContent.trim()))e.textContent='Recent Journal Entries'})};
+ document.addEventListener('DOMContentLoaded',rename);
+ document.addEventListener('finsight:cloud-state-loaded',rename);
+ document.addEventListener('click',e=>{if(e.target.closest('[data-page="fs15-accounting"],#fs15-save'))setTimeout(rename,150)});
+})();
+</script>
+
+<style id="fs-cogs-total-bands">.fs-cogs-totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:9px;margin:13px 0}.fs-cogs-totals>div{padding:12px;border-radius:9px;display:flex;flex-direction:column;gap:5px}.fs-cogs-totals b{font-size:12px}.fs-cogs-totals strong{font-size:15px}.fs-cogs-totals>div:nth-child(1){background:#e8f3ff;color:#24496d}.fs-cogs-totals>div:nth-child(2){background:#e8f7ea;color:#2d6135}.fs-cogs-totals>div:nth-child(3){background:#fff1df;color:#835720}.fs-cogs-totals>div:nth-child(4){background:#f0e9ff;color:#5b4087}.fs-cogs-totals>div:nth-child(5){background:#ffecee;color:#853e4b}</style>
