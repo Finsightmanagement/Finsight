@@ -1661,26 +1661,43 @@ window.editPostedSale=function(id){
   askSaleReason('Edit Sale','A reason is required before a posted sale can be edited.',reason=>{
     const cats=(state.categories||[]);
     openModal('Edit Sale','Update the sale details.',`<div class="form-grid"><div class="field"><label>Date</label><input id="vesDate" class="input" type="date" value="${s.date||''}"></div><div class="field"><label>Payment Type</label><select id="vesPayment" class="input">${state.paymentTypes.map(x=>`<option ${x===s.paymentType?'selected':''}>${x}</option>`).join('')}</select></div><div class="field"><label>Item</label><input id="vesItem" class="input" value="${(s.item||'').replace(/"/g,'&quot;')}"></div><div class="field"><label>Category</label><select id="vesCategory" class="input">${cats.map(x=>`<option ${x===s.category?'selected':''}>${x}</option>`).join('')}</select></div><div class="field"><label>Quantity</label><input id="vesQty" class="input" type="number" min="0" step="0.001" value="${Number(s.qty||0)}"></div><div class="field"><label>Income Account</label><select id="vesIncome" class="input">${state.accounts.filter(a=>a.active&&a.type==='Income').map(a=>`<option value="${a.id}" ${a.id===s.incomeId?'selected':''}>${a.name}</option>`).join('')}</select></div><div class="field"><label>Total Sales</label><input id="vesAmount" class="input" type="number" min="0" step="0.01" value="${Number(s.amount||0)}"></div><div class="field full"><label>Memo</label><input id="vesMemo" class="input" value="${(s.memo||'').replace(/"/g,'&quot;')}"></div></div><div class="modal-actions"><button class="btn primary" id="saveEditedSale">Save Changes</button></div>`);
-    setTimeout(()=>{$('#saveEditedSale').onclick=()=>{
+    setTimeout(()=>{$('#saveEditedSale').onclick=async()=>{
       const amount=Number($('#vesAmount').value||0), received=state.receipts.filter(r=>r.saleId===id).reduce((a,b)=>a+Number(b.amount||0),0);
       if(amount<=0)return toast('Enter a valid sales amount');
       if(amount+0.005<received)return toast('Sales amount cannot be below amount already received');
-      const before=JSON.stringify(s);
-      s.date=$('#vesDate').value; s.paymentType=$('#vesPayment').value; s.item=$('#vesItem').value.trim(); s.category=$('#vesCategory').value; s.qty=Number($('#vesQty').value||0); s.incomeId=$('#vesIncome').value; s.amount=amount; s.memo=$('#vesMemo').value;
-      const si=(state.saleItems||[]).find(x=>x.saleId===id); if(si){si.date=s.date;si.item=s.item;si.category=s.category;si.qty=s.qty;si.revenue=s.amount}
-      state.auditLog=state.auditLog||[]; state.auditLog.push({date:new Date().toISOString(),action:'EDIT SALE',target:id,reason,before,after:JSON.stringify(s)});
-      closeModal();save();toast('Sale updated');
+      const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+      if(!sb||!cid)return toast('Supabase company connection unavailable');
+      const btn=$('#saveEditedSale');btn.disabled=true;btn.textContent='Saving…';
+      try{
+        const {error}=await sb.rpc('fs_change_posted_sale',{
+          p_company:cid,p_sale:id,p_action:'edit',p_reason:reason,
+          p_date:$('#vesDate').value,p_payment_type:$('#vesPayment').value,
+          p_income_account:$('#vesIncome').value,p_amount:amount,
+          p_memo:$('#vesMemo').value,p_item_name:$('#vesItem').value.trim(),
+          p_category:$('#vesCategory').value,p_quantity:Number($('#vesQty').value||0)
+        });
+        if(error)throw error;
+        closeModal();toast('Sale updated in Supabase');
+        if(typeof window.loadOnlineCompanyData==='function')await window.loadOnlineCompanyData();
+        else window.location.reload();
+      }catch(e){toast('Sale update failed: '+(e.message||e));btn.disabled=false;btn.textContent='Save Changes'}
     }},0);
   });
 };
 window.deletePostedSale=function(id){
-  const s=state.sales.find(x=>x.id===id); if(!s)return;
-  askSaleReason('Delete Sale','A reason is required before a posted sale can be deleted.',reason=>{
-    if(!confirm('Delete this sale? Linked received payments will also be removed.'))return;
-    state.auditLog=state.auditLog||[]; state.auditLog.push({date:new Date().toISOString(),action:'DELETE SALE',target:id,reason,before:JSON.stringify(s)});
-    state.sales=state.sales.filter(x=>x.id!==id); state.receipts=state.receipts.filter(x=>x.saleId!==id); state.saleItems=(state.saleItems||[]).filter(x=>x.saleId!==id);
-    closeModal();save();toast('Sale deleted');
-  });
+ const s=state.sales.find(x=>x.id===id);if(!s)return;
+ askSaleReason('Delete Sale','A reason is required before a posted sale can be deleted.',async reason=>{
+   if(!confirm('Delete this sale from Supabase? Sales with linked receipts cannot be deleted.'))return;
+   const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+   if(!sb||!cid)return toast('Supabase company connection unavailable');
+   try{
+     const {error}=await sb.rpc('fs_change_posted_sale',{p_company:cid,p_sale:id,p_action:'delete',p_reason:reason});
+     if(error)throw error;
+     closeModal();toast('Sale deleted from Supabase');
+     if(typeof window.loadOnlineCompanyData==='function')await window.loadOnlineCompanyData();
+     else window.location.reload();
+   }catch(e){toast('Sale delete failed: '+(e.message||e));}
+ });
 };
 window.editReceivedPayment=function(id){
   const r=state.receipts.find(x=>x.id===id), s=r&&state.sales.find(x=>x.id===r.saleId); if(!r||!s)return;
@@ -4655,7 +4672,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
 <script id="finsight-phase2c-live-supplier-bills">
 (function(){
   'use strict';
-  const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+  const $=s=>document.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
   const esc=v=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const money=v=>typeof fmt==='function'?fmt(v):('KSh '+Number(v||0).toLocaleString('en-KE',{maximumFractionDigits:2}));
   const vatExclusive=(gross,rate)=>rate?gross/(1+rate):gross;
