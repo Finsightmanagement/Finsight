@@ -4411,7 +4411,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     state.stock={opening:mine(opening).map(x=>({id:x.id,date:x.stock_date,item:stockName(x.stock_item_id),qty:Number(x.quantity||0),unitCost:Number(x.unit_cost||0)})),closing:mine(closing).map(x=>({id:x.id,date:x.stock_date,item:stockName(x.stock_item_id),qty:Number(x.quantity||0),unitCost:Number(x.unit_cost||0)}))};state.onlinePettyTransactions=mine(pettyTx);state.auditLog=state.auditLog||[];state.dailyComments=state.dailyComments||{};
     rebuildDashboardSummary();renderAll();if(typeof renderDashboard==='function')renderDashboard();if(typeof renderPettyCash==='function')renderPettyCash();
     document.body.classList.remove('online-loading');gate.classList.add('hidden');setStatus((profile.full_name||user.email||'FinSight user')+' · '+company.name+' · '+String(membership.role||'user').replace(/(^|_)([a-z])/g,(_,a,b)=>(a?' ':'')+b.toUpperCase()),'ok');
-    const reset=document.getElementById('resetTestDataBtn');if(reset){reset.textContent='Reset Data (disabled online)';reset.onclick=()=>toast('Online reset is disabled for safety.')}
+    const reset=document.getElementById('resetTestDataBtn');if(reset){reset.style.display='none';reset.disabled=true;}
     try{document.dispatchEvent(new CustomEvent('finsight:cloud-state-loaded',{detail:{companyId:cid,role:membership.role}}));}catch(_){}
   }
   window.finsightReloadCloudState=loadCloudState;
@@ -4432,7 +4432,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     while(walker.nextNode()){
       const node=walker.currentNode, text=node.nodeValue||'';
       if(markers.some(m=>text.includes(m))) bad.push(node);
-      else if(node.parentNode===document.body && /^\s*\\n(?:\\n)?\s*$/.test(text)) bad.push(node);
+      else if(/^\s*(?:\\n\s*){1,}\s*$/.test(text) && !node.parentElement?.closest('script,style,pre,code,textarea'))bad.push(node);
     }
     bad.forEach(n=>n.remove());
   }
@@ -4684,7 +4684,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
   function addCloudBillLine(tb){
     const tr=document.createElement('tr');
     tr.innerHTML=`
-      <td><select class="line-group input"><option>Purchase Item</option><option>Expenditure</option></select></td>
+      <td><select class="line-group input"><option value="">Select Group</option><option>Purchase Item</option><option>Expenditure</option></select></td>
       <td class="line-item"></td>
       <td><input class="line-desc input" placeholder="Description"></td>
       <td class="line-account-cell"></td>
@@ -4695,8 +4695,8 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
       <td><button class="btn removeLine" type="button">×</button></td>`;
     tb.appendChild(tr);
 
-    const stockOpts=()=> (state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
-    const expenseOpts=()=> (state.accounts||[]).filter(a=>a.active!==false&&(a.type==='Expense'||a.type==='Cost of Sales')).map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
+    const stockOpts=()=> '<option value="">Select Item</option>'+(state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+    const expenseOpts=()=> '<option value="">Select Account</option>'+(state.accounts||[]).filter(a=>a.active!==false&&(a.type==='Expense'||a.type==='Cost of Sales')).map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
     const calc=()=>{
       let total=0;
       $$('tr',tb).forEach(r=>{
@@ -4710,6 +4710,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     };
     const config=()=>{
       const purchase=$('.line-group',tr).value==='Purchase Item';
+      if(!$('.line-group',tr).value){$('.line-item',tr).innerHTML='<span class="small-note">Select Group</span>';$('.line-account-cell',tr).textContent='—';calc();return;}
       if(purchase){
         $('.line-item',tr).innerHTML=`<select class="purchase-item-select input">${stockOpts()}</select>`;
         $('.line-account-cell',tr).innerHTML='<span class="small-note">Food Cost</span>';
@@ -4752,13 +4753,13 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     openModal('Enter Supplier Bill','',`
       <div class="form-grid">
         <div class="field"><label>Date</label><input id="bDate" class="input" type="date" value="${today()}"></div>
-        <div class="field"><label>Supplier</label><select id="bSupplier" class="input">${suppliers.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
+        <div class="field"><label>Supplier</label><select id="bSupplier" class="input"><option value="">Select Supplier</option>${suppliers.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
         <div class="field"><label>Invoice No.</label><input id="bInvoice" class="input"></div>
         <div class="field"><label>Due Date</label><input id="bDue" class="input" type="date"></div>
         <div class="field full"><label>Memo</label><input id="bMemo" class="input"></div>
       </div>
       <div style="margin-top:14px;overflow:auto">
-        <table class="line-table">
+        <table class="line-table fs88-bill-table">
           <thead><tr><th>Group</th><th>Purchase Item</th><th>Description</th><th>Account</th><th>Qty</th><th>Rate</th><th>VAT</th><th>VAT Excl.</th><th></th></tr></thead>
           <tbody id="billLines"></tbody>
         </table>
@@ -4778,6 +4779,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
         const billDate=$('#bDate').value;
         const dueDate=$('#bDue').value||null;
         const memo=$('#bMemo').value.trim();
+        if($$('tr',tb).some(r=>!$('.line-group',r)?.value))return toast('Choose a group for every bill row or remove unused rows.');
         const lines=collectLines(tb);
         if(!supplierName)return toast('Choose a supplier');
         if(!billDate)return toast('Choose a bill date');
@@ -5693,7 +5695,7 @@ function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingErro
   const pct=x=>rev?(Number(x)/rev*100).toFixed(1)+'%':'0.0%';
   const tr=(label,value,cls='',percent=true)=>`<tr${cls?' class="'+cls+'"':''}><td>${esc(label)}</td><td>${value==null?'—':money(value)}</td><td>${value==null||!percent?'—':pct(value)}</td></tr>`;
   const heading=label=>`<tr class="section-heading"><td colspan="3">${esc(label)}</td></tr>`;
-  const section=label=>detail.filter(r=>String(v(r,'section','account_type')).trim().toLowerCase()===label.toLowerCase());
+  const section=label=>{const wanted=label.toLowerCase();return detail.filter(r=>{const category=String(v(r,'section','account_type','category')||'').trim().toLowerCase();return category===wanted||category===wanted.replace(/s$/,'')||(wanted==='expenses'&&['operating expense','operating expenses'].includes(category))||(wanted==='cost of sales'&&category==='cogs');});};
   const accountRows=rs=>rs.map(r=>tr(v(r,'account_name','name')||'Unnamed account',n(r,'amount','balance'))).join('');
   const has=(...keys)=>keys.some(k=>s[k]!==null&&s[k]!==undefined&&s[k]!=='');
   const optional=(label,keys)=>tr(label,has(...keys)?n(s,...keys):null);
@@ -7824,16 +7826,16 @@ function bindCorrection(){
     const b=q('#'+id);
     if(b&&!b.dataset.paymentFixBound){
       b.dataset.paymentFixBound='1';
-      b.addEventListener('click',()=>setTimeout(renderPaymentTotals,60));
+      b.addEventListener('click',()=>setTimeout(()=>{if(typeof renderPaymentTableV1855==='function')renderPaymentTableV1855()},60));
     }
   });
   const analysis=q('#salesAnalysis');
   if(analysis&&!analysis.dataset.paymentObserver){
     analysis.dataset.paymentObserver='1';
-    new MutationObserver(()=>schedulePaymentTotals()).observe(analysis,{childList:true,subtree:true});
+    /* Consolidated: period payment table owns this panel; no legacy observer. */
   }
   ensureInventoryExtensions();
-  renderPaymentTotals();
+  if(typeof renderPaymentTableV1855==='function')renderPaymentTableV1855();
 }
 
 document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(bindCorrection,120));
@@ -8119,7 +8121,7 @@ function val(o,...ks){for(const k of ks)if(o&&o[k]!=null&&o[k]!=='')return num(o
 async function loadCogsPosting(start,end){const {data,error}=await window.finsightSupabase.from('cogs_period_postings').select('*').eq('company_id',cid()).eq('period_start',start).eq('period_end',end).limit(1);if(error)throw error;return data?.[0]||null}
 function renderCogsRows(){
   const body=q('#inventoryTable');if(!body)return;const rows=inv.detail||[];
-  body.innerHTML=rows.length?rows.map(r=>{const name=r.item_name||r.stock_item_name||r.name||'Stock Item',oq=val(r,'opening_qty','opening_quantity'),oc=val(r,'opening_unit_cost','opening_cost'),pq=val(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=val(r,'purchases','purchase_value','purchases_value'),wac=val(r,'average_cost','weighted_average_cost','wac'),cq=val(r,'closing_qty','closing_quantity'),cc=val(r,'closing_unit_cost','closing_cost','closing_wac')||wac,cv=val(r,'closing_value','closing_stock_value')||(cq*cc),cogs=val(r,'consumption','cost_of_sales','cogs','consumption_value');return `<tr><td><b>${esc(name)}</b></td><td>${oq.toFixed(3)}</td><td>${money(oc)}</td><td>${pq.toFixed(3)}</td><td>${money(pv)}</td><td>${money(wac)}</td><td>${cq.toFixed(3)}</td><td>${money(cc)}</td><td>${money(cv)}</td><td><b>${money(cogs)}</b></td></tr>`}).join(''):'<tr><td colspan="10"><div class="empty-state">No inventory activity for this period.</div></td></tr>';
+  body.innerHTML=rows.length?rows.map(r=>{const name=r.item_name||r.stock_item_name||r.name||'Stock Item',oq=val(r,'opening_qty','opening_quantity'),oc=val(r,'opening_unit_cost','opening_cost'),pq=val(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=val(r,'purchases','purchase_value','purchases_value'),wac=val(r,'average_cost','weighted_average_cost','wac'),cq=val(r,'closing_qty','closing_quantity'),cc=val(r,'closing_unit_cost','closing_cost','closing_wac')||wac,cv=val(r,'closing_value','closing_stock_value')||(cq*cc),cogs=val(r,'consumption','cost_of_sales','cogs','consumption_value','cost_of_sales_value','cogs_value')||(val(r,'opening_value','opening_stock_value')+pv-cv);return `<tr><td><b>${esc(name)}</b></td><td>${oq.toFixed(3)}</td><td>${money(oc)}</td><td>${pq.toFixed(3)}</td><td>${money(pv)}</td><td>${money(wac)}</td><td>${cq.toFixed(3)}</td><td>${money(cc)}</td><td>${money(cv)}</td><td><b>${money(cogs)}</b></td></tr>`}).join(''):'<tr><td colspan="10"><div class="empty-state">No inventory activity for this period.</div></td></tr>';
 }
 function renderCogsStatus(){const h=q('#cogsPostingStatus'),b=q('#postCogsPeriodBtn');if(!h)return;const c=val(inv.summary,'cost_of_sales','calculated_cogs','cogs');if(inv.posting){h.className='cogs-status-card posted';h.innerHTML=`<b>Period already posted</b><div class="small-note">${esc(inv.start)} to ${esc(inv.end)} · Current calculated COGS ${money(c)}</div>`;if(b){b.disabled=true;b.textContent='COGS Already Posted'}}else{h.className='cogs-status-card';h.innerHTML=`<b>Period not posted</b><div class="small-note">Review opening stock, purchases and closing stock for ${esc(inv.start)} to ${esc(inv.end)}.</div>`;if(b){b.disabled=false;b.textContent='Post Period COGS'}}}
 async function refreshInventoryV1855(){
@@ -9453,7 +9455,8 @@ function validate(action){if(!form.date||form.pos===''||!Number.isFinite(Number(
  if(!methods().length)return 'Set up payment types in FinSight before continuing.';
  if(methods().some(m=>form.payments[m]!==undefined && (!Number.isFinite(Number(form.payments[m]))||Number(form.payments[m])<0)))return 'Enter valid collection amounts.';
  if(form.details.some(x=>(x.label.trim()==='')!==(x.amount==='')||x.amount!==''&&!Number.isFinite(Number(x.amount))))return 'Complete both columns in each explanation row.';
- if(Math.abs(difference())>.005&&!form.details.some(x=>x.label.trim()&&Number(x.amount)!==0))return 'Explain the sales variance before submitting.';
+ if(['submit','approve'].includes(action)&&Math.abs(difference())>.005){if(!form.details.some(x=>x.label.trim()&&Number(x.amount)!==0))return 'Explain the sales variance before submitting.';if(Math.abs(difference()-explained())>.005)return 'The variance explanation amounts must agree with the total variance.';}
+
  if(!form.staffId)return 'Select a registered preparer. Add names under Staff & PINs first.';
  if(['submit','approve','return'].includes(action)&&selectedId&&records.find(x=>x.id===selectedId)?.status==='Approved')return 'Reopen this reconciliation before changing its approval.';
  return ''}
@@ -9543,7 +9546,7 @@ function update(){const fields={'#sr-sum-pos':Number(form.pos||0),'#sr-sum-other
 async function save(action){if(loading)return;let error=validate(action);if(error)return msg(error,true);
  if(isClerk()&&action==='approve')return msg('Not authorized.',true);
  if(isClerk()&&selectedId&& !viewerPin)return msg('PIN is required for existing records.',true);
- const note=form.reviewNote||'';if(action==='return'&&!note.trim())return msg('Enter a reason for returning.',true);
+ const note=form.reviewNote||((action==='submit'&&Math.abs(difference())>.005)?'Variance reported; supervisor review required.':'');if(action==='return'&&!note.trim())return msg('Enter a reason for returning.',true);
  if(action==='approve'&&Math.abs(difference()-explained())>.005&&!note.trim())return msg('Document the unresolved variance before approval.',true);
  try{loading=true;const existing=selectedId?records.find(x=>x.id===selectedId):null;const lockedPreparer=existing&&canReview();const savedData=payload();if(lockedPreparer)savedData.staff=existing.data?.staff||staff.find(s=>s.id===existing.preparer_staff_id)?.full_name||'';await rpc('recon_save',{p_company:cid(),p_data:savedData,p_action:action,p_id:selectedId,p_staff_id:lockedPreparer?existing.preparer_staff_id:(form.staffId||null),p_pin:isClerk()?viewerPin:null,p_review_note:note});selectedId=null;form=fresh();if(isClerk()&&action==='submit'){viewerStaff=null;viewerPin='';records=[];mode='form';await refresh();}else{if(isClerk())form.staffId=viewerStaff;mode='history';await refresh();}}catch(e){msg(e.message,true)}finally{loading=false}}
 function editRecord(id){const r=records.find(x=>x.id===id);if(!r)return;if(isClerk()&&!['Draft','Returned'].includes(r.status))return;selectedId=id;form={...fresh(),date:r.data?.date||r.sales_date,pos:String(r.data?.pos??''),staffId:r.preparer_staff_id||'',staffName:r.data?.staff||'',otherSales:(r.data?.other_sales||[]).map(x=>({id:crypto.randomUUID(),source:String(x.source||''),amount:String(x.gross_amount??'')})),payments:Object.fromEntries(Object.entries(r.data?.payments||{}).map(([k,v])=>[k,String(v)])),details:(r.data?.details||[]).map(x=>({id:crypto.randomUUID(),label:x.label,amount:String(x.amount)})),note:r.data?.note||'',reviewNote:r.review_note||''};mode='form';render()}
@@ -9805,7 +9808,7 @@ nav.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation()
 }
 async function refresh(){try{status('');if(!company()||!sb())throw Error('Please sign in to your company first.');const a=await sb().from('accounts').select('id,name,account_type,sub_type,is_active').eq('company_id',company()).order('name');if(a.error)throw Error(a.error.message);accounts=(a.data||[]).filter(x=>x.is_active!==false);if(!canPost()){el('fs15-content').innerHTML='<div class="fs15-panel">Only authorized accounting users may access this section.</div>';return;}drawJournal(el('fs15-content'));}catch(e){status(e.message,true)}}
 function acctOptions(selected){return '<option value="">Select Account</option>'+accounts.map(a=>`<option value="${esc(a.id)}" ${a.id===selected?'selected':''}>${esc(a.name)}</option>`).join('')}
-function drawJournal(root){root.innerHTML=`<div class="fs15-panel"><h3>New General Journal</h3><div class="fs15-grid"><div><label>Date</label><input type="date" id="fs15-date" value="${new Date().toISOString().slice(0,10)}"></div><div><label>Reference</label><input id="fs15-ref" placeholder="Journal reference"></div></div><div style="margin-top:10px"><label>Memo</label><textarea rows="2" id="fs15-memo"></textarea></div><div class="fs15-table"><table><thead><tr><th>Account</th><th class="fs15-number">Debit</th><th class="fs15-number">Credit</th><th></th></tr></thead><tbody id="fs15-lines"></tbody></table></div><div class="fs15-actions"><button class="btn" id="fs15-add">+ Add Line</button><button class="btn" id="fs15-check">Check Balance</button><button class="btn primary" id="fs15-save">Post Journal</button></div><div id="fs15-journal-summary"></div></div>`;drawLines();el('fs15-add').onclick=()=>{lines.push({acc:'',dr:'',cr:''});drawLines()};el('fs15-check').onclick=()=>checkJournal();el('fs15-save').onclick=async()=>{if(!checkJournal())return;
+function drawJournal(root){root.innerHTML=`<div class="fs15-panel"><h3>New General Journal</h3><div class="fs15-grid"><div><label>Date</label><input type="date" id="fs15-date" value="${new Date().toISOString().slice(0,10)}"></div><div><label>Reference</label><input id="fs15-ref" placeholder="Journal reference"></div></div><div style="margin-top:10px"><label>Memo</label><textarea rows="2" id="fs15-memo"></textarea></div><div class="fs15-table"><table><thead><tr><th>Account</th><th class="fs15-number">Debit</th><th class="fs15-number">Credit</th><th></th></tr></thead><tbody id="fs15-lines"></tbody></table></div><div class="fs15-actions"><button class="btn" id="fs15-add">+ Add Line</button><button class="btn" id="fs15-check">Check Balance</button><button class="btn primary" id="fs15-save">Post Journal</button></div><div id="fs15-journal-summary"></div></div><div class="fs15-panel" style="margin-top:16px"><h3>Five Recent Journal Entries</h3><div id="fs88-journal-history" class="fs88-scroll">Loading…</div></div>`;drawLines();window.fs88JournalHistory?.();el('fs15-add').onclick=()=>{lines.push({acc:'',dr:'',cr:''});drawLines()};el('fs15-check').onclick=()=>checkJournal();el('fs15-save').onclick=async()=>{if(!checkJournal())return;
 const date=el('fs15-date').value, ref=el('fs15-ref').value.trim(), memo=el('fs15-memo').value.trim();if(!date)return status('Enter a journal date.',true);
 if(!confirm('Post this balanced General Journal to the ledger?'))return;
 const btn=el('fs15-save');btn.disabled=true;
@@ -10176,5 +10179,52 @@ const syncHost=el('fsBankPreview26');if(syncHost)syncHost.parentElement.insertBe
 syncBtn.onclick=async()=>{const sb=window.finsightSupabase,id=window.finsightOnline?.companyId;if(!sb||!id)return msg('Select Test Company first.');syncBtn.disabled=true;msg('Linking existing bank supplier payments (no journals will be created)...');try{const {data,error}=await sb.rpc('fs_sync_bank_supplier_history',{p_company:id});if(error)throw Error(error.message);await window.finsightReloadCloudState?.();msg('Supplier payments linked: '+(data?.linked||0)+'. Open Supplier Statements or Supplier Balances. No additional journals posted.');}catch(e){msg('Supplier sync failed: '+(e.message||String(e)));}finally{syncBtn.disabled=false}};
 root.addEventListener('click',e=>{if(e.target.id==='fsBankPost26')postBankRows();if(e.target.id==='fsBankUpload26')el('fsBankFile26').click();if(e.target.id==='fsBankBlank26')download('FinSight_Bank_Transactions_Template.csv',csv([columns]));if(e.target.id==='fsBankSample26')download('FinSight_Bank_Transactions_Sample.csv',csv([columns,['2026-10-15','Prime Bank','Electricity payment','DEMO001','0','3500','Utilities','',''],['2026-10-15','Prime Bank','Bank charges','DEMO002','0','250','Bank Charges','',''],['2026-10-16','Prime Bank','Owner contribution','DEMO003','20000','0','Owner Capital','','']]));if(e.target.id==='fsBankExport26'){if(rows.some(r=>r.errors.length)){msg('Correct validation errors before exporting.');return;}download('FinSight_Bank_Transactions_Validated.csv',csv([columns,...rows.map(r=>columns.map(k=>r[k]))]));}});
 el('fsBankFile26').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{await loadMaster();const list=parse((await f.text()).replace(/^\ufeff/,''));if(list.length<2)throw Error('CSV needs a header and at least one row.');const head=list.shift().map(x=>x.trim());if(new Set(head.map(norm)).size!==head.length)throw Error('Repeated CSV headings.');const missing=columns.filter(x=>!head.some(h=>norm(h)===norm(x)));if(missing.length)throw Error('Missing columns: '+missing.join(', '));let idx=Object.fromEntries(columns.map(k=>[k,head.findIndex(h=>norm(k)===norm(h))]));rows=list.map((cells,i)=>{let r={line:i+2};columns.forEach(k=>r[k]=String(cells[idx[k]]??'').trim());r.errors=[];try{r.in=money(r['Money In']);r.out=money(r['Money Out']);}catch(err){r.in=0;r.out=0;r.errors.push(err.message);}let prior=[...r.errors];check(r);r.errors.unshift(...prior);return r;});render();}catch(err){rows=[];el('fsBankPreview26').innerHTML='';msg(err.message||String(err));}finally{e.target.value='';}});
+})();
+</script>
+<style id="fs88-consolidated-styles">
+/* Scope prevents changing unrelated screen layouts. */
+#bills .table-card,#sales .table-card,#fs15-accounting .fs15-table,#reportCashFlow{max-width:100%;overflow-x:auto}
+.fs88-bill-table{min-width:1400px;table-layout:fixed;width:100%;border-collapse:collapse}
+.fs88-bill-table th,.fs88-bill-table td{white-space:nowrap;vertical-align:middle;padding:9px 8px}
+.fs88-bill-table th:nth-child(1),.fs88-bill-table td:nth-child(1){width:155px}
+.fs88-bill-table th:nth-child(2),.fs88-bill-table td:nth-child(2){width:245px}
+.fs88-bill-table th:nth-child(3),.fs88-bill-table td:nth-child(3){width:225px}
+.fs88-bill-table th:nth-child(4),.fs88-bill-table td:nth-child(4){width:150px}
+.fs88-bill-table th:nth-child(5),.fs88-bill-table td:nth-child(5){width:100px}
+.fs88-bill-table th:nth-child(6),.fs88-bill-table td:nth-child(6){width:125px}
+.fs88-bill-table th:nth-child(7),.fs88-bill-table td:nth-child(7){width:140px}
+.fs88-bill-table select,.fs88-bill-table input{box-sizing:border-box;display:block;width:100%;min-width:0}
+.fs88-scroll{width:100%;max-width:100%;overflow-x:auto}.fs88-scroll table{min-width:660px}
+#reportCashFlow .live-fin-table,#reportCashFlow table{min-width:650px}
+.fs88-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px;margin:10px 0 15px}.fs88-filters label{display:block;margin-bottom:5px;font-size:12px}
+.fs88-filters select{min-width:190px;max-width:280px}
+#data .grid.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:14px}#data .upload{min-width:0;box-sizing:border-box}#data .upload button{white-space:normal}#data .upload>div[style*=flex]{flex-wrap:wrap}#data .card{min-width:0}
+.nav-item .fs88-icon{width:19px;height:19px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.nav-item .fs88-icon svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.sidebar .nav-item .dot{display:none!important}
+</style>
+<script id="fs88-consolidated-extensions">
+(function(){'use strict';
+ const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+ const num=v=>Number(v)||0, cash=v=>'KSh '+num(v).toLocaleString('en-KE',{minimumFractionDigits:0,maximumFractionDigits:2});
+ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ function dates(id){let a=$('#'+id+' .fs510-from')?.value||'',b=$('#'+id+' .fs510-to')?.value||'';return{a,b}}
+ function inPeriod(date,a,b){return(!a||date>=a)&&(!b||date<=b)}
+ function selectFilter(id,anchor,label){let host=$('#'+id);if(host)return host;host=document.createElement('div');host.id=id;host.className='fs88-filters';host.innerHTML='<div><label>'+label+'</label><select class="input"><option value="">All '+label+'s</option></select></div>';anchor?.parentNode?.insertBefore(host,anchor);return host}
+ function filterSales(){const table=$('#salesTable');if(!table)return;const host=$('#fs88SalesFilter');if(!host)return;const chosen=$('select',host)?.value||'';const existing=$('#fs510Sales');const {a,b}=dates('fs510Sales');const rows=window.state?.sales||[];const match=rows.filter(s=>inPeriod(String(s.date||''),a,b)&&(!chosen||String(s.paymentType||'')===chosen));const byId=new Map(match.map(s=>[String(s.id),s]));let total=0,received=0;const receipts=window.state?.receipts||[];for(const s of match){total+=num(s.amount);received+=receipts.filter(r=>String(r.saleId)===String(s.id)).reduce((a,r)=>a+num(r.amount),0)}
+ const ids=new Set(byId.keys());$$('tr',table).forEach(tr=>{const id=$('[data-id]',tr)?.dataset.id;const c=$$('td',tr),dt=c[0]?.textContent.trim()||'',pt=c[1]?.textContent.trim()||'';tr.style.display=(id?ids.has(String(id)):inPeriod(dt,a,b)&&(!chosen||pt===chosen))?'':'none'});
+ for(const [key,val] of [['salesTotal',total],['salesReceived',received],['salesOutstanding',total-received],['salesCount',match.length]]){const e=$('#'+key);if(e)e.textContent=key==='salesCount'?String(val):cash(val)}
+ const t=$('#sales .summary-box span');if(t)t.textContent='Selected Period Sales';
+ }
+ function setupSales(){const table=$('#salesTable');if(!table)return;const host=selectFilter('fs88SalesFilter',$('#fs510Sales')||table.closest('.table-card'),'Payment Type');let sel=$('select',host),prior=sel.value;const p=[...new Set(((typeof state!=='undefined'?state.paymentTypes:[])||[]).concat(((typeof state!=='undefined'?state.sales:[])||[]).map(x=>x.paymentType)).filter(Boolean))].sort((a,b)=>a.localeCompare(b));const signature=p.join('|');if(host.dataset.options!==signature){sel.innerHTML='<option value="">All Payment Types</option>'+p.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');sel.value=prior;host.dataset.options=signature}if(!host.dataset.bound){host.dataset.bound='1';new MutationObserver(()=>setTimeout(filterSales,0)).observe(table,{childList:true});sel.addEventListener('change',filterSales);$('#fs510Sales')?.addEventListener('change',filterSales);$('#fs510Sales')?.addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(filterSales,60)})}filterSales()}
+ function filterBills(){const tb=$('#billTable'),host=$('#fs88BillFilter');if(!tb||!host)return;const {a,b}=dates('fs510Bills'),v=$('select',host)?.value||'';$$('tr',tb).forEach(tr=>{const cols=$$('td',tr),d=cols[0]?.textContent.trim()||'',sup=cols[1]?.textContent.trim()||'';tr.style.display=inPeriod(d,a,b)&&(!v||v===sup)?'':'none'})}
+ function setupBills(){const tb=$('#billTable');if(!tb)return;const host=selectFilter('fs88BillFilter',$('#fs510Bills')||tb.closest('.table-card'),'Supplier');let sel=$('select',host),old=sel.value;const names=[...new Set(((typeof state!=='undefined'?state.suppliers:[])||[]).map(s=>typeof s==='string'?s:s.name).filter(Boolean))].sort((a,b)=>a.localeCompare(b));const sign=names.join('|');if(host.dataset.options!==sign){sel.innerHTML='<option value="">All Suppliers</option>'+names.map(x=>'<option value="'+esc(x)+'">'+esc(x)+'</option>').join('');sel.value=old;host.dataset.options=sign}if(!host.dataset.bound){host.dataset.bound='1';new MutationObserver(()=>setTimeout(filterBills,0)).observe(tb,{childList:true});sel.addEventListener('change',filterBills);$('#fs510Bills')?.addEventListener('change',filterBills);$('#fs510Bills')?.addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(filterBills,60)})}filterBills()}
+ window.fs88JournalHistory=async function(){const host=$('#fs88-journal-history'),sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;if(!host||!sb||!cid)return;const {data,error}=await sb.from('journal_entries').select('id,entry_date,reference,memo,source_type,created_at').eq('company_id',cid).order('created_at',{ascending:false}).limit(5);if(!host.isConnected)return;if(error){host.textContent=error.message;return}if(!data?.length){host.textContent='No posted journals yet.';return}const ids=data.map(x=>x.id);const res=await sb.from('journal_lines').select('journal_entry_id,debit,credit').eq('company_id',cid).in('journal_entry_id',ids);if(!host.isConnected)return;const sums=new Map(ids.map(id=>[id,{d:0,c:0}]));if(!res.error)(res.data||[]).forEach(x=>{let v=sums.get(x.journal_entry_id);if(v){v.d+=num(x.debit);v.c+=num(x.credit)}});host.innerHTML='<table><thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Debit</th><th>Credit</th></tr></thead><tbody>'+data.map(x=>{const v=sums.get(x.id)||{d:0,c:0};return '<tr><td>'+esc(x.entry_date)+'</td><td>'+esc(x.reference||x.id.slice(0,8))+'</td><td>'+esc(x.memo||x.source_type||'')+'</td><td>'+cash(v.d)+'</td><td>'+cash(v.c)+'</td></tr>'}).join('')+'</tbody></table>'};
+ const icons={dashboard:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',sales:'M3 3h2l2 12h12l2-9H6 M9 21h.01 M18 21h.01',bills:'M8 3h10l3 3v15l-5-3-5 3-5-3V5a2 2 0 0 1 2-2z',accounting:'M8 3h8 M8 7h8 M5 3v18h14V3z',reports:'M4 19V11 M10 19V5 M16 19v-9 M22 19V3','fs15-accounting':'M4 4h16v16H4z M8 9h8 M8 13h8',inventory:'M3 7l9-4 9 4-9 4-9-4z M3 7v10l9 4 9-4V7 M12 11v10',receipts:'M3 3h18v18H3z M7 9h10 M7 13h10',default:'M5 5h14v14H5z'};
+ function navIcons(){$$('.sidebar .nav-item').forEach(el=>{if($('.fs88-icon',el))return;const key=el.dataset.page||'',path=icons[key]||(key.includes('report')?icons.reports:key.includes('bank')?icons.receipts:key.includes('import')?icons.inventory:icons.default);const svg=document.createElement('span');svg.className='fs88-icon';svg.setAttribute('aria-hidden','true');svg.innerHTML='<svg viewBox="0 0 24 24"><path d="'+path+'"/></svg>';el.prepend(svg)})}
+ function run(){try{setupSales();setupBills();navIcons();const r=$('#resetTestDataBtn');if(r)r.style.display='none';$$('span,small,p', $('#imports')||document).filter(x=>/reset data \(disabled online\)/i.test(x.textContent||'')&&!x.children.length).forEach(x=>x.remove());}catch(e){console.warn('[FinSight Index88 enhancements]',e)}}
+ let queued=false;function schedule(){if(queued)return;queued=true;setTimeout(()=>{queued=false;run()},90)}
+ document.addEventListener('finsight:cloud-state-loaded',schedule);document.addEventListener('DOMContentLoaded',schedule);setTimeout(schedule,800);
+ const root=$('#sales')?.parentElement||document.body;new MutationObserver(schedule).observe(root,{childList:true,subtree:false});
 })();
 </script>
