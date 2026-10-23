@@ -1012,20 +1012,31 @@ function requestReason(title,subtitle,onConfirm){
  setTimeout(()=>$("#confirmReason").onclick=()=>{const reason=$("#changeReason").value.trim();if(!reason)return toast("Please enter a reason");onConfirm(reason)},0)
 }
 function editSale(id){
-  if(typeof window.editPostedSale==='function') return window.editPostedSale(id);
-  toast('Cloud Sales edit is unavailable; no changes were made.');
+ const s=state.sales.find(x=>x.id===id);if(!s)return;
+ requestReason("Edit Sale","A reason is required before changing a posted sale.",reason=>{
+   openModal("Edit Sale","Update the posted sale. The audit reason will be retained.",`<div class="form-grid"><div class="field"><label>Date</label><input id="esDate" class="input" type="date" value="${s.date}"></div><div class="field"><label>Payment Type</label><select id="esPayment" class="input">${state.paymentTypes.map(x=>`<option ${x===s.paymentType?"selected":""}>${x}</option>`).join("")}</select></div><div class="field"><label>Income Account</label><select id="esIncome" class="input">${accountOpts(["Income"]).replace(`value="${s.incomeId}"`,`value="${s.incomeId}" selected`)}</select></div><div class="field"><label>Total Sales</label><input id="esAmount" class="input" type="number" value="${s.amount}" min="0" step="0.01"></div><div class="field full"><label>Memo</label><input id="esMemo" class="input" value="${s.memo||""}"></div></div><div class="modal-actions"><button class="btn primary" id="saveSaleEdit">Save Changes</button></div>`);
+   setTimeout(()=>$("#saveSaleEdit").onclick=()=>{const amt=Number($("#esAmount").value||0),received=state.receipts.filter(r=>r.saleId===id).reduce((a,b)=>a+b.amount,0);if(amt<=0)return toast("Enter a valid sales amount");if(amt+0.01<received)return toast("Sales amount cannot be less than amount already received");state.auditLog.push({date:new Date().toISOString(),action:"EDIT SALE",target:id,reason,before:JSON.stringify(s)});s.date=$("#esDate").value;s.paymentType=$("#esPayment").value;s.incomeId=$("#esIncome").value;s.amount=amt;s.memo=$("#esMemo").value;closeModal();save();toast("Sale updated")},0)
+ })
 }
 function deleteSale(id){
-  if(typeof window.deletePostedSale==='function') return window.deletePostedSale(id);
-  toast('Cloud Sales delete is unavailable; no changes were made.');
+ const s=state.sales.find(x=>x.id===id);if(!s)return;
+ requestReason("Delete Sale","A reason is required. Any receipts linked to this sale will also be removed so balances remain consistent.",reason=>{
+   state.auditLog.push({date:new Date().toISOString(),action:"DELETE SALE",target:id,reason,before:JSON.stringify(s)});
+   state.sales=state.sales.filter(x=>x.id!==id);
+   state.receipts=state.receipts.filter(x=>x.saleId!==id);
+   closeModal();save();toast("Sale deleted")
+ })
 }
-// Receipt writes need an authorized Supabase operation that also maintains journals.
-// Preserve the buttons but never display a false success or remove local records.
 function editReceipt(id){
-  toast('Receipt editing is unavailable until cloud posting is supported. No changes were made.');
+ const r=state.receipts.find(x=>x.id===id);if(!r)return;
+ const s=state.sales.find(x=>x.id===r.saleId);if(!s)return;
+ const other=state.receipts.filter(x=>x.saleId===s.id&&x.id!==id).reduce((a,b)=>a+b.amount,0);
+ openModal("Edit Received Payment","No reason is required.",`<div class="form-grid"><div class="field"><label>Date Received</label><input id="erDate" class="input" type="date" value="${r.date}"></div><div class="field"><label>Received Into</label><select id="erAccount" class="input">${accountOpts(["Asset"]).replace(`value="${r.accountId}"`,`value="${r.accountId}" selected`)}</select></div><div class="field"><label>Amount</label><input id="erAmount" class="input" type="number" value="${r.amount}" min="0" step="0.01"></div><div class="field full"><label>Memo</label><input id="erMemo" class="input" value="${r.memo||""}"></div></div><div class="modal-actions"><button class="btn primary" id="saveReceiptEdit">Save Changes</button></div>`);
+ setTimeout(()=>$("#saveReceiptEdit").onclick=()=>{const amt=Number($("#erAmount").value||0);if(amt<=0||other+amt>s.amount+.01)return toast("Receipt would exceed the sale amount");r.date=$("#erDate").value;r.accountId=$("#erAccount").value;r.amount=amt;r.memo=$("#erMemo").value;closeModal();save();toast("Received payment updated")},0)
 }
 function deleteReceipt(id){
-  toast('Receipt deletion is unavailable until cloud posting is supported. No changes were made.');
+ if(!confirm("Delete this received payment?"))return;
+ state.receipts=state.receipts.filter(x=>x.id!==id);save();toast("Received payment deleted")
 }
 
 function supplierSelect(selected=""){return `<select id="bSupplier" class="input">${state.suppliers.map(x=>`<option ${x===selected?"selected":""}>${x}</option>`).join("")}</select>`}
@@ -1647,8 +1658,6 @@ function askSaleReason(title, message, cb){
 }
 window.editPostedSale=function(id){
   const s=state.sales.find(x=>x.id===id); if(!s)return;
-  const saleLineCount=(state.saleItems||[]).filter(x=>String(x.saleId)===String(id)).length;
-  if(saleLineCount>1)return toast('Multi-item sales cannot be edited with this form. No changes were made.');
   askSaleReason('Edit Sale','A reason is required before a posted sale can be edited.',reason=>{
     const cats=(state.categories||[]);
     openModal('Edit Sale','Update the sale details.',`<div class="form-grid"><div class="field"><label>Date</label><input id="vesDate" class="input" type="date" value="${s.date||''}"></div><div class="field"><label>Payment Type</label><select id="vesPayment" class="input">${state.paymentTypes.map(x=>`<option ${x===s.paymentType?'selected':''}>${x}</option>`).join('')}</select></div><div class="field"><label>Item</label><input id="vesItem" class="input" value="${(s.item||'').replace(/"/g,'&quot;')}"></div><div class="field"><label>Category</label><select id="vesCategory" class="input">${cats.map(x=>`<option ${x===s.category?'selected':''}>${x}</option>`).join('')}</select></div><div class="field"><label>Quantity</label><input id="vesQty" class="input" type="number" min="0" step="0.001" value="${Number(s.qty||0)}"></div><div class="field"><label>Income Account</label><select id="vesIncome" class="input">${state.accounts.filter(a=>a.active&&a.type==='Income').map(a=>`<option value="${a.id}" ${a.id===s.incomeId?'selected':''}>${a.name}</option>`).join('')}</select></div><div class="field"><label>Total Sales</label><input id="vesAmount" class="input" type="number" min="0" step="0.01" value="${Number(s.amount||0)}"></div><div class="field full"><label>Memo</label><input id="vesMemo" class="input" value="${(s.memo||'').replace(/"/g,'&quot;')}"></div></div><div class="modal-actions"><button class="btn primary" id="saveEditedSale">Save Changes</button></div>`);
@@ -1669,8 +1678,8 @@ window.editPostedSale=function(id){
         });
         if(error)throw error;
         closeModal();toast('Sale updated in Supabase');
-        if(typeof window.finsightReloadCloudState==='function') await window.finsightReloadCloudState();
-        else toast('Saved in Supabase. Reopen Sales to refresh; no page reload was performed.');
+        if(typeof window.loadOnlineCompanyData==='function')await window.loadOnlineCompanyData();
+        else window.location.reload();
       }catch(e){toast('Sale update failed: '+(e.message||e));btn.disabled=false;btn.textContent='Save Changes'}
     }},0);
   });
@@ -1685,31 +1694,31 @@ window.deletePostedSale=function(id){
      const {error}=await sb.rpc('fs_change_posted_sale',{p_company:cid,p_sale:id,p_action:'delete',p_reason:reason});
      if(error)throw error;
      closeModal();toast('Sale deleted from Supabase');
-     if(typeof window.finsightReloadCloudState==='function') await window.finsightReloadCloudState();
-     else toast('Deleted in Supabase. Reopen Sales to refresh; no page reload was performed.');
+     if(typeof window.loadOnlineCompanyData==='function')await window.loadOnlineCompanyData();
+     else window.location.reload();
    }catch(e){toast('Sale delete failed: '+(e.message||e));}
  });
 };
-// Prevent receipt-only browser edits from drifting out of sync with Supabase journals.
 window.editReceivedPayment=function(id){
-  toast('Receipt editing is unavailable until cloud posting is supported. No changes were made.');
+  const r=state.receipts.find(x=>x.id===id), s=r&&state.sales.find(x=>x.id===r.saleId); if(!r||!s)return;
+  const others=state.receipts.filter(x=>x.saleId===s.id&&x.id!==id).reduce((a,b)=>a+Number(b.amount||0),0);
+  openModal('Edit Received Payment','Edit the receipt directly. No reason is required.',`<div class="form-grid"><div class="field"><label>Date Received</label><input id="verDate" class="input" type="date" value="${r.date||''}"></div><div class="field"><label>Received Into</label><select id="verAccount" class="input">${state.accounts.filter(a=>a.active&&a.type==='Asset').map(a=>`<option value="${a.id}" ${a.id===r.accountId?'selected':''}>${a.name}</option>`).join('')}</select></div><div class="field"><label>Amount</label><input id="verAmount" class="input" type="number" min="0" step="0.01" value="${Number(r.amount||0)}"></div><div class="field full"><label>Memo</label><input id="verMemo" class="input" value="${(r.memo||'').replace(/"/g,'&quot;')}"></div></div><div class="modal-actions"><button class="btn primary" id="saveEditedReceipt">Save Changes</button></div>`);
+  setTimeout(()=>{$('#saveEditedReceipt').onclick=()=>{const amount=Number($('#verAmount').value||0);if(amount<=0)return toast('Enter a valid amount');if(others+amount>s.amount+.005)return toast('Receipt would exceed the sale amount');r.date=$('#verDate').value;r.accountId=$('#verAccount').value;r.amount=amount;r.memo=$('#verMemo').value;closeModal();save();toast('Received payment updated')}},0);
 };
 window.deleteReceivedPayment=function(id){
-  toast('Receipt deletion is unavailable until cloud posting is supported. No changes were made.');
+  if(!confirm('Delete this received payment?'))return;
+  state.receipts=state.receipts.filter(x=>x.id!==id);save();toast('Received payment deleted');
 };
 
 // Preserve V6 bill/cheque/inventory renderer; only replace Sales and Receipts after it runs.
-const escapeSalesCell=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const v6RenderTables=renderTables;
 renderTables=function(){
   v6RenderTables();
   const salesHead=$('#sales table thead tr'); if(salesHead)salesHead.innerHTML='<th>Date</th><th>Payment Type</th><th>Item</th><th>Category</th><th>Income Account</th><th>Memo</th><th>Total</th><th>Received</th><th>Outstanding</th><th>Status</th><th>Actions</th>';
-  const saleLinesById=new Map();for(const line of (state.saleItems||[])){const key=String(line.saleId);if(!saleLinesById.has(key))saleLinesById.set(key,[]);saleLinesById.get(key).push(line)}
-  const receiptsBySaleId=new Map();for(const receipt of (state.receipts||[])){const key=String(receipt.saleId);receiptsBySaleId.set(key,(receiptsBySaleId.get(key)||0)+Number(receipt.amount||0))}
-  $('#salesTable').innerHTML=state.sales.length?state.sales.map(s=>{const rec=(receiptsBySaleId.get(String(s.id))||0),o=Number(s.amount||0)-rec;const saleLines=(saleLinesById.get(String(s.id))||[]);const shownItem=saleLines.length>1?`${saleLines.length} items: ${saleLines.map(x=>x.item).filter(Boolean).join(", ")}`:(s.item||"—");const shownCategory=saleLines.length>1?[...new Set(saleLines.map(x=>x.category).filter(Boolean))].join(", "):(s.category||"—");return `<tr><td>${escapeSalesCell(s.date)}</td><td>${escapeSalesCell(s.paymentType)}</td><td>${escapeSalesCell(shownItem)}</td><td>${escapeSalesCell(shownCategory)}</td><td>${escapeSalesCell(accountName(s.incomeId))}</td><td>${escapeSalesCell(s.memo||'')}</td><td>${fmt(s.amount)}</td><td>${fmt(rec)}</td><td>${fmt(o)}</td><td><span class="badge ${o<=.01?'green':rec>0?'amber':'blue'}">${o<=.01?'Received':rec>0?'Part Received':'Open'}</span></td><td><button class="mini-btn v7EditSale" data-id="${s.id}">Edit</button> <button class="mini-btn danger v7DeleteSale" data-id="${s.id}">Delete</button></td></tr>`}).join(''):'<tr><td colspan="11"><div class="empty-state">No sales posted yet.</div></td></tr>';
+  $('#salesTable').innerHTML=state.sales.length?state.sales.map(s=>{const rec=state.receipts.filter(r=>r.saleId===s.id).reduce((a,b)=>a+Number(b.amount||0),0),o=Number(s.amount||0)-rec;return `<tr><td>${s.date}</td><td>${s.paymentType}</td><td>${s.item||'—'}</td><td>${s.category||'—'}</td><td>${accountName(s.incomeId)}</td><td>${s.memo||''}</td><td>${fmt(s.amount)}</td><td>${fmt(rec)}</td><td>${fmt(o)}</td><td><span class="badge ${o<=.01?'green':rec>0?'amber':'blue'}">${o<=.01?'Received':rec>0?'Part Received':'Open'}</span></td><td><button class="mini-btn v7EditSale" data-id="${s.id}">Edit</button> <button class="mini-btn danger v7DeleteSale" data-id="${s.id}">Delete</button></td></tr>`}).join(''):'<tr><td colspan="11"><div class="empty-state">No sales posted yet.</div></td></tr>';
   $$('.v7EditSale').forEach(b=>b.onclick=()=>editPostedSale(b.dataset.id)); $$('.v7DeleteSale').forEach(b=>b.onclick=()=>deletePostedSale(b.dataset.id));
   const recHead=$('#receipts table thead tr'); if(recHead)recHead.innerHTML='<th>Date</th><th>Sales Entry</th><th>Payment Type</th><th>Received Into</th><th>Amount</th><th>Memo</th><th>Actions</th>';
-  $('#receiptTable').innerHTML=state.receipts.length?state.receipts.map(r=>{const s=state.sales.find(x=>x.id===r.saleId);return `<tr><td>${escapeSalesCell(r.date)}</td><td>${escapeSalesCell(s?.date||'')}${s?.item?' · '+escapeSalesCell(s.item):''}</td><td>${escapeSalesCell(s?.paymentType||'')}</td><td>${escapeSalesCell(accountName(r.accountId))}</td><td>${fmt(r.amount)}</td><td>${escapeSalesCell(r.memo||'')}</td><td><button class="mini-btn v7EditReceipt" data-id="${r.id}">Edit</button> <button class="mini-btn danger v7DeleteReceipt" data-id="${r.id}">Delete</button></td></tr>`}).join(''):'<tr><td colspan="7"><div class="empty-state">No sales received yet.</div></td></tr>';
+  $('#receiptTable').innerHTML=state.receipts.length?state.receipts.map(r=>{const s=state.sales.find(x=>x.id===r.saleId);return `<tr><td>${r.date}</td><td>${s?.date||''}${s?.item?' · '+s.item:''}</td><td>${s?.paymentType||''}</td><td>${accountName(r.accountId)}</td><td>${fmt(r.amount)}</td><td>${r.memo||''}</td><td><button class="mini-btn v7EditReceipt" data-id="${r.id}">Edit</button> <button class="mini-btn danger v7DeleteReceipt" data-id="${r.id}">Delete</button></td></tr>`}).join(''):'<tr><td colspan="7"><div class="empty-state">No sales received yet.</div></td></tr>';
   $$('.v7EditReceipt').forEach(b=>b.onclick=()=>editReceivedPayment(b.dataset.id)); $$('.v7DeleteReceipt').forEach(b=>b.onclick=()=>deleteReceivedPayment(b.dataset.id));
 };
 
@@ -2301,7 +2310,9 @@ renderAll();
     const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     let sheet=`<html><head><meta charset="UTF-8"></head><body><table border="1" cellspacing="0" cellpadding="6"><tr><th colspan="20" style="font-size:16pt;text-align:left">${esc(title)}</th></tr>`;
     rows.forEach(r=>{sheet+="<tr>"+r.map((c,i)=>`<${i===0?"td":"td"}>${esc(c)}</td>`).join("")+"</tr>"});
-    sheet+="</table>\n\n</body></html>";
+    sheet+="</table>
+
+</body></html>";
     const blob=new Blob([sheet],{type:"application/vnd.ms-excel;charset=utf-8"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=title.replace(/[^a-z0-9]+/gi,"_")+".xls";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500);
   }
@@ -10056,7 +10067,7 @@ document.addEventListener('finsight:cloud-state-loaded',async()=>{stockCategorie
  const payment=tr=>tr.cells?.[1]?.textContent?.trim()||'';
  function refresh(){
    queued=false;
-   const rows=[...table.querySelectorAll('tr')].filter(tr=>tr.cells?.length===11 && tr.querySelector('.v7EditSale, .v7DeleteSale'));
+   const rows=[...table.querySelectorAll('tr')].filter(tr=>tr.cells?.length>1);
    const names=[...new Set(rows.map(payment).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
    const options=['<option value="">All Payment Types</option>',...names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`)].join('');
    if(filter.innerHTML!==options)filter.innerHTML=options;
@@ -10069,10 +10080,10 @@ document.addEventListener('finsight:cloud-state-loaded',async()=>{stockCategorie
    for(const tr of rows){
      const match=!selected||normalized(payment(tr))===normalized(selected);
      tr.classList.toggle('fs-sales-payment-hidden',!match);
-     if(match && getComputedStyle(tr).display!=='none')visible++;
+     if(match && tr.style.display!=='none')visible++;
    }
    const count=document.getElementById('fsSalesFilterCountV15');
-   if(count){const visibleRows=rows.filter(tr=>getComputedStyle(tr).display!=='none');const toNumber=t=>Number(String(t??'').replace(/[^\d.-]/g,''))||0;const subtotal=visibleRows.reduce((sum,tr)=>sum+toNumber(tr.cells?.[6]?.textContent),0);count.textContent=`${visibleRows.length} visible entr${visibleRows.length===1?'y':'ies'} · Filtered sales: KSh ${subtotal.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2})} (summary cards: all payments)`;}
+   if(count)count.textContent=`${visible} ${selected?'matching ':''}entr${visible===1?'y':'ies'} (summary totals show all payments)`;
  }
  function schedule(){if(queued)return;queued=true;requestAnimationFrame(refresh)}
  filter.addEventListener('change',()=>{selected=filter.value;schedule()});
