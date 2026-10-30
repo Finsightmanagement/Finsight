@@ -1678,8 +1678,8 @@ window.editPostedSale=function(id){
         });
         if(error)throw error;
         closeModal();toast('Sale updated in Supabase');
-        if(typeof window.loadOnlineCompanyData==='function')await window.loadOnlineCompanyData();
-        else window.location.reload();
+        if(typeof window.finsightReloadCloudState==='function') await window.finsightReloadCloudState();
+        else toast('Saved in Supabase. Reopen Sales to refresh; no page reload was performed.');
       }catch(e){toast('Sale update failed: '+(e.message||e));btn.disabled=false;btn.textContent='Save Changes'}
     }},0);
   });
@@ -1694,8 +1694,8 @@ window.deletePostedSale=function(id){
      const {error}=await sb.rpc('fs_change_posted_sale',{p_company:cid,p_sale:id,p_action:'delete',p_reason:reason});
      if(error)throw error;
      closeModal();toast('Sale deleted from Supabase');
-     if(typeof window.loadOnlineCompanyData==='function')await window.loadOnlineCompanyData();
-     else window.location.reload();
+     if(typeof window.finsightReloadCloudState==='function') await window.finsightReloadCloudState();
+     else toast('Deleted in Supabase. Reopen Sales to refresh; no page reload was performed.');
    }catch(e){toast('Sale delete failed: '+(e.message||e));}
  });
 };
@@ -2310,9 +2310,7 @@ renderAll();
     const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     let sheet=`<html><head><meta charset="UTF-8"></head><body><table border="1" cellspacing="0" cellpadding="6"><tr><th colspan="20" style="font-size:16pt;text-align:left">${esc(title)}</th></tr>`;
     rows.forEach(r=>{sheet+="<tr>"+r.map((c,i)=>`<${i===0?"td":"td"}>${esc(c)}</td>`).join("")+"</tr>"});
-    sheet+="</table>
-
-</body></html>";
+    sheet+="</table>\n\n</body></html>";
     const blob=new Blob([sheet],{type:"application/vnd.ms-excel;charset=utf-8"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=title.replace(/[^a-z0-9]+/gi,"_")+".xls";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500);
   }
@@ -4693,10 +4691,11 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
   }
 
   function addCloudBillLine(tb){
+    const stockOpts=()=> (state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td><select class="line-group input"><option>Purchase Item</option><option>Expenditure</option></select></td>
-      <td class="line-item"></td>
+      <td class="line-item"><select class="purchase-item-select input">${stockOpts()}</select></td>
       <td><input class="line-desc input" placeholder="Description"></td>
       <td class="line-account-cell"></td>
       <td><input class="line-qty input" type="number" min="0" step="0.001" value="1"></td>
@@ -4706,7 +4705,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
       <td><button class="btn removeLine" type="button">×</button></td>`;
     tb.appendChild(tr);
 
-    const stockOpts=()=> (state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
     const expenseOpts=()=> (state.accounts||[]).filter(a=>a.active!==false&&(a.type==='Expense'||a.type==='Cost of Sales')).map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
     const calc=()=>{
       let total=0;
@@ -4722,7 +4720,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     const config=()=>{
       const purchase=$('.line-group',tr).value==='Purchase Item';
       if(purchase){
-        $('.line-item',tr).innerHTML=`<select class="purchase-item-select input">${stockOpts()}</select>`;
+        if(!$('.purchase-item-select',tr)) $('.line-item',tr).innerHTML=`<select class="purchase-item-select input">${stockOpts()}</select>`;
         $('.line-account-cell',tr).innerHTML='<span class="small-note">Food Cost</span>';
       }else{
         $('.line-item',tr).innerHTML='<span class="small-note">—</span>';
