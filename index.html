@@ -4690,10 +4690,61 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     return (state.accounts||[]).find(a=>a.active!==false&&String(a.name).toLowerCase()===String(name).toLowerCase())?.id||'';
   }
 
+  // Supplier Bill rows are controlled here; Quick Add only decorates existing selects.
+  const billRows=tb=>[...tb.querySelectorAll(':scope > tr')];
+  const billField=(row,selector)=>row.querySelector(selector);
+  function billUpdateTotals(tb){
+    let grossTotal=0;
+    for(const row of billRows(tb)){
+      const qty=Number(billField(row,'.line-qty')?.value);
+      const rate=Number(billField(row,'.line-rate')?.value);
+      const vat=Number(billField(row,'.line-vat')?.value||0);
+      const gross=Number.isFinite(qty)&&Number.isFinite(rate)&&qty>=0&&rate>=0?qty*rate:0;
+      const net=vatExclusive(gross,vat);
+      const cell=billField(row,'.line-net');if(cell)cell.textContent=money(net);
+      grossTotal+=gross;
+    }
+    const total=tb.closest('.modal')?.querySelector('.lineTotal');
+    if(total)total.textContent=money(grossTotal);
+  }
+  function billMakeSelect(cls,placeholder,options){
+    const sel=document.createElement('select');sel.className=cls+' input';
+    const initial=document.createElement('option');initial.value='';initial.textContent=placeholder;sel.appendChild(initial);
+    for(const [value,label] of options){
+      const opt=document.createElement('option');opt.value=String(value);opt.textContent=String(label);sel.appendChild(opt);
+    }
+    sel.value='';return sel;
+  }
+  function billConfigureRow(row,tb){
+    const kind=billField(row,'.line-group')?.value;
+    const item=billField(row,'.line-item');
+    const account=billField(row,'.line-account-cell');
+    if(!item||!account)return;
+    const oldItem=billField(row,'.purchase-item-select')?.value||'';
+    const oldAccount=billField(row,'.line-account')?.value||'';
+    item.replaceChildren();account.replaceChildren();
+    if(kind==='Purchase Item'){
+      const options=(state.stockItems||[]).filter(x=>x&&x.id).map(x=>[x.id,x.name||x.id]);
+      const select=billMakeSelect('purchase-item-select','Select Item',options);
+      if(options.some(x=>String(x[0])===oldItem))select.value=oldItem;
+      item.appendChild(select);
+      const label=document.createElement('span');label.className='small-note';label.textContent='Food Cost';account.appendChild(label);
+      // Existing Quick Add handler may decorate the selector; do not recreate it after decoration.
+      select.addEventListener('change',()=>billUpdateTotals(tb));
+      window.finsightQuickAdd?.enhance?.();
+    }else{
+      const label=document.createElement('span');label.className='small-note';label.textContent='—';item.appendChild(label);
+      const options=(state.accounts||[]).filter(x=>x?.active!==false&&(x.type==='Expense'||x.type==='Cost of Sales')).map(x=>[x.id,x.name||x.id]);
+      const select=billMakeSelect('line-account','Select Account',options);
+      if(options.some(x=>String(x[0])===oldAccount))select.value=oldAccount;
+      account.appendChild(select);
+    }
+    billUpdateTotals(tb);
+  }
   function addCloudBillLine(tb){
-    const tr=document.createElement('tr');
-    tr.innerHTML=`
-      <td><select class="line-group input"><option>Purchase Item</option><option>Expenditure</option></select></td>
+    const row=document.createElement('tr');
+    row.innerHTML=`
+      <td><select class="line-group input"><option value="Purchase Item">Purchase Item</option><option value="Expenditure">Expenditure</option></select></td>
       <td class="line-item"></td>
       <td><input class="line-desc input" placeholder="Description"></td>
       <td class="line-account-cell"></td>
@@ -4702,84 +4753,60 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
       <td><select class="line-vat input"><option value="0">No VAT</option><option value="0.16">16% VAT</option></select></td>
       <td class="line-net">KSh 0</td>
       <td><button class="btn removeLine" type="button">×</button></td>`;
-    tb.appendChild(tr);
-
-    const stockOpts=()=> (state.stockItems||[]).map(x=>`<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
-    const expenseOpts=()=> (state.accounts||[]).filter(a=>a.active!==false&&(a.type==='Expense'||a.type==='Cost of Sales')).map(a=>`<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
-    const calc=()=>{
-      let total=0;
-      $$('tr',tb).forEach(r=>{
-        const gross=Number($('.line-qty',r)?.value||0)*Number($('.line-rate',r)?.value||0);
-        const vr=Number($('.line-vat',r)?.value||0);
-        const net=vatExclusive(gross,vr);
-        if($('.line-net',r))$('.line-net',r).textContent=money(net);
-        total+=gross;
-      });
-      const box=tb.closest('.modal')?.querySelector('.lineTotal'); if(box)box.textContent=money(total);
-    };
-    const config=()=>{
-      const purchase=$('.line-group',tr).value==='Purchase Item';
-      if(purchase){
-        $('.line-item',tr).innerHTML=`<select class="purchase-item-select input">${stockOpts()}</select>`;
-        $('.line-account-cell',tr).innerHTML='<span class="small-note">Food Cost</span>';
-      }else{
-        $('.line-item',tr).innerHTML='<span class="small-note">—</span>';
-        $('.line-account-cell',tr).innerHTML=`<select class="line-account input">${expenseOpts()}</select>`;
-      }
-      calc();
-    };
-    $('.line-group',tr).onchange=config;
-    $$('.line-qty,.line-rate,.line-vat',tr).forEach(x=>{x.oninput=calc;x.onchange=calc;});
-    $('.removeLine',tr).onclick=()=>{tr.remove();calc();};
-    config();
-    // The later Quick Add enhancer can rearrange select elements asynchronously.
-    // Keep every Purchase Item row usable after those DOM updates as well.
-    if(!tb._fsBillItemGuard){
-      tb._fsBillItemGuard=true;
-      let checking=false;
-      const ensureItems=()=>{
-        if(checking || !tb.isConnected)return;
-        checking=true;
-        try{
-          tb.querySelectorAll('tr').forEach(row=>{
-            const group=row.querySelector('.line-group');
-            const cell=row.querySelector('.line-item');
-            if(!group || !cell || group.value!=='Purchase Item')return;
-            if(cell.querySelector('select.purchase-item-select'))return;
-            const sel=document.createElement('select');
-            sel.className='purchase-item-select input';
-            sel.innerHTML='<option value="">Select Item</option>'+stockOpts();
-            cell.replaceChildren(sel);
-            if(window.finsightQuickAdd?.enhance)window.finsightQuickAdd.enhance();
-          });
-        }finally{checking=false;}
-      };
-      const observer=new MutationObserver(ensureItems);
-      observer.observe(tb,{childList:true,subtree:true});
-      tb._fsBillItemObserver=observer;
-      ensureItems();
+    tb.appendChild(row);
+    billField(row,'.line-group').addEventListener('change',()=>billConfigureRow(row,tb));
+    for(const input of row.querySelectorAll('.line-qty,.line-rate,.line-vat')){
+      input.addEventListener('input',()=>billUpdateTotals(tb));
+      input.addEventListener('change',()=>billUpdateTotals(tb));
     }
+    billField(row,'.removeLine').addEventListener('click',()=>{row.remove();billUpdateTotals(tb)});
+    billConfigureRow(row,tb);
+    return row;
   }
-
   function collectLines(tb){
-    return $$('tr',tb).map(r=>{
-      const group=$('.line-group',r).value;
-      const qty=Number($('.line-qty',r).value||0);
-      const rate=Number($('.line-rate',r).value||0);
-      const vatFraction=Number($('.line-vat',r).value||0);
-      const gross=qty*rate;
-      return {
-        group,
-        stockItemId:group==='Purchase Item'?($('.purchase-item-select',r)?.value||''):null,
-        description:$('.line-desc',r).value.trim(),
-        accountId:group==='Expenditure'?($('.line-account',r)?.value||''):accountIdByName('Food Cost'),
-        quantity:qty,
-        rate,
-        vatRatePercent:vatFraction*100,
-        gross
-      };
-    }).filter(x=>x.gross>0);
+    const lines=[];
+    for(const [index,row] of billRows(tb).entries()){
+      const group=billField(row,'.line-group')?.value;
+      const qty=Number(billField(row,'.line-qty')?.value);
+      const rate=Number(billField(row,'.line-rate')?.value);
+      const vatFraction=Number(billField(row,'.line-vat')?.value);
+      const stockItemId=group==='Purchase Item'?(billField(row,'.purchase-item-select')?.value||''):null;
+      const accountId=group==='Expenditure'?(billField(row,'.line-account')?.value||''):accountIdByName('Food Cost');
+      const lineNum=index+1;
+      if(!['Purchase Item','Expenditure'].includes(group))throw new Error(`Line ${lineNum}: choose a group.`);
+      if(group==='Purchase Item'&&!stockItemId)throw new Error(`Line ${lineNum}: choose a Purchase Item.`);
+      if(!accountId)throw new Error(`Line ${lineNum}: choose a posting account.`);
+      if(!Number.isFinite(qty)||qty<=0)throw new Error(`Line ${lineNum}: quantity must be greater than zero.`);
+      if(!Number.isFinite(rate)||rate<=0)throw new Error(`Line ${lineNum}: rate must be greater than zero.`);
+      if(![0,0.16].includes(vatFraction))throw new Error(`Line ${lineNum}: invalid VAT selection.`);
+      lines.push({group,stockItemId,description:billField(row,'.line-desc')?.value.trim()||'',accountId,quantity:qty,rate,vatRatePercent:vatFraction*100,gross:qty*rate});
+    }
+    return lines;
   }
+  window.finsightBillCaptureDraft=function(){
+    const tb=document.querySelector('#billLines');if(!tb)return null;
+    const get=id=>document.getElementById(id)?.value||'';
+    return {date:get('bDate'),supplier:get('bSupplier'),invoice:get('bInvoice'),due:get('bDue'),memo:get('bMemo'),
+      lines:billRows(tb).map(row=>({group:billField(row,'.line-group')?.value,stockItemId:billField(row,'.purchase-item-select')?.value||'',accountId:billField(row,'.line-account')?.value||'',description:billField(row,'.line-desc')?.value||'',quantity:billField(row,'.line-qty')?.value||'',rate:billField(row,'.line-rate')?.value||'',vat:billField(row,'.line-vat')?.value||'0'}))};
+  };
+  window.finsightBillRestoreDraft=function(draft,newSupplier){
+    if(!draft)return;
+    const apply=()=>{
+      const tb=document.getElementById('billLines');if(!tb)return;
+      const put=(id,val)=>{const element=document.getElementById(id);if(element)element.value=val||''};
+      put('bDate',draft.date);put('bSupplier',newSupplier||draft.supplier);put('bInvoice',draft.invoice);put('bDue',draft.due);put('bMemo',draft.memo);
+      tb.replaceChildren();
+      for(const line of draft.lines||[]){
+        const row=addCloudBillLine(tb);
+        billField(row,'.line-group').value=line.group||'Purchase Item';billConfigureRow(row,tb);
+        const selector=billField(row,line.group==='Expenditure'?'.line-account':'.purchase-item-select');if(selector)selector.value=line.group==='Expenditure'?line.accountId:line.stockItemId;
+        billField(row,'.line-desc').value=line.description;billField(row,'.line-qty').value=line.quantity;
+        billField(row,'.line-rate').value=line.rate;billField(row,'.line-vat').value=line.vat;
+      }
+      if(!billRows(tb).length)addCloudBillLine(tb);billUpdateTotals(tb);
+    };
+    setTimeout(apply,60);
+  };
 
   window.openBill=function(){
     const suppliers=(state.suppliers||[]);
@@ -4814,7 +4841,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
         const billDate=$('#bDate').value;
         const dueDate=$('#bDue').value||null;
         const memo=$('#bMemo').value.trim();
-        const lines=collectLines(tb);
+        let lines;try{lines=collectLines(tb)}catch(e){return toast(e.message||'Check bill lines')}
         if(!supplierName)return toast('Choose a supplier');
         if(!billDate)return toast('Choose a bill date');
         if(!lines.length)return toast('Add at least one bill line');
@@ -4855,8 +4882,8 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
           });
           if(error)throw error;
           closeModal();
-          if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
           toast('Supplier bill posted online');
+          if(typeof window.finsightReloadCloudState==='function'){try{await window.finsightReloadCloudState()}catch(refreshError){console.error('[FinSight] Supplier Bill posted, refresh failed',refreshError);toast('Bill posted. Refresh the page to view updated records.')}}
         }catch(e){
           console.error('[FinSight Phase 2C] Supplier bill posting failed',e);
           toast(e?.message||'Unable to post supplier bill online.');
@@ -6227,6 +6254,7 @@ async function addSupplierFromBill(){
   const sb=window.finsightSupabase, cid=window.finsightOnline?.companyId;
   if(!sb||!cid)return toast('FinSight cloud connection is not ready.');
 
+  const billDraft=window.finsightBillCaptureDraft?.();
   closeModal();
   openModal('Add Supplier','This supplier will be saved online and will be immediately available on supplier invoices.',
     `<div class="field"><label>Supplier Name</label>
@@ -6238,7 +6266,7 @@ async function addSupplierFromBill(){
        <button class="btn primary" id="billCloudSupplierSave" type="button">Add Supplier</button>
      </div>`);
 
-  q('#billCloudSupplierCancel').onclick=()=>{closeModal();window.openBill?.()};
+  q('#billCloudSupplierCancel').onclick=()=>{closeModal();window.openBill?.();window.finsightBillRestoreDraft?.(billDraft)};
   q('#billCloudSupplierSave').onclick=async()=>{
     const input=q('#billCloudSupplierName');
     const name=input.value.trim();
@@ -6277,6 +6305,7 @@ async function addSupplierFromBill(){
 
       closeModal();
       window.openBill?.();
+      window.finsightBillRestoreDraft?.(billDraft,name);
 
       // Select the supplier we just added after the form is rebuilt.
       setTimeout(()=>{
