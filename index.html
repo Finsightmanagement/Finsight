@@ -4339,11 +4339,11 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     if(allowed){nav?.classList.remove('hidden');sec?.classList.remove('hidden');if(invite)invite.onclick=()=>openInviteUser('viewer');loadCompanyUsers();}
     else{nav?.classList.add('hidden');sec?.classList.add('hidden');}
   }
-  // Complete Sales loading with keyset pagination. This avoids increasingly costly
-  // OFFSET scans on large companies (particularly sale_items).
+  // Load Sales and Supplier Bill records with company-scoped keyset pagination.
+  // Avoid incomplete registers and balances when Supabase returns only one page.
   async function q(table,orderCol=null){
-    const pagedSales=['sales','sale_items','sales_receipts'].includes(table);
-    if(!pagedSales){
+    const pagedFinancialRows=['sales','sale_items','sales_receipts','supplier_bills','supplier_bill_lines','supplier_bill_payments'].includes(table);
+    if(!pagedFinancialRows){
       let req=sb.from(table).select('*');if(orderCol)req=req.order(orderCol,{ascending:true});
       const {data,error}=await req;
       if(error)throw new Error('Unable to load '+table+': '+error.message);
