@@ -9361,10 +9361,10 @@ function billPaid(id){return (state.billPayments||[]).filter(x=>x.billId===id).r
 function billView(b){
  const paid=billPaid(b.id),bal=n(b.total)-paid,headers=['Description','Account','Qty','Rate','VAT','Amount'];
  const rows=(b.lines||[]).map(l=>[l.item||l.desc||'',(state.accounts||[]).find(a=>a.id===l.accountId)?.name||'',l.qty,l.rate,(n(l.vatRate)*100).toFixed(2)+'%',money(l.gross||n(l.qty)*n(l.rate))]);
- openModal('Supplier Bill','',`<div class="fs510-summary"><div><span>Supplier</span><b>${esc(b.supplier)}</b></div><div><span>Invoice</span><b>${esc(b.invoice)}</b></div><div><span>Date</span><b>${esc(b.date)}</b></div><div><span>Balance</span><b>${money(bal)}</b></div></div>${rowsToHtml(headers,rows)}<div class="total-bar"><span>Total</span><strong>${money(b.total)}</strong></div><div class="modal-actions"><button class="btn" id="fs510BillPdf">Export PDF</button><button class="btn" id="fs510BillXls">Export Excel</button>${paid>0?'':'<button class="btn" id="fs510BillEdit">Edit</button><button class="btn danger" id="fs510BillVoid">Void</button>'}</div>`);
+ openModal('Supplier Bill','',`<div class="fs510-summary"><div><span>Supplier</span><b>${esc(b.supplier)}</b></div><div><span>Invoice</span><b>${esc(b.invoice)}</b></div><div><span>Date</span><b>${esc(b.date)}</b></div><div><span>Balance</span><b>${money(bal)}</b></div></div>${rowsToHtml(headers,rows)}<div class="total-bar"><span>Total</span><strong>${money(b.total)}</strong></div><div class="modal-actions"><button class="btn" id="fs510BillPdf">Export PDF</button><button class="btn" id="fs510BillXls">Export Excel</button><button class="btn" id="fs510BillEdit">Edit</button>${paid>0?'':'<button class="btn danger" id="fs510BillVoid">Void</button>'}</div>`);
  q('#fs510BillPdf').onclick=()=>printReport('Supplier Bill',`${b.supplier} · Invoice ${b.invoice} · ${b.date}`,`${rowsToHtml(headers,rows)}<p><b>Total: ${money(b.total)}</b></p>`);
  q('#fs510BillXls').onclick=()=>excel(`Supplier_Bill_${b.invoice}.xls`,headers,rows);
- if(!paid){q('#fs510BillEdit').onclick=()=>editBillSafe(b);q('#fs510BillVoid').onclick=()=>voidBillSafe(b)}
+ q('#fs510BillEdit').onclick=()=>editBillSafe(b);if(!paid)q('#fs510BillVoid').onclick=()=>voidBillSafe(b)
 }
 async function voidBillSafe(b){
  if(billPaid(b.id)>0)return toast('Reverse the associated payment before voiding this bill.');
@@ -9373,9 +9373,50 @@ async function voidBillSafe(b){
  const {error}=await sb().rpc('void_supplier_bill',{p_company_id:cid(),p_bill_id:b.id,p_reason:reason});if(error)return toast(error.message);closeModal();await window.finsightReloadCloudState?.();toast('Supplier bill voided');
 }
 async function editBillSafe(b){
- if(billPaid(b.id)>0)return toast('Reverse the associated payment before editing this bill.');
- openModal('Edit Supplier Bill','',`<div class="form-grid"><div class="field"><label>Date</label><input class="input" id="fs510EBDate" type="date" value="${esc(b.date)}"></div><div class="field"><label>Invoice No.</label><input class="input" id="fs510EBInv" value="${esc(b.invoice)}"></div><div class="field"><label>Due Date</label><input class="input" id="fs510EBDue" type="date" value="${esc(b.due||'')}"></div><div class="field full"><label>Memo</label><input class="input" id="fs510EBMemo" value="${esc(b.memo||'')}"></div></div><div class="modal-actions"><button class="btn primary" id="fs510EBSave">Save Changes</button></div>`);
- q('#fs510EBSave').onclick=async()=>{const reason=prompt('Reason for editing this supplier bill:');if(!reason)return;const payload={bill_date:q('#fs510EBDate').value,invoice_no:q('#fs510EBInv').value.trim(),due_date:q('#fs510EBDue').value||null,memo:q('#fs510EBMemo').value||null};const {error}=await sb().rpc('edit_supplier_bill_header',{p_company_id:cid(),p_bill_id:b.id,p_changes:payload,p_reason:reason});if(error)return toast(error.message);closeModal();await window.finsightReloadCloudState?.();toast('Supplier bill updated')};
+ const opts=(rows,value,placeholder='Select')=>`<option value="">${placeholder}</option>`+rows.map(x=>`<option value="${esc(x.id)}" ${String(x.id)===String(value)?'selected':''}>${esc(x.name)}</option>`).join('');
+ const supplierOpts=(state.suppliers||[]).map(x=>`<option ${x===b.supplier?'selected':''}>${esc(x)}</option>`).join('');
+ const stockOpts=(value)=>opts(state.stockItems||[],value,'Select purchase item');
+ const expenseOpts=(value)=>opts((state.accounts||[]).filter(x=>x.active!==false&&(x.type==='Expense'||x.type==='Cost of Sales')),value,'Select expense account');
+ openModal('Edit Supplier Bill','',`<div class="form-grid"><div class="field"><label>Date</label><input class="input" id="fs510EBDate" type="date" value="${esc(b.date)}"></div><div class="field"><label>Supplier</label><select class="input" id="fs510EBSupplier">${supplierOpts}</select></div><div class="field"><label>Invoice No.</label><input class="input" id="fs510EBInv" value="${esc(b.invoice==='—'?'':b.invoice)}"></div><div class="field"><label>Due Date</label><input class="input" id="fs510EBDue" type="date" value="${esc(b.due||'')}"></div><div class="field full"><label>Memo</label><input class="input" id="fs510EBMemo" value="${esc(b.memo||'')}"></div></div><div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Group</th><th>Purchase Item</th><th>Description</th><th>Account</th><th>Qty</th><th>Rate</th><th>VAT</th><th>VAT Excl.</th><th></th></tr></thead><tbody id="fs510EBLines"></tbody></table></div><button class="btn" type="button" id="fs510EBAdd" style="margin-top:8px">+ Add Line</button><div class="total-bar"><span>Invoice Total</span><strong id="fs510EBTotal">KSh 0.00</strong></div><div class="modal-actions"><button class="btn primary" type="button" id="fs510EBSave">Save Changes</button></div>`);
+ const tb=q('#fs510EBLines');
+ const update=()=>{let total=0;qa('tr',tb).forEach(tr=>{let gross=n(q('.line-qty',tr).value)*n(q('.line-rate',tr).value),vat=n(q('.line-vat',tr).value);total+=gross;q('.line-net',tr).textContent=money(gross/(1+vat/100))});q('#fs510EBTotal').textContent=money(total)};
+ const configure=(tr,item='',account='')=>{let purchase=q('.line-group',tr).value==='Purchase Item';q('.line-item',tr).innerHTML=purchase?`<select class="input purchase-item-select">${stockOpts(item)}</select>`:'—';q('.line-account-cell',tr).innerHTML=purchase?'Food Cost':`<select class="input line-account">${expenseOpts(account)}</select>`};
+ const add=(l={})=>{
+  const tr=document.createElement('tr');tr.innerHTML=`<td><select class="input line-group"><option>Purchase Item</option><option>Expenditure</option></select></td><td class="line-item"></td><td><input class="input line-desc" value="${esc(l.desc||'')}"></td><td class="line-account-cell"></td><td><input class="input line-qty" type="number" min="0.001" step="0.001" value="${esc(l.qty??1)}"></td><td><input class="input line-rate" type="number" min="0.01" step="0.01" value="${esc(l.rate??0)}"></td><td><select class="input line-vat"><option value="0">No VAT</option><option value="16">16% VAT</option></select></td><td class="line-net"></td><td><button type="button" class="btn line-remove">×</button></td>`;
+  tb.appendChild(tr);q('.line-group',tr).value=l.group==='Expenditure'?'Expenditure':'Purchase Item';
+  const itemId=(state.stockItems||[]).find(x=>x.name===l.item)?.id||l.stockItemId||'';configure(tr,itemId,l.accountId);
+  q('.line-vat',tr).value=n(l.vatRate)>0?'16':'0';
+  q('.line-group',tr).onchange=()=>{configure(tr);update()};
+  qa('input,select',tr).forEach(e=>e.addEventListener('input',update));
+  q('.line-remove',tr).onclick=()=>{tr.remove();update()};update();
+ };
+ (b.lines||[]).forEach(add);if(!b.lines?.length)add();q('#fs510EBAdd').onclick=()=>add();
+ q('#fs510EBSave').onclick=async()=>{
+  const btn=q('#fs510EBSave'),supplierName=q('#fs510EBSupplier').value,inv=q('#fs510EBInv').value.trim(),date=q('#fs510EBDate').value;
+  if(!date||!supplierName)return toast('Choose a date and supplier');
+  if(inv&&(state.bills||[]).some(x=>String(x.id)!==String(b.id)&&x.supplier===supplierName&&x.invoice===inv))return toast('Supplier invoice number already exists');
+  const items=[];for(const [i,tr] of qa('tr',tb).entries()){
+   const purchase=q('.line-group',tr).value==='Purchase Item',qty=Number(q('.line-qty',tr).value),rate=Number(q('.line-rate',tr).value),stock=purchase?q('.purchase-item-select',tr)?.value:null;
+   const account=purchase?(state.accounts||[]).find(a=>a.name.toLowerCase()==='food cost')?.id:q('.line-account',tr)?.value;
+   if(!(qty>0)||!(rate>0)||!account||(purchase&&!stock))return toast(`Check item, account, quantity and rate on line ${i+1}`);
+   items.push({line_type:purchase?'Purchase Item':'Expenditure',stock_item_id:stock,description:q('.line-desc',tr).value.trim()||(state.stockItems||[]).find(x=>x.id===stock)?.name||'Supplier invoice',account_id:account,quantity:qty,rate,vat_rate:Number(q('.line-vat',tr).value)});
+  }
+  if(!items.length)return toast('Add at least one invoice line');
+  const total=items.reduce((t,x)=>t+x.quantity*x.rate,0),paid=billPaid(b.id);
+  if(total+0.005<paid)return toast('Invoice total cannot be less than payments already applied');
+  const reason=prompt('Reason for editing this supplier bill:');if(!reason?.trim())return;
+  btn.disabled=true;btn.textContent='Saving…';
+  try{
+   const {data:sup,error:supError}=await sb().from('suppliers').select('id,name').eq('company_id',cid());if(supError)throw supError;
+   const supplier=(sup||[]).find(x=>x.name.toLowerCase()===supplierName.toLowerCase());if(!supplier)throw new Error('Selected supplier is not found');
+   const ap=(state.accounts||[]).find(a=>a.name.toLowerCase()==='accounts payable')?.id;
+   const vat=items.some(x=>x.vat_rate>0)?(state.accounts||[]).find(a=>a.name.toLowerCase()==='input vat')?.id:null;
+   if(!ap||(items.some(x=>x.vat_rate>0)&&!vat))throw new Error('Accounts Payable or Input VAT account missing');
+   const {error}=await sb().rpc('edit_supplier_bill_full',{p_company_id:cid(),p_bill_id:b.id,p_supplier_id:supplier.id,p_invoice_no:inv||null,p_bill_date:date,p_due_date:q('#fs510EBDue').value||null,p_memo:q('#fs510EBMemo').value||null,p_accounts_payable_account_id:ap,p_vat_account_id:vat,p_lines:items,p_reason:reason.trim()});
+   if(error)throw error;
+   closeModal();await window.finsightReloadCloudState?.();toast('Supplier bill updated');
+  }catch(e){console.error('[FinSight] Bill edit failed',e);toast(e?.message||'Could not update supplier bill');btn.disabled=false;btn.textContent='Save Changes'}
+ };
 }
 function installBills(){
  const table=findTableByHeaders(['supplier','invoice']);if(!table)return;if(q('#fs510Bills')){enhance();return;}
