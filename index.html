@@ -7566,12 +7566,35 @@ function enableButtons(){
     btn.title='Upload CSV';
     btn.onclick=e=>{
       e.preventDefault();
-      if(btn.dataset.kind==='stock'){toast('Use Inventory → New Reconciliation → Upload Stock Take CSV.');return;}
-      activeKind=btn.dataset.kind;
-      const input=q('#csvInput');
-      if(!input)return toast('CSV file input not found.');
-      input.value='';
+      if(btn.dataset.kind==='stock'){
+        toast('Use Inventory → New Reconciliation → Upload Stock Take CSV.');
+        return;
+      }
+      const kind=btn.dataset.kind;
+      // A dedicated picker prevents the old prototype #csvInput handler from
+      // intercepting uploads or re-opening a different importer.
+      const input=document.createElement('input');
+      input.type='file';input.accept='.csv,text/csv';input.style.display='none';
+      document.body.appendChild(input);
+      input.addEventListener('change',async()=>{
+        const file=input.files?.[0];
+        input.remove();
+        if(!file)return;
+        activeKind=kind;
+        openModal('Reading CSV',file.name,
+          '<div class="insight">Validating CSV file and checking existing setup…</div>');
+        try{await handleFile(file)}
+        catch(err){
+          console.error('[FinSight CSV upload]',err);
+          const msg=err?.message||String(err);
+          openModal('CSV Upload Error',file.name,
+            `<div class="csv-result warn">${esc(msg)}</div><div class="modal-actions"><button class="btn" id="csvReadErrorClose" type="button">Close</button></div>`);
+          q('#csvReadErrorClose').onclick=closeModal;
+        }
+      },{once:true});
       input.click();
+      // A cancelled picker is removed when the next picker opens or on focus.
+      window.addEventListener('focus',()=>setTimeout(()=>{if(input.isConnected)input.remove()},500),{once:true});
     };
   });
   const note=q('#onlineCsvSafetyNote');if(note)note.remove();
@@ -7631,15 +7654,6 @@ async function handleFile(file){
 
 function bind(){
   enableButtons();
-  const input=q('#csvInput');
-  if(input){
-    input.onchange=async()=>{
-      const file=input.files?.[0];
-      if(!file)return;
-      try{await handleFile(file)}
-      catch(e){console.error('[FinSight V18.5.3 CSV]',e);toast(e?.message||'Unable to read CSV file.')}
-    };
-  }
 }
 
 document.addEventListener('finsight:cloud-state-loaded',()=>setTimeout(bind,20));
@@ -8862,7 +8876,10 @@ function parseCsv(text){
 }
 async function uploadIntoRecon(){
  const inp=document.createElement('input');inp.type='file';inp.accept='.csv,text/csv';inp.onchange=async()=>{
-  const file=inp.files?.[0];if(!file)return;const rows=parseCsv(await file.text());if(rows.length<2)return toast('The Stock Take CSV has no stock rows.');
+  const file=inp.files?.[0];if(!file)return;
+  let rows;
+  try{rows=parseCsv(await file.text())}catch(e){return toast('Unable to read Stock Take CSV: '+(e?.message||e))}
+  if(rows.length<2)return toast('The Stock Take CSV has no stock rows.');
   const hdr=rows[0].map(norm),ii=hdr.indexOf('item'),ui=hdr.indexOf('unit'),qi=hdr.indexOf('physical quantity')>=0?hdr.indexOf('physical quantity'):hdr.indexOf('quantity');
   if(ii<0||qi<0)return toast('Stock Take CSV must contain Item and Physical Quantity.');
   const seen=new Set(),data=[];
@@ -8873,8 +8890,9 @@ async function uploadIntoRecon(){
   }
   const tb=q('#irLines');if(!tb)return toast('Open New Reconciliation first.');
   qa('tr',tb).forEach(r=>{const sel=q('.iri',r),hit=data.find(x=>String(x.id)===String(sel?.value));if(hit){const qty=q('.irq',r),inc=q('.irinclude',r);if(qty)qty.value=hit.qty;if(inc)inc.checked=true}});
-  toast(`${data.length} stock quantities populated`);
- };inp.click();
+  if(!data.length)return toast('No physical quantities found in the selected CSV.');
+  toast(`${data.length} stock quantities populated. Review the reconciliation lines before saving.`);
+ };document.body.appendChild(inp);inp.addEventListener('change',()=>inp.remove(),{once:true});inp.click();
 }
 window.finsightUploadStockTakeCsv=uploadIntoRecon;
 function install(){
@@ -10061,7 +10079,14 @@ async function stockTemplatePrint(){
  w.document.close();
  }catch(e){notify(e.message||String(e));}
 }
-async function csvUpload(){const inp=document.createElement('input');inp.type='file';inp.accept='.csv';inp.onchange=async()=>{try{const text=await inp.files[0].text();const parse=text=>{const a=[];let r=[],x='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){x+='"';i++}else quoted=!quoted}else if(c===','&&!quoted){r.push(x);x=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;r.push(x);if(r.some(z=>z.trim()))a.push(r);r=[];x=''}else x+=c}r.push(x);if(r.some(z=>z.trim()))a.push(r);return a};const rows=parse(text),hdr=rows.shift().map(v=>v.trim().toLowerCase());const ni=hdr.indexOf('item'),qi=hdr.indexOf('closing stock')>=0?hdr.indexOf('closing stock'):(hdr.indexOf('physical quantity')>=0?hdr.indexOf('physical quantity'):hdr.indexOf('quantity')),ci=hdr.indexOf('comment')>=0?hdr.indexOf('comment'):hdr.indexOf('explanation');if(ni<0||qi<0)throw Error('CSV requires Item and Closing Stock (or Physical Quantity) columns');const data=[],seen=new Set();for(const r of rows){const name=(r[ni]||'').trim(),quantity=(r[qi]||'').trim();if(!name||!quantity)continue;const it=items().find(x=>x.name.trim().toLowerCase()===name.toLowerCase());if(!it)throw Error('Unknown stock item: '+name);if(seen.has(it.id))throw Error('Duplicate stock item: '+name);seen.add(it.id);if(!Number.isFinite(Number(quantity))||Number(quantity)<0)throw Error('Invalid quantity for '+name);data.push({stock_item_id:it.id,quantity:Number(quantity),explanation:ci>=0?(r[ci]||''):''})}if(!data.length)throw Error('No quantities in CSV');renderLines(data);notify(data.length+' stock quantities loaded for preview. Not submitted.')}catch(e){notify(e.message)}};inp.click()}
+async function csvUpload(){const inp=document.createElement('input');inp.type='file';inp.accept='.csv,text/csv';inp.onchange=async()=>{const file=inp.files?.[0];inp.remove();if(!file)return;try{const text=await file.text();const parse=text=>{const a=[];let r=[],x='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){x+='"';i++}else quoted=!quoted}else if(c===','&&!quoted){r.push(x);x=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;r.push(x);if(r.some(z=>z.trim()))a.push(r);r=[];x=''}else x+=c}r.push(x);if(r.some(z=>z.trim()))a.push(r);return a};const rows=parse(text),hdr=rows.shift().map(v=>v.trim().toLowerCase());const ni=hdr.indexOf('item'),qi=hdr.indexOf('closing stock')>=0?hdr.indexOf('closing stock'):(hdr.indexOf('physical quantity')>=0?hdr.indexOf('physical quantity'):hdr.indexOf('quantity')),ci=hdr.indexOf('comment')>=0?hdr.indexOf('comment'):hdr.indexOf('explanation');if(ni<0||qi<0)throw Error('CSV requires Item and Closing Stock (or Physical Quantity) columns');const data=[],seen=new Set();for(const r of rows){const name=(r[ni]||'').trim(),quantity=(r[qi]||'').trim();if(!name||!quantity)continue;const it=items().find(x=>x.name.trim().toLowerCase()===name.toLowerCase());if(!it)throw Error('Unknown stock item: '+name);if(seen.has(it.id))throw Error('Duplicate stock item: '+name);seen.add(it.id);if(!Number.isFinite(Number(quantity))||Number(quantity)<0)throw Error('Invalid quantity for '+name);data.push({stock_item_id:it.id,quantity:Number(quantity),explanation:ci>=0?(r[ci]||''):''})}if(!data.length)throw Error('No quantities in CSV');
+ const form=$('#stock12form'),newBar=$('#stock12newbar');
+ if(!form)throw Error('Open Stock Take before importing a CSV.');
+ renderLines(data);
+ form.style.display='';
+ if(newBar)newBar.style.display='none';
+ showCategoryTools();applyCategoryFilter();
+ notify(data.length+' stock quantities loaded for preview. Not submitted.')}catch(e){notify(e.message)}};document.body.appendChild(inp);inp.click()}
 async function showHistory(){try{const rows=await rpc('stock_take_list',{p_company:company(),p_staff_id:clerk()?staffId:null,p_pin:clerk()?pin:null});const el=$('#stock12history');if(!el)return;el.innerHTML=rows.length?`<table><thead><tr><th>Date</th><th>Status</th><th>Items</th><th>Actions</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.stock_date)}</td><td>${esc(r.status)}</td><td>${r.lines?.length||0}</td><td>${['Draft','Returned'].includes(r.status)?`<button class="btn" data-reedit="${r.id}">Continue</button>`:''}</td></tr>`).join('')}</tbody></table>`:'No stock takes yet';$$('[data-reedit]',el).forEach(b=>b.onclick=()=>{const r=rows.find(z=>z.id===b.dataset.reedit);draftId=r.id;$('#stock12form').style.display='';$('#stock12newbar').style.display='none';$('#stock12date').value=r.stock_date;$('#stock12notes').value=r.notes||'';renderLines(r.lines);showCategoryTools();applyCategoryFilter();notify('Draft loaded')})}catch(e){notify(e.message)}}
 async function display(){const root=$('#stock12body');if(!root||!company())return;if(clerk()&&!staffId){root.innerHTML='<div class="stock12-panel"><h3>Cashier Identification</h3><div class="stock12-row"><label>Cashier<select id="stock12staff"></select></label><label>PIN<input id="stock12pin" type="password" maxlength="8"></label></div><button class="btn primary" id="stock12login">Continue</button><div id="stock12msg"></div></div>';$('#stock12staff').innerHTML='<option value="">Select Cashier</option>'+staff.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${esc(x.full_name)}</option>`).join('');$('#stock12login').onclick=async()=>{const id=$('#stock12staff').value,p=$('#stock12pin').value;try{if(!id||!p||!await rpc('recon_check_pin',{p_company:company(),p_staff_id:id,p_pin:p}))throw Error('Select cashier and enter the correct PIN');staffId=id;pin=p;display()}catch(e){notify(e.message)}};return}
 root.innerHTML=`<div class="stock12-panel" id="stock12newbar"><button class="btn primary" id="stock12new">+ New Stock Take</button></div><div class="stock12-panel" id="stock12form" style="display:none"><div class="stock12-row"><label>Stock Date<input id="stock12date" type="date" value=""> </label><label>Notes<input id="stock12notes"></label></div><div class="stock12-row"><button class="btn" id="stock12template">Download Template</button><button class="btn" id="stock12print">Print Template</button><button class="btn" id="stock12csv">Upload Stock Take CSV</button><button class="btn" id="stock12draft">Save Draft</button><button class="btn primary" id="stock12submit">Submit for Approval</button>${clerk()?'<button class="btn" id="stock12lock">Change Cashier</button>':''}</div><div style="overflow:auto"><table><thead><tr><th>Stock Item</th><th>Physical Quantity</th><th>Explanation</th></tr></thead><tbody id="stock12lines"></tbody></table></div><div id="stock12msg"></div></div><div class="stock12-panel"><h3>Stock Take History</h3><div id="stock12history"></div></div>`;
