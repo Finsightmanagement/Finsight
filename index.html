@@ -7698,8 +7698,8 @@ function renderDashboardV1854(){
   setDashboardDefaults();const {f,t}=dashboardDates(),dates=dateList(f,t),sales=(state.sales||[]).filter(x=>inRange(x.date,f,t)),items=(state.saleItems||[]).filter(x=>inRange(x.date,f,t));
   const cur=sales.reduce((a,b)=>a+num(b.amount),0),saleIds=new Set(sales.map(x=>x.id)),rec=(state.receipts||[]).filter(r=>saleIds.has(r.saleId)).reduce((a,b)=>a+num(b.amount),0);q('#dashSales').textContent=money(cur);q('#dashReceived').textContent=money(rec);q('#dashOutstanding').textContent=money(cur-rec);try{q('#dashProfit').textContent=money(dp(f,t)?.net||0)}catch(_){q('#dashProfit').textContent=money(0)}
   const len=dates.length,pf=addDays(f,-len),pt=addDays(f,-1),prev=(state.sales||[]).filter(x=>inRange(x.date,pf,pt)).reduce((a,b)=>a+num(b.amount),0),pct=prev?((cur-prev)/prev*100):null;q('#dashTrendWrap').innerHTML=pct===null?'<span class="trend-chip trend-flat">No previous-period sales</span>':`<span class="trend-chip ${pct>0?'trend-up':pct<0?'trend-down':'trend-flat'}">${pct>0?'▲':pct<0?'▼':'•'} ${Math.abs(pct).toFixed(1)}% vs previous period</span>`;
-  q('#dashboardDailySalesTitle').textContent=`Daily Sales · ${f} to ${t}`;const daily=dates.map(d=>({d,v:sales.filter(x=>x.date===d).reduce((a,b)=>a+num(b.amount),0)})),max=Math.max(...daily.map(x=>x.v),1),w=680,step=daily.length>1?w/(daily.length-1):0,pts=daily.map((x,i)=>`${20+i*step},${190-(x.v/max)*150}`).join(' ');q('#salesSvg').innerHTML=`<svg viewBox="0 0 720 210" preserveAspectRatio="none"><line class="chart-axis" x1="20" y1="190" x2="700" y2="190"/><polyline class="chart-line" points="${pts}"/>${daily.map((x,i)=>{const cx=20+i*step,cy=190-(x.v/max)*150;return `<circle class="chart-dot" cx="${cx}" cy="${cy}" r="5"><title>${x.d}: ${money(x.v)}</title></circle><text x="${cx}" y="${Math.max(14,cy-10)}" text-anchor="middle" font-size="10" font-weight="700">${x.v?Math.round(x.v).toLocaleString():''}</text>`}).join('')}</svg>`;q('#salesLabels').innerHTML=daily.map(x=>`<span>${new Date(x.d+'T12:00:00').toLocaleDateString(undefined,{day:'2-digit',month:'short'})}</span>`).join('');
-  const paymentTypes=[...new Set([...(state.paymentTypes||[]),...sales.map(x=>x.paymentType).filter(Boolean)])],matrix=paymentTypes.map(pt=>({pt,vals:dates.map(d=>sales.filter(x=>x.date===d&&x.paymentType===pt).reduce((a,b)=>a+num(b.amount),0))}));q('#paymentMixPeriod').textContent=`${f} to ${t}`;q('#salesAnalysis').innerHTML=`<div style="overflow:auto"><table class="payment-mix-table"><thead><tr><th>Payment Type</th>${dates.map(d=>`<th>${new Date(d+'T12:00:00').toLocaleDateString(undefined,{day:'2-digit',month:'short'})}</th>`).join('')}<th>Period Total</th></tr></thead><tbody>${matrix.map(r=>`<tr><td><b>${html(r.pt)}</b></td>${r.vals.map(v=>`<td>${money(v)}</td>`).join('')}<td><b>${money(r.vals.reduce((a,b)=>a+b,0))}</b></td></tr>`).join('')}<tr class="subtotal"><td><b>Total</b></td>${dates.map((d,i)=>`<td><b>${money(matrix.reduce((a,r)=>a+r.vals[i],0))}</b></td>`).join('')}<td><b>${money(cur)}</b></td></tr></tbody></table></div>`;
+  const chartEnd=addDays(f,6),chartDays=dateList(f,chartEnd),chartSales=sales.filter(x=>x.date<=chartEnd),daily=chartDays.map(d=>({d,v:chartSales.filter(x=>x.date===d).reduce((a,b)=>a+num(b.amount),0)})),max=Math.max(...daily.map(x=>x.v),1),w=680,step=w/6,pts=daily.map((x,i)=>`${20+i*step},${190-(x.v/max)*150}`).join(' ');q('#dashboardDailySalesTitle').textContent=`Daily Sales · ${f} to ${chartEnd}`;q('#salesSvg').innerHTML=`<svg viewBox="0 0 720 210" preserveAspectRatio="none"><line class="chart-axis" x1="20" y1="190" x2="700" y2="190"/><polyline class="chart-line" points="${pts}"/>${daily.map((x,i)=>{const cx=20+i*step,cy=190-(x.v/max)*150;return `<circle class="chart-dot" cx="${cx}" cy="${cy}" r="5"><title>${x.d}: ${money(x.v)}</title></circle><text x="${cx}" y="${Math.max(14,cy-10)}" text-anchor="middle" font-size="10" font-weight="700">${x.v?Math.round(x.v).toLocaleString():''}</text>`}).join('')}</svg>`;q('#salesLabels').innerHTML=daily.map(x=>`<span>${new Date(x.d+'T12:00:00').toLocaleDateString(undefined,{day:'2-digit',month:'short'})}</span>`).join('');
+  const paymentTotals=new Map();sales.forEach(x=>{const pt=x.paymentType||'Unspecified';paymentTotals.set(pt,(paymentTotals.get(pt)||0)+num(x.amount))});const paymentTypes=[...new Set([...(state.paymentTypes||[]),...paymentTotals.keys()])],payRows=paymentTypes.map(pt=>({pt,total:paymentTotals.get(pt)||0})).filter(r=>r.total!==0);q('#paymentMixPeriod').textContent=`${f} to ${t}`;q('#salesAnalysis').innerHTML=`<div style="overflow:auto"><table class="payment-v1855"><thead><tr><th>Payment Type</th><th>Sales Amount</th><th>% of Sales</th></tr></thead><tbody>${payRows.length?payRows.map(r=>`<tr><td><b>${html(r.pt)}</b></td><td>${money(r.total)}</td><td>${cur?(r.total/cur*100).toFixed(1):'0.0'}%</td></tr>`).join(''):'<tr><td colspan="3">No sales in the selected period.</td></tr>'}<tr class="subtotal"><td><b>Total Sales</b></td><td><b>${money(cur)}</b></td><td>${cur?'100.0':'0.0'}%</td></tr></tbody></table></div>`;
   const im={};items.forEach(x=>{im[x.item]=im[x.item]||{qty:0,revenue:0,category:x.category||'Uncategorised'};im[x.item].qty+=num(x.qty);im[x.item].revenue+=num(x.revenue)});const ranked=Object.entries(im).sort((a,b)=>b[1].revenue-a[1].revenue);q('#topItems').innerHTML=ranked.length?ranked.slice(0,5).map(([n,v],i)=>`<div class="rank-row"><div class="rank-no">${i+1}</div><div><b>${html(n)}</b><small>${v.qty} units · ${html(v.category)}</small></div><b>${money(v.revenue)}</b></div>`).join(''):'<div class="empty-state">No item sales yet.</div>';q('#bottomItems').innerHTML=ranked.length?ranked.slice(-2).reverse().map(([n,v],i)=>`<div class="rank-row bottom"><div class="rank-no">${i+1}</div><div><b>${html(n)}</b><small>${v.qty} units · ${html(v.category)}</small></div><b>${money(v.revenue)}</b></div>`).join(''):'<div class="empty-state">No item sales yet.</div>';
   const cats={};items.forEach(x=>cats[x.category||'Uncategorised']=(cats[x.category||'Uncategorised']||0)+num(x.revenue));const ce=Object.entries(cats).sort((a,b)=>b[1]-a[1]),tot=ce.reduce((a,b)=>a+b[1],0),colors=['#4f46e5','#06b6d4','#16a34a','#f59e0b','#ec4899','#8b5cf6','#ef4444','#14b8a6'];if(ce.length&&tot){let a=0,st=[];ce.forEach(([n,v],i)=>{const s=a/tot*360;a+=v;st.push(`${colors[i%colors.length]} ${s}deg ${a/tot*360}deg`)});if(q('#categoryPie'))q('#categoryPie').style.background=`conic-gradient(${st.join(',')})`;if(q('#categoryLegend'))q('#categoryLegend').innerHTML=ce.map(([n,v],i)=>`<div class="legend-row"><span class="legend-key"><i class="legend-swatch" style="background:${colors[i%colors.length]}"></i>${html(n)}</span><b>${(v/tot*100).toFixed(1)}%</b></div>`).join('')}else{if(q('#categoryPie'))q('#categoryPie').style.background='#e5e7eb';if(q('#categoryLegend'))q('#categoryLegend').innerHTML='<div class="empty-state">No category sales data.</div>'}
   q('#bankCards').innerHTML=banks().length?banks().map(b=>`<div class="card kpi"><div class="label">${html(b.name)}</div><div class="value" data-fs-bank-ledger="${b.id}">Loading…</div><div class="sub">Book balance</div></div>`).join(''):'<div class="card empty-state">No bank accounts configured.</div>';
@@ -8094,9 +8094,7 @@ function renderCategoryBars(){
   const wrap=pie.parentElement;if(!wrap)return;
   wrap.classList.remove('pie-wrap');wrap.innerHTML=`<div class="category-bar-chart" id="categoryBarChart">${rows.length?rows.map(([name,val])=>`<div class="category-bar-row"><div class="category-bar-name" title="${esc(name)}">${esc(name)}</div><div class="category-bar-track"><div class="category-bar-fill" style="width:${Math.max(1,val/max*100)}%"></div></div><div class="category-bar-value">${money(val)}<div class="small-note">${tot?(val/tot*100).toFixed(1):'0.0'}%</div></div></div>`).join(''):'<div class="empty-state">No category sales in this period.</div>'}</div>`;
 }
-function dashboardPolish(){
-  renderPaymentTable();renderAdaptiveLine();renderCategoryBars();
-}
+function dashboardPolish(){ /* V18.5.5 owns graph, payment table and category bars. */ }
 function bind(){
   collapseSetup();enhanceVarianceControls();renderVarianceFiltered();dashboardPolish();
   ['applyDashboardDates','dashboardTodayBtn','dashboardMonthBtn'].forEach(id=>{const b=q('#'+id);if(b&&!b.dataset.v18542){b.dataset.v18542='1';b.addEventListener('click',()=>setTimeout(dashboardPolish,100))}});
@@ -10211,8 +10209,10 @@ document.addEventListener('finsight:cloud-state-loaded',async()=>{stockCategorie
    ]);
    if(serial!==pending)return;
    const rows=Array.isArray(raw)?raw:(raw?[raw]:[]),total=Array.isArray(summary)?(summary[0]||{}):(summary||{});
+   const totals={oq:0,opening:0,pq:0,purchases:0,cq:0,closing:0,cogs:0};
+   rows.forEach(r=>{const oq=choose(r,'opening_qty','opening_quantity'),oc=choose(r,'opening_unit_cost','opening_cost'),pq=choose(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=choose(r,'purchases','purchase_value','purchases_value'),cq=choose(r,'closing_qty','closing_quantity'),cc=choose(r,'closing_unit_cost','closing_cost','closing_wac');totals.oq+=oq;totals.opening+=oq*oc;totals.pq+=pq;totals.purchases+=pv;totals.cq+=cq;totals.closing+=choose(r,'closing_value','closing_stock_value')||(cq*cc);totals.cogs+=choose(r,'consumption','cost_of_sales','cogs','consumption_value')});
    const out=rows.map(r=>{const oq=choose(r,'opening_qty','opening_quantity'),oc=choose(r,'opening_unit_cost','opening_cost'),pq=choose(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=choose(r,'purchases','purchase_value','purchases_value'),cq=choose(r,'closing_qty','closing_quantity'),cc=choose(r,'closing_unit_cost','closing_cost','closing_wac'),cv=choose(r,'closing_value','closing_stock_value')||(cq*cc),cos=choose(r,'consumption','cost_of_sales','cogs','consumption_value');return `<tr><td>${safe(r.item_name||r.stock_item_name||r.name||'Stock Item')}</td><td>${oq.toFixed(3)}</td><td>${cash(oc)}</td><td>${cash(oq*oc)}</td><td>${pq.toFixed(3)}</td><td>${cash(pv)}</td><td>${cq.toFixed(3)}</td><td>${cash(cc)}</td><td>${cash(cv)}</td><td>${cash(cos)}</td></tr>`}).join('');
-   const html=`<div class="report-card" data-live-cogs-report="1"><h3>COST OF SALES REPORT</h3><p>${safe(from)} to ${safe(to)}</p><div style="overflow-x:auto"><table class="cogs-report-table"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Unit Cost</th><th>Opening Value</th><th>Purchased Units</th><th>Purchases Value</th><th>Closing Units</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Cost of Sales</th></tr></thead><tbody>${out||'<tr><td colspan="10">No inventory activity for this period.</td></tr>'}</tbody><tfoot><tr><th colspan="3">Total</th><th>${cash(choose(total,'opening_stock','opening_stock_value'))}</th><th></th><th>${cash(choose(total,'purchases','purchase_value'))}</th><th colspan="2"></th><th>${cash(choose(total,'closing_stock','closing_stock_value'))}</th><th>${cash(choose(total,'cost_of_sales','calculated_cogs','cogs'))}</th></tr></tfoot></table></div></div>`;
+   const html=`<div class="report-card" data-live-cogs-report="1"><h3>COST OF SALES REPORT</h3><p>${safe(from)} to ${safe(to)}</p><div style="overflow-x:auto"><table class="cogs-report-table"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Unit Cost</th><th>Opening Value</th><th>Purchased Units</th><th>Purchases Value</th><th>Closing Units</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Cost of Sales</th></tr></thead><tbody>${out||'<tr><td colspan="10">No inventory activity for this period.</td></tr>'}</tbody><tfoot><tr><th>Total</th><th>${totals.oq.toFixed(3)}</th><th>—</th><th>${cash(totals.opening)}</th><th>${totals.pq.toFixed(3)}</th><th>${cash(totals.purchases)}</th><th>${totals.cq.toFixed(3)}</th><th>—</th><th>${cash(totals.closing)}</th><th>${cash(totals.cogs)}</th></tr></tfoot></table></div></div>`;
    writing=true;panel.innerHTML=html;panel.dataset.liveKey=key;writing=false;lastKey=key;
   }catch(e){if(serial!==pending)return;writing=true;panel.innerHTML=`<div class="report-card"><h3>COST OF SALES REPORT</h3><div class="empty-state">Unable to load live COGS: ${safe(e.message||e)}</div></div>`;panel.dataset.liveKey='error';writing=false}
  }
@@ -10282,5 +10282,98 @@ const syncHost=el('fsBankPreview26');if(syncHost)syncHost.parentElement.insertBe
 syncBtn.onclick=async()=>{const sb=window.finsightSupabase,id=window.finsightOnline?.companyId;if(!sb||!id)return msg('Select Test Company first.');syncBtn.disabled=true;msg('Linking existing bank supplier payments (no journals will be created)...');try{const {data,error}=await sb.rpc('fs_sync_bank_supplier_history',{p_company:id});if(error)throw Error(error.message);await window.finsightReloadCloudState?.();msg('Supplier payments linked: '+(data?.linked||0)+'. Open Supplier Statements or Supplier Balances. No additional journals posted.');}catch(e){msg('Supplier sync failed: '+(e.message||String(e)));}finally{syncBtn.disabled=false}};
 root.addEventListener('click',e=>{if(e.target.id==='fsBankPost26')postBankRows();if(e.target.id==='fsBankUpload26')el('fsBankFile26').click();if(e.target.id==='fsBankBlank26')download('FinSight_Bank_Transactions_Template.csv',csv([columns]));if(e.target.id==='fsBankSample26')download('FinSight_Bank_Transactions_Sample.csv',csv([columns,['2026-10-15','Prime Bank','Electricity payment','DEMO001','0','3500','Utilities','',''],['2026-10-15','Prime Bank','Bank charges','DEMO002','0','250','Bank Charges','',''],['2026-10-16','Prime Bank','Owner contribution','DEMO003','20000','0','Owner Capital','','']]));if(e.target.id==='fsBankExport26'){if(rows.some(r=>r.errors.length)){msg('Correct validation errors before exporting.');return;}download('FinSight_Bank_Transactions_Validated.csv',csv([columns,...rows.map(r=>columns.map(k=>r[k]))]));}});
 el('fsBankFile26').addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{await loadMaster();const list=parse((await f.text()).replace(/^\ufeff/,''));if(list.length<2)throw Error('CSV needs a header and at least one row.');const head=list.shift().map(x=>x.trim());if(new Set(head.map(norm)).size!==head.length)throw Error('Repeated CSV headings.');const missing=columns.filter(x=>!head.some(h=>norm(h)===norm(x)));if(missing.length)throw Error('Missing columns: '+missing.join(', '));let idx=Object.fromEntries(columns.map(k=>[k,head.findIndex(h=>norm(k)===norm(h))]));rows=list.map((cells,i)=>{let r={line:i+2};columns.forEach(k=>r[k]=String(cells[idx[k]]??'').trim());r.errors=[];try{r.in=money(r['Money In']);r.out=money(r['Money Out']);}catch(err){r.in=0;r.out=0;r.errors.push(err.message);}let prior=[...r.errors];check(r);r.errors.unshift(...prior);return r;});render();}catch(err){rows=[];el('fsBankPreview26').innerHTML='';msg(err.message||String(err));}finally{e.target.value='';}});
+})();
+</script>
+
+<style id="fs-index101-reports-styling">
+/* Daily Sales payment group headers: consistent visual boundaries, no accounting changes. */
+#reportDaily .report-card{width:100%;max-width:100%;overflow-x:auto}
+#reportDaily .fs-daily-table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;font-size:11px}
+#reportDaily .fs-daily-table th,#reportDaily .fs-daily-table td{padding:10px 12px;white-space:nowrap;vertical-align:middle;text-align:right;border-bottom:1px solid #e2e8f0}
+#reportDaily .fs-daily-table th:first-child,#reportDaily .fs-daily-table td:first-child{text-align:left;position:sticky;left:0;background:#fff;z-index:1}
+#reportDaily .fs-daily-table thead th:first-child{background:#eef2ff;z-index:3}
+#reportDaily .fs-daily-table .grouped-head .fs-pay-group{background:#e9edff;color:#3730a3;text-align:center;font-weight:800;border-left:2px solid #a5b4fc;border-bottom:1px solid #c7d2fe}
+#reportDaily .fs-daily-table .grouped-head .fs-pay-group:nth-of-type(even){background:#e9f7f5;color:#0f766e;border-left-color:#5eead4}
+#reportDaily .fs-daily-table .sub-head th{background:#f8fafc;color:#334155;text-align:right}
+#reportDaily .fs-daily-table .fs-pay-start{border-left:2px solid #a5b4fc!important}
+#reportDaily .fs-daily-table tbody tr:nth-child(even) td{background:#f8fafc}
+#reportDaily .fs-daily-table tbody tr:nth-child(even) td:first-child{background:#f8fafc}
+#reportDaily .fs-daily-table tfoot th{background:#eef2ff;font-weight:800;border-top:2px solid #818cf8}
+#reportDaily .fs-daily-table td input.dailyComment{min-width:155px;max-width:220px}
+/* Every report: preserve numeric right alignment and horizontal scrolling on screen. */
+#reports .report-panel .report-card>table,#reports .report-panel .report-card>div>table{border-collapse:collapse}
+#reports .report-panel table td,#reports .report-panel table th{vertical-align:middle}
+#reports .report-panel table thead{display:table-header-group}
+#reports .report-panel table tfoot{display:table-footer-group}
+#reports .report-panel table tr{break-inside:avoid;page-break-inside:avoid}
+#reportCogs .cogs-report-table tfoot th{font-weight:800;background:#eef2ff;border-top:2px solid #818cf8;text-align:right;white-space:nowrap}
+#reportCogs .cogs-report-table tfoot th:first-child{text-align:left}
+@media print{
+  #reports .report-card{overflow:visible!important}
+  #reports #reportDaily .report-card{overflow:visible!important}
+  #reports .fs-daily-table{width:100%!important;min-width:0!important;font-size:7px!important}
+  #reports .fs-daily-table th,#reports .fs-daily-table td{padding:4px 3px!important;white-space:normal!important;position:static!important}
+  #reports .dailyComment{border:0!important;min-width:0!important;width:100%!important;font:inherit!important}
+  #reports table{break-inside:auto}
+  #reports tr{break-inside:avoid}
+  #reports .cogs-report-table{min-width:0!important;width:100%!important;font-size:7px!important}
+  #reports .cogs-report-table th,#reports .cogs-report-table td{white-space:normal!important;padding:4px!important}
+}
+</style>
+<script id="fs-index101-reports-export">
+(()=>{
+'use strict';
+const root=document.getElementById('reports');if(!root)return;
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function current(){return root.querySelector('.report-panel.active:not(.hidden)')||root.querySelector('.report-panel:not(.hidden)')}
+function title(){return (root.querySelector('.report-tab.active')?.textContent||'Report').trim()}
+function cloneReport(){
+ const p=current();if(!p)return null;
+ const node=p.cloneNode(true);
+ node.querySelectorAll('input,textarea,select').forEach(el=>{const text=document.createElement('span');text.textContent=el.value||'';el.replaceWith(text)});
+ node.querySelectorAll('.no-print,.fs510-no-print,button').forEach(el=>el.remove());
+ return node;
+}
+function downloadExcel(){
+ const panel=cloneReport();if(!panel)return;
+ const tables=[...panel.querySelectorAll('table')];if(!tables.length){alert('No table in this report.');return}
+ const cname=(typeof state!=='undefined' ? (state.company?.name||state.companyName||'') : '')||'';
+ const from=document.getElementById('reportFrom')?.value||'',to=document.getElementById('reportTo')?.value||'';
+ const columns=Math.max(1,...tables.map(t=>Math.max(1,...[...t.rows].map(r=>[...r.cells].reduce((sum,c)=>sum+c.colSpan,0)))));
+ const head=`<tr><th colspan="${columns}" style="font-size:16pt;text-align:center;background:#eef2ff">${esc(cname)}</th></tr><tr><th colspan="${columns}" style="font-size:13pt;text-align:center">${esc(title().toUpperCase())}</th></tr><tr><th colspan="${columns}" style="text-align:center">${esc(from)} to ${esc(to)}</th></tr>`;
+ const parts=tables.map((table,ti)=>{
+   const trs=[...table.rows].map((tr,ri)=>`<tr>${[...tr.cells].map((cell,ci)=>{
+     const tag=cell.tagName.toLowerCase()==='th'?'th':'td',col=cell.colSpan>1?` colspan="${cell.colSpan}"`:'',row=cell.rowSpan>1?` rowspan="${cell.rowSpan}"`:'',group=cell.classList.contains('fs-pay-start')||cell.classList.contains('fs-pay-group'),bg=cell.closest('thead')?'background:#e9edff;font-weight:bold;':cell.closest('tfoot')?'background:#eef2ff;font-weight:bold;':'';
+     const style=`border:1px solid ${group?'#818cf8':'#cbd5e1'};padding:7px;text-align:${ci?'right':'left'};vertical-align:middle;${bg}`;
+     return `<${tag}${col}${row} style="${style}">${esc(cell.innerText.trim())}</${tag}>`}).join('')}</tr>`).join('');
+   return `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;font-family:Arial,sans-serif;font-size:10pt;${ti?'margin-top:24px;':''}">${ti?'':head}${trs}</table>`;
+ });
+ const html=`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${parts.join('<p></p>')}</body></html>`;
+ const blob=new Blob(['\ufeff',html],{type:'application/vnd.ms-excel;charset=utf-8'});
+ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='FinSight_'+title().replace(/[^a-z0-9]+/gi,'_')+'.xls';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function printActive(){
+ const panel=cloneReport();if(!panel)return;
+ const tab=title().toLowerCase(),wide=tab.includes('daily')||tab.includes('cost of sales');
+ const w=window.open('','_blank');if(!w){alert('Allow pop-ups to export the PDF.');return}
+ const styles=`@page{size:${wide?'A3 landscape':'A4 landscape'};margin:10mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px}h2,h3{font-size:17px;margin:6px 0 12px}table{width:100%;border-collapse:collapse;table-layout:auto;font-size:${wide?'7':'9'}px}th,td{border:1px solid #cbd5e1;padding:${wide?'3':'5'}px;text-align:right;vertical-align:middle;overflow-wrap:anywhere}th:first-child,td:first-child{text-align:left}thead{display:table-header-group}tfoot{display:table-footer-group}thead tr th{background:#eef2ff;font-weight:bold}.grouped-head .fs-pay-group{background:#dbeafe;text-align:center;border-left:2px solid #818cf8}.sub-head .fs-pay-start,tbody .fs-pay-start{border-left:2px solid #818cf8}tbody tr:nth-child(even){background:#f8fafc}.fs-daily-scroll,.report-card{overflow:visible!important}.cogs-report-table{min-width:0!important}.cogs-report-table td,.cogs-report-table th{white-space:normal!important}input,button,.no-print,.fs510-no-print{display:none!important}tr{page-break-inside:avoid;break-inside:avoid}.report-headline{display:flex;justify-content:space-between;border-bottom:2px solid #1e293b;margin-bottom:12px;padding-bottom:6px}.report-headline h3{margin:0}.report-headline div:last-child{text-align:right}.report-card{border:0}.live-fin-table td:nth-child(n+2){text-align:right}.fs-daily-footer th,.cogs-report-table tfoot th{background:#eef2ff;font-weight:bold}.fs-pay-group:nth-of-type(even){background:#dcfce7}`;
+ w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title())}</title><style>${styles}</style></head><body>${panel.innerHTML}</body></html>`);w.document.close();w.focus();w.addEventListener('load',()=>w.print(),{once:true});
+}
+function styleDaily(){
+ const t=document.querySelector('#reportDaily table');if(!t||t.dataset.fs101Groups)return;
+ t.dataset.fs101Groups='1';t.classList.add('fs-daily-table');
+ const head=t.tHead?.rows?.[0],sub=t.tHead?.rows?.[1];if(!head||!sub)return;
+ for(let i=1;i<head.cells.length-2;i++)head.cells[i].classList.add('fs-pay-group');
+ for(let i=0;i<sub.cells.length;i+=3)sub.cells[i].classList.add('fs-pay-start');
+ for(const tr of [...t.tBodies].flatMap(x=>[...x.rows]))for(let i=1;i<tr.cells.length-2;i+=3)tr.cells[i].classList.add('fs-pay-start');
+}
+const dailyPanel=document.getElementById('reportDaily');
+if(dailyPanel){new MutationObserver(styleDaily).observe(dailyPanel,{childList:true});styleDaily()}
+function bind(){
+ const excel=document.getElementById('exportReportCsvBtn'),pdf=document.getElementById('printReportBtn');
+ if(excel&&!excel.dataset.fs101){excel.dataset.fs101='1';excel.textContent='Download Excel';excel.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();downloadExcel()},true)}
+ if(pdf&&!pdf.dataset.fs101){pdf.dataset.fs101='1';pdf.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();printActive()},true)}
+}
+bind();document.addEventListener('finsight:cloud-state-loaded',bind);
 })();
 </script>
