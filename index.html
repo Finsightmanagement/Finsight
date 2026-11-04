@@ -10212,10 +10212,22 @@ async function editApprovedTake(record){
    if(!stockDate){errorEl.textContent='Select the corrected stock date.';return}
    const rows=[...document.querySelectorAll('#approvedStockRows tr')].map((row,i)=>({stock_item_id:approved[i].stock_item_id,quantity:row.querySelector('.approved-stock-qty').value,explanation:row.querySelector('.approved-stock-exp').value}));
    if(rows.some(r=>r.quantity.trim()===''||!Number.isFinite(Number(r.quantity))||Number(r.quantity)<0)){errorEl.textContent='Every stock item needs a valid, non-negative quantity.';return}
-   if(!confirm('Save changes to this APPROVED reconciliation? Official closing stock will be recalculated and an audit record created.'))return;
+   const args={p_company:company(),p_submission_id:record.id,p_lines:rows.map(r=>({...r,quantity:Number(r.quantity)})),p_notes:document.getElementById('stockApprovedNotes').value,p_reason:reason,p_stock_date:stockDate};
+   save.disabled=true;errorEl.textContent='Calculating downstream inventory impact…';
+   let preview;
+   try{
+     preview=await rpc('preview_approved_stock_chain',args);
+     const before=new Map((preview.before||[]).map(x=>[String(x.id),x]));
+     const changes=(preview.after||[]).filter(x=>{const old=before.get(String(x.id));return old&&(Number(old.value)!==Number(x.value)||String(old.date)!==String(x.date))});
+     const fmt=n=>'KSh '+Number(n||0).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+     const lines=changes.map(x=>{const old=before.get(String(x.id));return `${x.number} (${old.date}${old.date===x.date?'':' → '+x.date}): ${fmt(old.value)} → ${fmt(x.value)} (change ${fmt(Number(x.value)-Number(old.value))})`});
+     const message=`Preview of affected official closing-stock valuations (no changes saved yet):\n\n${lines.join('\n')||'No closing-stock valuation changes detected.'}\n\nApproved quantities on later dates are preserved. All affected costs are recalculated. Continue and save?`;
+     if(!confirm(message)){errorEl.textContent='Preview complete. No changes saved.';return}
+   }catch(e){errorEl.textContent='Unable to preview safely: '+(e.message||String(e));return}
+   finally{save.disabled=false}
    save.disabled=true;errorEl.textContent='Saving corrected reconciliation…';
    try{
-     await rpc('edit_approved_stock_reconciliation',{p_company:company(),p_submission_id:record.id,p_lines:rows.map(r=>({...r,quantity:Number(r.quantity)})),p_notes:document.getElementById('stockApprovedNotes').value,p_reason:reason,p_stock_date:stockDate});
+     await rpc('edit_approved_stock_reconciliation',args);
      // Verify the committed date and quantities before announcing success.
      const saved=await rpc('stock_take_list',{p_company:company()});
      const confirmed=Array.isArray(saved)?saved.find(r=>r.id===record.id):null;
