@@ -1691,7 +1691,7 @@ window.deletePostedSale=function(id){
    const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
    if(!sb||!cid)return toast('Supabase company connection unavailable');
    try{
-     const {error}=await sb.rpc('fs_change_posted_sale',{p_company:cid,p_sale:id,p_action:'delete',p_reason:reason});
+     const {error}=await sb.rpc('fs_change_posted_sale',{p_company:cid,p_sale:id,p_action:'delete',p_reason:reason,p_stock_date:stockDate});
      if(error)throw error;
      closeModal();toast('Sale deleted from Supabase');
      if(typeof window.finsightReloadCloudState==='function') await window.finsightReloadCloudState();
@@ -7567,7 +7567,11 @@ function enableButtons(){
     btn.onclick=e=>{
       e.preventDefault();
       if(btn.dataset.kind==='stock'){
-        toast('Use Inventory → New Reconciliation → Upload Stock Take CSV.');
+         if(typeof window.finsightStartStockTakeUpload==='function'){
+           window.finsightStartStockTakeUpload();
+         }else{
+           toast('Stock Take uploader is not ready. Open Stock Take and try again.');
+         }
         return;
       }
       const kind=btn.dataset.kind;
@@ -8889,9 +8893,17 @@ async function uploadIntoRecon(){
    const raw=String(rows[n][qi]||'').trim();if(raw==='')continue;const qty=Number(raw);if(!Number.isFinite(qty)||qty<0)return toast(`Invalid physical quantity for ${name}.`);data.push({id:it.id,qty});
   }
   const tb=q('#irLines');if(!tb)return toast('Open New Reconciliation first.');
-  qa('tr',tb).forEach(r=>{const sel=q('.iri',r),hit=data.find(x=>String(x.id)===String(sel?.value));if(hit){const qty=q('.irq',r),inc=q('.irinclude',r);if(qty)qty.value=hit.qty;if(inc)inc.checked=true}});
   if(!data.length)return toast('No physical quantities found in the selected CSV.');
-  toast(`${data.length} stock quantities populated. Review the reconciliation lines before saving.`);
+   for(const hit of data){
+     let row=qa('tr',tb).find(r=>String(q('.iri',r)?.value)===String(hit.id));
+     
+     if(!row)continue;
+     const qty=q('.irq',row),inc=q('.irinclude',row);
+     if(qty)qty.value=hit.qty;if(inc)inc.checked=true;
+   }
+   const physical=q('#irPhysicalSection');if(physical)physical.style.display='';
+   const toggle=q('#irToggleDetails');if(toggle)toggle.textContent='Hide Reconciliation';
+   toast(`${data.length} stock quantities populated. Review the reconciliation lines before saving.`);
  };document.body.appendChild(inp);inp.addEventListener('change',()=>inp.remove(),{once:true});inp.click();
 }
 window.finsightUploadStockTakeCsv=uploadIntoRecon;
@@ -10039,7 +10051,7 @@ let staff=[],staffId='',pin='',draftId=null,reviewRows=[];
 async function rpc(name,args){const {data,error}=await window.finsightSupabase.rpc(name,args);if(error)throw Error(error.message);return data}
 const items=()=> (window.state?.stockItems|| (typeof state!=='undefined'?state.stockItems:[])||[]).filter(x=>x.id&&x.active!==false);
 function pageOpen(){const p=$('#stock-take-clerk');if(!p)return;$$('.page').forEach(x=>x.classList.toggle('active',x===p));$$('.sidebar .nav-item').forEach(x=>x.classList.toggle('active',x.dataset.page==='stock-take-clerk'));$('#pageTitle').textContent='Stock Take';if($('#pageSub'))$('#pageSub').textContent='';display()}
-function notify(s){const x=$('#stock12msg');if(x)x.textContent=s;else alert(s)}
+function notify(s){const x=$('#stock12msg');if(x&&x.getClientRects().length){x.textContent=s;return}if(typeof window.toast==='function')window.toast(s);else alert(s)}
 function renderLines(lines){const body=$('#stock12lines');if(!body)return;body.innerHTML=lines.map(x=>`<tr data-id="${esc(x.stock_item_id)}"><td>${esc(items().find(i=>String(i.id)===String(x.stock_item_id))?.name||x.stock_item_id)}</td><td><input type="number" min="0" step="any" class="stock12qty" value="${x.quantity??''}" placeholder="Quantity"></td><td><input class="stock12exp" value="${esc(x.explanation||'')}"></td></tr>`).join('')}
 function lines(){return $$('#stock12lines tr').filter(r=>$('.stock12qty',r).value.trim()!=='').map(r=>({stock_item_id:r.dataset.id,quantity:Number($('.stock12qty',r).value),explanation:$('.stock12exp',r).value}))}
 async function stockTemplateRows(){
@@ -10079,26 +10091,85 @@ async function stockTemplatePrint(){
  w.document.close();
  }catch(e){notify(e.message||String(e));}
 }
-async function csvUpload(){const inp=document.createElement('input');inp.type='file';inp.accept='.csv,text/csv';inp.onchange=async()=>{const file=inp.files?.[0];inp.remove();if(!file)return;try{const text=await file.text();const parse=text=>{const a=[];let r=[],x='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){x+='"';i++}else quoted=!quoted}else if(c===','&&!quoted){r.push(x);x=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;r.push(x);if(r.some(z=>z.trim()))a.push(r);r=[];x=''}else x+=c}r.push(x);if(r.some(z=>z.trim()))a.push(r);return a};const rows=parse(text),hdr=rows.shift().map(v=>v.trim().toLowerCase());const ni=hdr.indexOf('item'),qi=hdr.indexOf('closing stock')>=0?hdr.indexOf('closing stock'):(hdr.indexOf('physical quantity')>=0?hdr.indexOf('physical quantity'):hdr.indexOf('quantity')),ci=hdr.indexOf('comment')>=0?hdr.indexOf('comment'):hdr.indexOf('explanation');if(ni<0||qi<0)throw Error('CSV requires Item and Closing Stock (or Physical Quantity) columns');const data=[],seen=new Set();for(const r of rows){const name=(r[ni]||'').trim(),quantity=(r[qi]||'').trim();if(!name||!quantity)continue;const it=items().find(x=>x.name.trim().toLowerCase()===name.toLowerCase());if(!it)throw Error('Unknown stock item: '+name);if(seen.has(it.id))throw Error('Duplicate stock item: '+name);seen.add(it.id);if(!Number.isFinite(Number(quantity))||Number(quantity)<0)throw Error('Invalid quantity for '+name);data.push({stock_item_id:it.id,quantity:Number(quantity),explanation:ci>=0?(r[ci]||''):''})}if(!data.length)throw Error('No quantities in CSV');
- const form=$('#stock12form'),newBar=$('#stock12newbar');
- if(!form)throw Error('Open Stock Take before importing a CSV.');
- renderLines(data);
- form.style.display='';
- if(newBar)newBar.style.display='none';
- showCategoryTools();applyCategoryFilter();
- notify(data.length+' stock quantities loaded for preview. Not submitted.')}catch(e){notify(e.message)}};document.body.appendChild(inp);inp.click()}
+ async function csvUpload(){
+  // Import is a preview only. Never write or approve any stock quantities here.
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='.csv,text/csv';
+  inp.style.cssText='position:fixed;left:-9999px;opacity:0';
+  document.body.appendChild(inp);
+  inp.addEventListener('change',async()=>{
+   const file=inp.files?.[0];inp.remove();if(!file)return;
+   const msg=$('#stock12msg');if(msg)msg.textContent='Reading '+file.name+'…';
+   try{
+    const content=(await file.text()).replace(/^\uFEFF/,'');
+    const parse=text=>{
+     const a=[];let r=[],x='',quoted=false;
+     for(let i=0;i<text.length;i++){
+      const c=text[i];
+      if(c==='"'){if(quoted&&text[i+1]==='"'){x+='"';i++}else quoted=!quoted}
+      else if(c===','&&!quoted){r.push(x);x=''}
+      else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;r.push(x);if(r.some(z=>String(z).trim()))a.push(r);r=[];x=''}
+      else x+=c;
+     }
+     r.push(x);if(r.some(z=>String(z).trim()))a.push(r);return a;
+    };
+    const rows=parse(content);if(rows.length<2)throw Error('The selected CSV has no stock quantities.');
+    const hdr=rows.shift().map(v=>String(v||'').replace(/^\uFEFF/,'').trim().toLowerCase());
+    const ni=hdr.indexOf('item');
+    const qi=hdr.indexOf('closing stock')>=0?hdr.indexOf('closing stock'):(hdr.indexOf('physical quantity')>=0?hdr.indexOf('physical quantity'):hdr.indexOf('quantity'));
+    const ci=hdr.indexOf('comment')>=0?hdr.indexOf('comment'):hdr.indexOf('explanation');
+    if(ni<0||qi<0)throw Error('CSV requires Item and Closing Stock (or Physical Quantity) columns.');
+    // The template reads live stock_items, so validate against the same live list, not a potentially stale cached list.
+    const stock=await stockTemplateRows();
+    const byName=new Map(stock.map(it=>[String(it.name).trim().toLowerCase(),it]));
+    const data=[],seen=new Set();
+    for(const [i,r] of rows.entries()){
+     const name=String(r[ni]||'').trim(),quantity=String(r[qi]||'').trim();
+     if(!name||quantity==='')continue;
+     const it=byName.get(name.toLowerCase());
+     if(!it)throw Error('CSV row '+(i+2)+': Unknown active stock item: '+name);
+     if(seen.has(it.id))throw Error('Duplicate stock item in CSV: '+name);
+     seen.add(it.id);
+     if(!Number.isFinite(Number(quantity))||Number(quantity)<0)throw Error('Invalid physical quantity for '+name);
+     data.push({stock_item_id:it.id,quantity:Number(quantity),explanation:ci>=0?String(r[ci]||''):''});
+    }
+    if(!data.length)throw Error('No quantities were filled in. Enter values under Closing Stock or Physical Quantity.');
+    const form=$('#stock12form');if(!form)throw Error('Stock Take form is unavailable. Open Stock Take and try again.');
+    // Reset the form to a new draft; never overwrite a saved draft by importing a CSV.
+    draftId=null;
+    const date=$('#stock12date');if(date&&!date.value)date.value=new Date().toLocaleDateString('en-CA');
+    renderLines(data);
+    form.style.display='';const newBar=$('#stock12newbar');if(newBar)newBar.style.display='none';
+    showCategoryTools();applyCategoryFilter();
+    form.scrollIntoView({behavior:'smooth',block:'start'});
+    notify(data.length+' stock quantities loaded from '+file.name+'. Review them before saving or submitting.');
+   }catch(e){notify('Stock Take CSV: '+(e.message||String(e)))}
+  },{once:true});
+  inp.click();
+  window.addEventListener('focus',()=>{setTimeout(()=>{if(inp.isConnected)inp.remove()},3000)},{once:true});
+ }
+ // Called from Data & Imports as well as the Stock Take page.
+ window.finsightStartStockTakeUpload=()=>{
+  if(!company())return notify('Select a company first.');
+  if(clerk()&&!staffId){pageOpen();return notify('Select a cashier and enter the PIN before importing stock.');}
+  pageOpen();
+  // pageOpen rebuilds the Stock Take form synchronously.
+  csvUpload();
+ };
 async function editApprovedTake(record){
  if(!manager())return notify('Only Admin or Accountant can edit an approved reconciliation.');
  if(!record||record.status!=='Approved'||!record.official_reconciliation_id)return notify('No approved reconciliation is available for editing.');
  const approved=Array.isArray(record.reviewed_lines)?record.reviewed_lines:[];
  if(!approved.length)return notify('This approval has no saved stock lines.');
  const table=approved.map((l,i)=>`<tr data-approved-stock="${i}"><td>${esc(stockNameForApproved(l.stock_item_id))}</td><td><input class="input approved-stock-qty" type="number" step="any" min="0" value="${esc(l.quantity)}"></td><td><input class="input approved-stock-exp" value="${esc(l.explanation||'')}"></td></tr>`).join('');
- openModal('Edit Approved Stock Reconciliation','',`<div class="field"><b>Stock Date: ${esc(record.stock_date)}</b><div>Original approval and reference will be preserved.</div></div><div class="field"><label>Notes</label><textarea class="input" id="stockApprovedNotes" rows="2">${esc(record.notes||'')}</textarea></div><div style="overflow:auto;max-height:45vh"><table><thead><tr><th>Stock Item</th><th>Approved Quantity</th><th>Explanation</th></tr></thead><tbody id="approvedStockRows">${table}</tbody></table></div><div class="field"><label>Reason for editing *</label><textarea class="input" id="approvedStockReason" rows="2" placeholder="Explain the correction"></textarea></div><div class="modal-actions"><button class="btn primary" id="saveApprovedStock">Save Corrected Reconciliation</button></div><div id="approvedStockError" role="alert"></div>`);
+ openModal('Edit Approved Stock Reconciliation','',`<div class="field"><label>Stock Date</label><input class="input" type="date" id="stockApprovedDate" value="${esc(record.stock_date)}"><div>Original approval and reference will be preserved.</div></div><div class="field"><label>Notes</label><textarea class="input" id="stockApprovedNotes" rows="2">${esc(record.notes||'')}</textarea></div><div style="overflow:auto;max-height:45vh"><table><thead><tr><th>Stock Item</th><th>Approved Quantity</th><th>Explanation</th></tr></thead><tbody id="approvedStockRows">${table}</tbody></table></div><div class="field"><label>Reason for editing *</label><textarea class="input" id="approvedStockReason" rows="2" placeholder="Explain the correction"></textarea></div><div class="modal-actions"><button class="btn primary" id="saveApprovedStock">Save Corrected Reconciliation</button></div><div id="approvedStockError" role="alert"></div>`);
  const save=document.getElementById('saveApprovedStock');
  save.onclick=async()=>{
    const reason=document.getElementById('approvedStockReason').value.trim();
+   const stockDate=document.getElementById('stockApprovedDate').value;
    const errorEl=document.getElementById('approvedStockError');
    if(!reason){errorEl.textContent='A reason for editing is required.';return}
+   if(!stockDate){errorEl.textContent='Select the corrected stock date.';return}
    const rows=[...document.querySelectorAll('#approvedStockRows tr')].map((row,i)=>({stock_item_id:approved[i].stock_item_id,quantity:row.querySelector('.approved-stock-qty').value,explanation:row.querySelector('.approved-stock-exp').value}));
    if(rows.some(r=>r.quantity.trim()===''||!Number.isFinite(Number(r.quantity))||Number(r.quantity)<0)){errorEl.textContent='Every stock item needs a valid, non-negative quantity.';return}
    if(!confirm('Save changes to this APPROVED reconciliation? Official closing stock will be recalculated and an audit record created.'))return;
@@ -10108,15 +10179,15 @@ async function editApprovedTake(record){
      document.getElementById('closeModalBtn')?.click();
      await showHistory();
      await review();
-     notify('Approved reconciliation corrected. Official stock and audit history updated.');
+     notify('Approved reconciliation corrected. Stock date, official stock and audit history updated.');
    }catch(e){errorEl.textContent=e.message||String(e)}finally{save.disabled=false}
  };
 }
 function stockNameForApproved(id){return items().find(i=>String(i.id)===String(id))?.name||String(id)}
 async function showHistory(){try{const rows=await rpc('stock_take_list',{p_company:company(),p_staff_id:clerk()?staffId:null,p_pin:clerk()?pin:null});const el=$('#stock12history');if(!el)return;el.innerHTML=rows.length?`<table><thead><tr><th>Date</th><th>Status</th><th>Items</th><th>Actions</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.stock_date)}</td><td>${esc(r.status)}</td><td>${r.lines?.length||0}</td><td>${['Draft','Returned'].includes(r.status)?`<button class="btn" data-reedit="${r.id}">Continue</button>`:''}${manager()&&r.status==='Approved'&&r.official_reconciliation_id?`<button class="btn" data-approved-edit="${r.id}">Edit Approved</button>`:''}</td></tr>`).join('')}</tbody></table>`:'No stock takes yet';$$('[data-approved-edit]',el).forEach(b=>b.onclick=()=>editApprovedTake(rows.find(z=>z.id===b.dataset.approvedEdit)));$$('[data-reedit]',el).forEach(b=>b.onclick=()=>{const r=rows.find(z=>z.id===b.dataset.reedit);draftId=r.id;$('#stock12form').style.display='';$('#stock12newbar').style.display='none';$('#stock12date').value=r.stock_date;$('#stock12notes').value=r.notes||'';renderLines(r.lines);showCategoryTools();applyCategoryFilter();notify('Draft loaded')})}catch(e){notify(e.message)}}
 async function display(){const root=$('#stock12body');if(!root||!company())return;if(clerk()&&!staffId){root.innerHTML='<div class="stock12-panel"><h3>Cashier Identification</h3><div class="stock12-row"><label>Cashier<select id="stock12staff"></select></label><label>PIN<input id="stock12pin" type="password" maxlength="8"></label></div><button class="btn primary" id="stock12login">Continue</button><div id="stock12msg"></div></div>';$('#stock12staff').innerHTML='<option value="">Select Cashier</option>'+staff.filter(x=>x.is_active).map(x=>`<option value="${x.id}">${esc(x.full_name)}</option>`).join('');$('#stock12login').onclick=async()=>{const id=$('#stock12staff').value,p=$('#stock12pin').value;try{if(!id||!p||!await rpc('recon_check_pin',{p_company:company(),p_staff_id:id,p_pin:p}))throw Error('Select cashier and enter the correct PIN');staffId=id;pin=p;display()}catch(e){notify(e.message)}};return}
-root.innerHTML=`<div class="stock12-panel" id="stock12newbar"><button class="btn primary" id="stock12new">+ New Stock Take</button></div><div class="stock12-panel" id="stock12form" style="display:none"><div class="stock12-row"><label>Stock Date<input id="stock12date" type="date" value=""> </label><label>Notes<input id="stock12notes"></label></div><div class="stock12-row"><button class="btn" id="stock12template">Download Template</button><button class="btn" id="stock12print">Print Template</button><button class="btn" id="stock12csv">Upload Stock Take CSV</button><button class="btn" id="stock12draft">Save Draft</button><button class="btn primary" id="stock12submit">Submit for Approval</button>${clerk()?'<button class="btn" id="stock12lock">Change Cashier</button>':''}</div><div style="overflow:auto"><table><thead><tr><th>Stock Item</th><th>Physical Quantity</th><th>Explanation</th></tr></thead><tbody id="stock12lines"></tbody></table></div><div id="stock12msg"></div></div><div class="stock12-panel"><h3>Stock Take History</h3><div id="stock12history"></div></div>`;
-$('#stock12new').onclick=()=>{draftId=null;$('#stock12date').value='';$('#stock12notes').value='';renderLines(items().map(x=>({stock_item_id:x.id,quantity:''})));$('#stock12form').style.display='';$('#stock12newbar').style.display='none';showCategoryTools();applyCategoryFilter()};renderLines(items().map(x=>({stock_item_id:x.id,quantity:''})));loadCategories().then(()=>{showCategoryTools();applyCategoryFilter()}).catch(e=>notify('Category load: '+e.message));$('#stock12template').onclick=stockTemplateCsv;$('#stock12print').onclick=stockTemplatePrint;$('#stock12csv').onclick=csvUpload;for(const act of ['draft','submit'])$('#stock12'+act).onclick=async()=>{const rows=lines();if(!rows.length)return notify('Enter quantities before saving');if(!$('#stock12date').value)return notify('Select a stock date.');if(rows.some(r=>!Number.isFinite(r.quantity)||r.quantity<0))return notify('Invalid quantity');if(act==='submit'&&!confirm(`Submit ${rows.length} stock items for approval for ${$('#stock12date').value}? Once submitted, the count will be locked pending review.`))return;const b=$('#stock12'+act);b.disabled=true;try{await rpc('stock_take_save',{p_company:company(),p_stock_date:$('#stock12date').value,p_notes:$('#stock12notes').value,p_lines:rows,p_action:act,p_id:draftId,p_staff_id:clerk()?staffId:null,p_pin:clerk()?pin:null});draftId=null;if(act==='submit'){await display();notify('Stock Take submitted for approval. It is now in your history.');}else{await showHistory();notify('Draft saved');}}catch(e){notify(e.message)}finally{b.disabled=false}};
+root.innerHTML=`<div class="stock12-panel" id="stock12newbar"><button class="btn primary" id="stock12new">+ New Stock Take</button><button class="btn" type="button" id="stock12directUpload">Upload Stock Take CSV</button></div><div class="stock12-panel" id="stock12form" style="display:none"><div class="stock12-row"><label>Stock Date<input id="stock12date" type="date" value=""> </label><label>Notes<input id="stock12notes"></label></div><div class="stock12-row"><button class="btn" id="stock12template">Download Template</button><button class="btn" id="stock12print">Print Template</button><button class="btn" id="stock12csv">Upload Stock Take CSV</button><button class="btn" id="stock12draft">Save Draft</button><button class="btn primary" id="stock12submit">Submit for Approval</button>${clerk()?'<button class="btn" id="stock12lock">Change Cashier</button>':''}</div><div style="overflow:auto"><table><thead><tr><th>Stock Item</th><th>Physical Quantity</th><th>Explanation</th></tr></thead><tbody id="stock12lines"></tbody></table></div><div id="stock12msg"></div></div><div class="stock12-panel"><h3>Stock Take History</h3><div id="stock12history"></div></div>`;
+$('#stock12directUpload').onclick=csvUpload;$('#stock12new').onclick=()=>{draftId=null;$('#stock12date').value='';$('#stock12notes').value='';renderLines(items().map(x=>({stock_item_id:x.id,quantity:''})));$('#stock12form').style.display='';$('#stock12newbar').style.display='none';showCategoryTools();applyCategoryFilter()};renderLines(items().map(x=>({stock_item_id:x.id,quantity:''})));loadCategories().then(()=>{showCategoryTools();applyCategoryFilter()}).catch(e=>notify('Category load: '+e.message));$('#stock12template').onclick=stockTemplateCsv;$('#stock12print').onclick=stockTemplatePrint;$('#stock12csv').onclick=csvUpload;for(const act of ['draft','submit'])$('#stock12'+act).onclick=async()=>{const rows=lines();if(!rows.length)return notify('Enter quantities before saving');if(!$('#stock12date').value)return notify('Select a stock date.');if(rows.some(r=>!Number.isFinite(r.quantity)||r.quantity<0))return notify('Invalid quantity');if(act==='submit'&&!confirm(`Submit ${rows.length} stock items for approval for ${$('#stock12date').value}? Once submitted, the count will be locked pending review.`))return;const b=$('#stock12'+act);b.disabled=true;try{await rpc('stock_take_save',{p_company:company(),p_stock_date:$('#stock12date').value,p_notes:$('#stock12notes').value,p_lines:rows,p_action:act,p_id:draftId,p_staff_id:clerk()?staffId:null,p_pin:clerk()?pin:null});draftId=null;if(act==='submit'){await display();notify('Stock Take submitted for approval. It is now in your history.');}else{await showHistory();notify('Draft saved');}}catch(e){notify(e.message)}finally{b.disabled=false}};
 if(clerk())$('#stock12lock').onclick=()=>{staffId='';pin='';draftId=null;display()};showHistory()}
 async function review(){
  const host=$('#stockApprovalQueue12');if(!host||!manager()||!company())return;
