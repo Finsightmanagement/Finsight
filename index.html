@@ -4380,10 +4380,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     const {data:memberships,error:membershipErr}=await sb.from('company_memberships').select('company_id,role,is_active').eq('user_id',user.id).eq('is_active',true); if(membershipErr)throw membershipErr;
     const membership=(memberships||[])[0]; if(!membership)throw new Error('No active FinSight company membership found');
     const cid=membership.company_id;
-    // Central FinSight licensing: deny the Accounting workspace before hydrating any company data.
-    const {data:accountingEnabled,error:licenseError}=await sb.rpc('finsight_accounting_is_enabled',{p_company:cid});
-    if(licenseError)throw new Error('Unable to verify FinSight Accounting access: '+licenseError.message);
-    if(accountingEnabled!==true)throw new Error('FinSight Accounting is disabled for this company. Contact your FinSight administrator to restore access. POS access is managed separately.');
     const {data:company,error:companyErr}=await sb.from('companies').select('id,name').eq('id',cid).single(); if(companyErr||!company)throw companyErr||new Error('FinSight company not found');
     const access={...profile,company_id:cid,role:membership.role,company_name:company.name};
     window.finsightOnline.profile=access;window.finsightOnline.companyId=cid;window.finsightOnline.company=company;window.finsightOnline.role=membership.role;
@@ -4428,25 +4424,6 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     try{document.dispatchEvent(new CustomEvent('finsight:cloud-state-loaded',{detail:{companyId:cid,role:membership.role}}));}catch(_){}
   }
   window.finsightReloadCloudState=loadCloudState;
-  // An existing browser tab must also stop presenting Accounting if its licence is suspended.
-  let lastAccountingAccessCheck=0;
-  async function recheckAccountingAccess(){
-    const cid=window.finsightOnline.companyId;
-    if(!cid||!gate.classList.contains('hidden')||Date.now()-lastAccountingAccessCheck<2500)return;
-    lastAccountingAccessCheck=Date.now();
-    try{
-      const {data:enabled,error}=await sb.rpc('finsight_accounting_is_enabled',{p_company:cid});
-      if(error||enabled!==false)return;
-      window.finsightOnline.companyId=null;window.finsightOnline.company=null;window.finsightOnline.profile=null;
-      state=newState();
-      errEl.textContent='FinSight Accounting access has been disabled for this company. Contact your FinSight administrator. POS access is separate.';
-      gate.classList.remove('hidden');document.body.classList.remove('online-loading');
-      loginBtn.disabled=false;emailEl.disabled=false;passEl.disabled=false;
-      setStatus('Accounting access suspended','bad');
-    }catch(e){console.warn('Unable to refresh Accounting licence:',e.message)}
-  }
-  window.addEventListener('focus',recheckAccountingAccess);
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)recheckAccountingAccess()});
   async function signIn(){errEl.textContent='';loginBtn.disabled=true;loginBtn.textContent='Signing in…';try{const email=emailEl.value.trim(),password=passEl.value;if(!email||!password)throw new Error('Enter your email and password.');const {error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;await loadCloudState()}catch(e){fail(e.message||String(e))}finally{loginBtn.disabled=false;loginBtn.textContent='Sign In'}}
   loginBtn.addEventListener('click',signIn);passEl.addEventListener('keydown',e=>{if(e.key==='Enter')signIn()});signoutBtn.addEventListener('click',async()=>{await sb.auth.signOut();location.reload()});
   if(window.finsightPasswordRecovery)window.finsightPasswordRecovery.attach(sb,gate);
@@ -5716,7 +5693,15 @@ const arr=d=>Array.isArray(d)?d:(d?[d]:[]);
 const num=(o,...ks)=>{for(const k of ks){if(o&&o[k]!=null&&o[k]!=='')return Number(o[k]||0)}return 0};
 const val=(o,...ks)=>{for(const k of ks){if(o&&o[k]!=null&&o[k]!=='')return o[k]}return ''};
 function asAt(){return q('#reportTo')?.value||new Date().toISOString().slice(0,10)}
-async function rpc(name,args){const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;if(!sb||!cid)throw new Error('FinSight cloud connection is not ready.');const {data,error}=await sb.rpc(name,args);if(error)throw error;return data;}
+async function rpc(name,args){
+ const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+ if(!sb||!cid)throw new Error('FinSight cloud connection is not ready.');
+ for(let attempt=0;attempt<2;attempt++){
+  const {data,error}=await sb.rpc(name,args);
+  if(!error)return data;
+  if(attempt===1||!/statement timeout|57014|timed out|timeout/i.test(String(error.message||'')))throw error;
+ }
+}
 function sectionOf(r){const x=String(val(r,'section','account_type')||'').toLowerCase();if(x.includes('asset'))return 'Assets';if(x.includes('liabil'))return 'Liabilities';if(x.includes('equity'))return 'Equity';return '';}
 function subtypeOf(r){return String(val(r,'sub_type','account_sub_type')||'').toLowerCase();}
 function rowsHtml(rows,empty){return rows.length?rows.map(r=>`<tr><td>${esc(val(r,'account_name','name')||'Account')}</td><td>${money(num(r,'amount','balance'))}</td></tr>`).join(''):`<tr><td class="muted">${esc(empty)}</td><td>${money(0)}</td></tr>`;}
@@ -5807,13 +5792,6 @@ function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingErro
   }
   body+=tr('Gross Profit / (Loss) — After Tax Deductions'+(!periodPosted&&hasInventory?' (Provisional)':''),gross,'grand');
   body+=heading('Operating Expenses')+accountRows(section('Expenses'))+tr('Total Expenses',expenses,'subtotal')+tr('Net Profit / (Loss) — After Tax Deductions'+(!periodPosted&&hasInventory?' (Provisional)':''),net,'grand');
-  // Inform, but do not include these journal figures again in the management cost calculation.
-  body+=heading('Posted Cost of Sales — Ledger Reference (Not Added Again)');
-  body+=accountRows(section('Cost of Sales'))+tr('Total Ledger Cost of Sales',postedCogs,'subtotal',false);
-  if(hasInventory){
-    body+=tr('Calculated Food Cost Less Ledger COGS',foodCost-postedCogs,'',false);
-    body+=`<tr><td colspan="3" class="small-note">${periodPosted?'COGS period posting recorded.':'COGS period not posted; management gross and net profit are provisional.'} Ledger Food Cost can include supplier purchases before opening/closing stock adjustments. It is shown for reconciliation only, not deducted a second time.</td></tr>`;
-  }
   return `<table class="live-fin-table pnl-statement"><thead><tr><th>Account</th><th>Amount</th><th>% of Revenue</th></tr></thead><tbody>${body}</tbody></table>`;
 }
 async function postingForPnl(start,end){
@@ -5877,32 +5855,56 @@ let financialRenderId=0;
 async function renderFinancialReportsLive(){
  const currentRender=++financialRenderId;
  ensureTrialTab();const d=dates(q('#reportFrom')?.value,q('#reportTo')?.value);
- for(const id of ['reportPl','reportCashFlow','reportBalance','reportTrial']){const x=q('#'+id);if(x)x.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading live financial report…</div></div>';}
- try{
-  const [pr,cr,br,tr,inv,posting]=await Promise.all([pnl(d.start,d.end),cash(d.start,d.end),balance(d.end),trial(d.start,d.end),inventoryForPnl(d.start,d.end),postingForPnl(d.start,d.end)]);
-  if(currentRender!==financialRenderId)return;
-  q('#reportPl').innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error)}</div>`;
-  q('#reportCashFlow').innerHTML=`<div class="report-card">${hdr('CASH FLOW',d.start,d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${cashHTML(cr[0],cr[1])}</div>`;
-  q('#reportBalance').innerHTML=`<div class="report-card">${hdr('BALANCE SHEET','As at',d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${balanceHTML(br[0],br[1])}</div>`;
-  q('#reportTrial').innerHTML=`<div class="report-card">${hdr('TRIAL BALANCE',d.start,d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${trialHTML(tr)}</div>`;
- }catch(e){if(currentRender!==financialRenderId)return;console.error('[FinSight Reports]',e);const h=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;['reportPl','reportCashFlow','reportBalance','reportTrial'].forEach(id=>{if(q('#'+id))q('#'+id).innerHTML=h;});}
+ // Return the P&L immediately from the same renderer used in Accounting.
+ renderLiveReportPnlOnly();
+ const jobs=[
+  {id:'reportCashFlow',title:'CASH FLOW',load:()=>cash(d.start,d.end),html:x=>`<div class="live-fin-note">Live from posted accounting journals.</div>${cashHTML(x[0],x[1])}`},
+  {id:'reportBalance',title:'BALANCE SHEET',load:()=>balance(d.end),html:x=>balanceHTML(x[0],x[1])},
+  {id:'reportTrial',title:'TRIAL BALANCE',load:()=>trial(d.start,d.end),html:x=>trialHTML(x)}
+ ];
+ jobs.forEach(async job=>{
+  const box=q('#'+job.id);if(!box)return;
+  box.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading live report…</div></div>';
+  try{
+   const rows=await job.load();if(currentRender!==financialRenderId)return;
+   const datesTitle=job.id==='reportBalance'?hdr(job.title,'As at',d.end):hdr(job.title,d.start,d.end);
+   box.innerHTML=`<div class="report-card">${datesTitle}${job.html(rows)}</div>`;
+  }catch(e){if(currentRender!==financialRenderId)return;console.error('[FinSight '+job.title+']',e);box.innerHTML=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;}
+ });
 }
-function bind(){ensureTrialTab();const ap=q('#applyPlFilter'),ac=q('#applyCfFilter'),rr=q('#refreshReportsBtn');if(ap)ap.onclick=()=>{filters.plFrom=q('#plFrom').value;filters.plTo=q('#plTo').value;renderAccountingLive();};if(ac)ac.onclick=()=>{filters.cfFrom=q('#cfFrom').value;filters.cfTo=q('#cfTo').value;renderAccountingLive();};if(rr){const old=rr.onclick;rr.onclick=()=>{filters.reportFrom=q('#reportFrom').value;filters.reportTo=q('#reportTo').value;if(typeof window.renderReports==='function')window.renderReports();setTimeout(renderFinancialReportsLive,0);if(typeof toast==='function')toast('Live reports refreshed');};}document.addEventListener('click',e=>{const nav=e.target.closest('[data-page]');if(!nav)return;if(nav.dataset.page==='accounting')setTimeout(renderAccountingLive,20);if(nav.dataset.page==='reports')setTimeout(renderFinancialReportsLive,30);});}
+let fs109FinancialBound=false;function bind(){ensureTrialTab();if(fs109FinancialBound)return;fs109FinancialBound=true;const ap=q('#applyPlFilter'),ac=q('#applyCfFilter'),rr=q('#refreshReportsBtn');if(ap)ap.onclick=()=>{filters.plFrom=q('#plFrom').value;filters.plTo=q('#plTo').value;renderAccountingLive();};if(ac)ac.onclick=()=>{filters.cfFrom=q('#cfFrom').value;filters.cfTo=q('#cfTo').value;renderAccountingLive();};if(rr){const old=rr.onclick;rr.onclick=()=>{filters.reportFrom=q('#reportFrom').value;filters.reportTo=q('#reportTo').value;if(typeof window.renderReports==='function')window.renderReports();setTimeout(renderFinancialReportsLive,0);if(typeof toast==='function')toast('Live reports refreshed');};}document.addEventListener('click',e=>{const nav=e.target.closest('[data-page]');if(!nav)return;if(nav.dataset.page==='accounting')setTimeout(renderAccountingLive,20);if(nav.dataset.page==='reports')setTimeout(renderFinancialReportsLive,30);});}
 // Update the live P&L when its Reports tab is selected or its period changes.
 let livePnlOnlySequence=0;
+let canonicalPnlHTML='',canonicalPnlKey='',pnlDomWrite=false;
+function pnlReportKey(){return [window.finsightOnline?.companyId,q('#reportFrom')?.value,q('#reportTo')?.value].join('|')}
+function setCanonicalPnl(html){
+ const box=q('#reportPl');if(!box)return;
+ canonicalPnlHTML=html;canonicalPnlKey=pnlReportKey();pnlDomWrite=true;box.innerHTML=html;pnlDomWrite=false;
+}
+function protectReportsPnl(){
+ const box=q('#reportPl');if(!box||box.dataset.fs109PnlGuard)return;
+ box.dataset.fs109PnlGuard='1';
+ new MutationObserver(()=>{
+  if(pnlDomWrite||!canonicalPnlHTML||canonicalPnlKey!==pnlReportKey())return;
+  if(box.innerHTML===canonicalPnlHTML)return;
+  pnlDomWrite=true;box.innerHTML=canonicalPnlHTML;pnlDomWrite=false;
+ }).observe(box,{childList:true,subtree:true});
+}
+
 async function renderLiveReportPnlOnly(){
  const token=++livePnlOnlySequence;
  const box=q('#reportPl');if(!box||!window.finsightOnline?.companyId)return;
  const d=dates(q('#reportFrom')?.value,q('#reportTo')?.value);
+ canonicalPnlKey="";canonicalPnlHTML="";box.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading live P&amp;L…</div></div>';
  try{
   const [pr,inv,posting]=await Promise.all([pnl(d.start,d.end),inventoryForPnl(d.start,d.end),postingForPnl(d.start,d.end)]);
   if(token!==livePnlOnlySequence)return;
-  box.innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error)}</div>`;
+  setCanonicalPnl(`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error)}</div>`);
  }catch(e){if(token===livePnlOnlySequence)box.innerHTML=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;}
 }
 document.addEventListener('click',e=>{if(e.target.closest('.report-tab[data-report="pl"]'))setTimeout(renderLiveReportPnlOnly,40)});
 ['reportFrom','reportTo'].forEach(id=>q('#'+id)?.addEventListener('change',()=>{if(q('.report-tab[data-report="pl"]')?.classList.contains('active'))renderLiveReportPnlOnly()}));
-window.finsightRenderLiveReportPnl=renderLiveReportPnlOnly;
+protectReportsPnl();window.finsightRenderLiveReportPnl=renderLiveReportPnlOnly;
 window.finsightRenderLiveAccounting=renderAccountingLive;window.finsightRenderLiveFinancialReports=renderFinancialReportsLive;
 document.addEventListener('finsight:cloud-state-loaded',()=>{if(q('#accounting')?.classList.contains('active'))renderAccountingLive();if(q('#reports')?.classList.contains('active'))renderFinancialReportsLive();});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();setTimeout(bind,800);
@@ -10437,7 +10439,7 @@ document.addEventListener('finsight:cloud-state-loaded',async()=>{stockCategorie
    const summaryPurchases=total.purchases==null?totals.purchases:value(total,'purchases');
    const summaryClosing=total.closing_stock==null?totals.closing:value(total,'closing_stock');
    const summaryCogs=total.cost_of_sales==null?totals.cogs:value(total,'cost_of_sales');
-   const html=`<div class="report-card" data-live-cogs-report="1"><h3>COST OF SALES REPORT</h3><p>${safe(from)} to ${safe(to)}</p><div style="overflow-x:auto"><table class="cogs-report-table"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Unit Cost</th><th>Opening Value</th><th>Purchased Units</th><th>Purchases Value</th><th>Closing Units</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Consumed Units</th><th>Consumption / Food Cost</th></tr></thead><tbody>${out||'<tr><td colspan="11">No inventory activity for this period.</td></tr>'}</tbody><tfoot><tr><th>Total</th><th>${totals.oq.toFixed(3)}</th><th>—</th><th>${cash(summaryOpening)}</th><th>${totals.pq.toFixed(3)}</th><th>${cash(summaryPurchases)}</th><th>${totals.cq.toFixed(3)}</th><th>—</th><th>${cash(summaryClosing)}</th><th>—</th><th>${cash(summaryCogs)}</th></tr></tfoot></table></div></div>`;
+   const html=`<div class="report-card" data-live-cogs-report="1"><h3>COST OF SALES REPORT</h3><p>${safe(from)} to ${safe(to)}</p><div style="overflow-x:auto"><table class="cogs-report-table"><thead><tr class="fs109-cogs-groups"><th rowspan="2">Item</th><th colspan="3">Opening Stock</th><th colspan="2">Purchases</th><th colspan="3">Closing Stock</th><th>Consumption</th><th>Cost of Sales</th></tr><tr class="fs109-cogs-fields"><th>Units</th><th>Unit Cost</th><th>Value</th><th>Purchased Units</th><th>Purchases Value</th><th>Units</th><th>Unit Cost</th><th>Value</th><th>Consumed Units</th><th>Food Cost Value</th></tr></thead><tbody>${out||'<tr><td colspan="11">No inventory activity for this period.</td></tr>'}</tbody><tfoot><tr><th>Total</th><th>${totals.oq.toFixed(3)}</th><th>—</th><th>${cash(summaryOpening)}</th><th>${totals.pq.toFixed(3)}</th><th>${cash(summaryPurchases)}</th><th>${totals.cq.toFixed(3)}</th><th>—</th><th>${cash(summaryClosing)}</th><th>—</th><th>${cash(summaryCogs)}</th></tr></tfoot></table></div></div>`;
    writing=true;panel.innerHTML=html;panel.dataset.liveKey=key;writing=false;lastKey=key;
   }catch(e){if(serial!==pending)return;writing=true;panel.innerHTML=`<div class="report-card"><h3>COST OF SALES REPORT</h3><div class="empty-state">Unable to load live COGS: ${safe(e.message||e)}</div></div>`;panel.dataset.liveKey='error';writing=false}
  }
@@ -10582,7 +10584,26 @@ function printActive(){
  const tab=title().toLowerCase(),wide=tab.includes('daily')||tab.includes('cost of sales');
  const w=window.open('','_blank');if(!w){alert('Allow pop-ups to export the PDF.');return}
  const styles=`@page{size:${wide?'A3 landscape':'A4 landscape'};margin:10mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px}h2,h3{font-size:17px;margin:6px 0 12px}table{width:100%;border-collapse:collapse;table-layout:auto;font-size:${wide?'7':'9'}px}th,td{border:1px solid #cbd5e1;padding:${wide?'3':'5'}px;text-align:right;vertical-align:middle;overflow-wrap:anywhere}th:first-child,td:first-child{text-align:left}thead{display:table-header-group}tfoot{display:table-footer-group}thead tr th{background:#eef2ff;font-weight:bold}.grouped-head .fs-pay-group{background:#dbeafe;text-align:center;border-left:2px solid #818cf8}.sub-head .fs-pay-start,tbody .fs-pay-start{border-left:2px solid #818cf8}tbody tr:nth-child(even){background:#f8fafc}.fs-daily-scroll,.report-card{overflow:visible!important}.cogs-report-table{min-width:0!important}.cogs-report-table td,.cogs-report-table th{white-space:normal!important}input,button,.no-print,.fs510-no-print{display:none!important}tr{page-break-inside:avoid;break-inside:avoid}.report-headline{display:flex;justify-content:space-between;border-bottom:2px solid #1e293b;margin-bottom:12px;padding-bottom:6px}.report-headline h3{margin:0}.report-headline div:last-child{text-align:right}.report-card{border:0}.live-fin-table td:nth-child(n+2){text-align:right}.fs-daily-footer th,.cogs-report-table tfoot th{background:#eef2ff;font-weight:bold}.fs-pay-group:nth-of-type(even){background:#dcfce7}`;
- w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title())}</title><style>${styles}</style></head><body>${panel.innerHTML}</body></html>`);w.document.close();w.focus();w.addEventListener('load',()=>w.print(),{once:true});
+ w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title())}</title><style>${styles}</style></head><body>${panel.innerHTML}
+<style id="fs109-report-coherence-css">
+#reportCogs .cogs-report-table{border-collapse:separate;border-spacing:0;min-width:1160px;width:100%}
+#reportCogs .fs109-cogs-groups th{background:#243248;color:#fff;text-align:center;font-weight:750;border-bottom:1px solid #9fb4d0}
+#reportCogs .fs109-cogs-groups th:nth-child(2){background:#164f63}
+#reportCogs .fs109-cogs-groups th:nth-child(3){background:#6f511e}
+#reportCogs .fs109-cogs-groups th:nth-child(4){background:#444b65}
+#reportCogs .fs109-cogs-groups th:nth-child(5){background:#176452}
+#reportCogs .fs109-cogs-groups th:nth-child(6){background:#493b82}
+#reportCogs .fs109-cogs-fields th{font-weight:700;background:#f1f5f9;text-align:right;white-space:nowrap}
+#reportCogs .cogs-report-table tbody tr:nth-child(even){background:#fafbfd}
+#reportCogs .cogs-report-table th:nth-child(2),#reportCogs .cogs-report-table td:nth-child(2),
+#reportCogs .cogs-report-table td:nth-child(5),#reportCogs .cogs-report-table td:nth-child(7),
+#reportCogs .cogs-report-table td:nth-child(10){border-left:2px solid #c3cfdc}
+#reportCogs .cogs-report-table td:nth-child(4),#reportCogs .cogs-report-table td:nth-child(6),
+#reportCogs .cogs-report-table td:nth-child(9),#reportCogs .cogs-report-table td:nth-child(11){font-weight:650;background:rgba(221,232,244,.18)}
+#reportCogs .cogs-report-table tfoot th{border-top:2px solid #64748b;background:#eef2f8}
+#reportPl .live-fin-table .section-heading td{font-weight:800;background:#f1f5f9}
+</style>
+</body></html>`);w.document.close();w.focus();w.addEventListener('load',()=>w.print(),{once:true});
 }
 function styleDaily(){
  const t=document.querySelector('#reportDaily table');if(!t||t.dataset.fs101Groups)return;
