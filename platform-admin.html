@@ -37,7 +37,7 @@ const SB_KEY='sb_publishable_jEMjFFLw8D3DfbCdtD7fGg_cxKK9SbR';
 const el=id=>document.getElementById(id);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let client,user=null,companies=[],busy=false,expanded=new Set(),term='';
-function notify(message,error=false){const n=el('notice');n.textContent=String(message);n.className='notice'+(error?' error':'');}
+function notify(message,error=false){const n=el('notice');n.textContent=String(message);n.className='notice'+(error?' error':'');n.classList.remove('hidden');n.scrollIntoView({block:'nearest',behavior:'smooth'});}
 function dismiss(){el('notice').className='hidden'}
 function login(){
  user=null;el('account').innerHTML='';
@@ -153,9 +153,24 @@ function addMember(id){
  modal('Assign User · '+c.name,fields,'Assign User',d=>api('assign_member',id,d));
 }
 async function runChange(action,company,data,message){
- if(busy)return;busy=true;dismiss();
- try{await api(action,company,data);await load();notify(message)}
- catch(e){notify(e.message,true)}finally{busy=false}
+ if(busy)return;
+ busy=true;dismiss();
+ const target=companies.find(c=>c.id===company);
+ try{
+  const result=await api(action,company,data);
+  if(!result||result.success!==true)throw Error('The company update was not confirmed by Supabase.');
+  const latest=await api('list');
+  if(!Array.isArray(latest))throw Error('Update saved, but company list could not be refreshed.');
+  companies=latest;
+  if(action==='set_product'){
+   const updated=companies.find(c=>c.id===company);
+   if(!updated||Boolean(updated[data.product==='Accounting'?'accounting_enabled':'pos_enabled'])!==Boolean(data.enabled))
+    throw Error('Subscription update could not be verified. Refresh the page before trying again.');
+  }
+  render();notify(message);
+ }catch(e){
+  notify((e&&e.message)||String(e),true);
+ }finally{busy=false}
 }
 function setProduct(company,product,enabled){
  const c=companies.find(x=>x.id===company);if(!c)return;
