@@ -1,0 +1,561 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>FinSight POS • Employee Workspaces</title><style>
+:root{--bg:#f4f7f8;--panel:#fff;--ink:#193237;--muted:#71858a;--line:#e2eaec;--accent:#087e79;--light:#e6f4f2;--red:#b54d46;--gold:#fff4de;--shadow:0 7px 24px rgba(25,50,55,.04)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-size:calc(14px * var(--pos-font-scale,1));line-height:1.48;font-family:var(--pos-font,Inter,'Segoe UI',Arial,sans-serif)}button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.48;cursor:not-allowed}h1,h2,h3,p{margin-top:0}h1{font-size:23px}h2{font-size:21px}h3{font-size:16px}.app{min-height:100vh;display:flex}.sidebar{width:224px;padding:22px 13px;background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;flex-shrink:0;gap:6px}.brand{font-size:19px;font-weight:800;display:flex;align-items:center;gap:10px;padding:5px 9px 23px}.mark{background:var(--accent);color:#fff;border-radius:11px;width:35px;height:35px;display:grid;place-items:center}.nav{border:0;background:none;width:100%;text-align:left;padding:12px;border-radius:11px;font-weight:650;color:#526b71}.nav.active,.nav:hover{background:var(--light);color:var(--accent)}.sidebottom{margin-top:auto;padding:10px;color:var(--muted);font-size:12px}.main{flex:1;min-width:0;padding:26px 28px}.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:23px}.sub{font-size:12px;color:var(--muted)}.btn{padding:10px 13px;border-radius:10px;background:#fff;border:1px solid var(--line);color:var(--ink);font-weight:650}.btn:hover{border-color:var(--accent)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}.btn.danger{color:var(--red)}.btn.small{padding:7px 10px;font-size:12px}.row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}.stack{display:flex;flex-direction:column;gap:12px}.card{border:1px solid var(--line);box-shadow:var(--shadow);background:#fff;padding:20px;border-radius:17px}.muted{color:var(--muted)}.hint{font-size:12px;color:var(--muted)}.field{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}.field label{font-size:12px;color:var(--muted);font-weight:700}.field input,.field select,.field textarea{width:100%;padding:10px 11px;border:1px solid #d8e4e7;border-radius:10px;background:#fff;color:var(--ink)}.field textarea{min-height:70px}.field input[type=checkbox]{width:auto}.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.notice{padding:12px 15px;border-radius:11px;margin:10px 0;background:#e8f6ef;color:#236c48}.notice.error{background:#fff0ed;color:#a23b31}.modalwrap{position:fixed;inset:0;background:#f1f6f5;display:grid;place-items:center;padding:20px}.authpanel{background:#fff;border:1px solid var(--line);width:min(510px,100%);padding:26px;border-radius:19px;box-shadow:var(--shadow)}.rolegrid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.role{padding:23px 12px;border:1px solid var(--line);border-radius:15px;background:#fff;font-weight:750;display:flex;flex-direction:column;gap:10px;align-items:center}.role span{font-size:28px}.role:hover{border-color:var(--accent);background:var(--light)}.wide{width:100%}.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}.menu-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:15px}.menu-card{border:1px solid var(--line);border-radius:16px;background:#fff;padding:12px;min-width:0}.menu-photo{height:145px;background:#edf3f2;border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:42px}.menu-photo img{width:100%;height:100%;object-fit:cover}.menu-title{font-weight:750;margin:11px 0 3px}.menu-actions{display:flex;flex-direction:column;gap:5px;margin-top:12px}.pill{background:var(--light);color:var(--accent);border-radius:20px;padding:6px 10px;font-weight:700;font-size:12px}.tag{background:#edf2f3;border-radius:25px;padding:4px 10px;font-weight:700;font-size:11px}.tag.Preparing{background:#fff1da;color:#91630d}.tag.Ready{background:#e7f9e9;color:#246c42}.tag.New{background:#eaf1ff;color:#386398}.section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:24px 0 13px}.employees{width:100%;border-collapse:collapse}.employees th{text-align:left;color:var(--muted);font-size:12px}.employees td,.employees th{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}.list{display:flex;flex-direction:column;gap:10px}.line{padding:11px 0;border-bottom:1px solid var(--line)}.order-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:14px}.order-card{background:white;border:1px solid var(--line);padding:16px;border-radius:15px}.tablegrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(138px,1fr));gap:13px}.table-tile{text-align:center;background:white;border:1px solid var(--line);border-radius:15px;padding:20px}.table-tile.occupied{background:var(--gold)}.checkout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px}.cart{align-self:start;position:sticky;top:15px}.cart-line{padding:12px 0;border-bottom:1px solid var(--line)}.empty{padding:24px;color:var(--muted);text-align:center}.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:18px}.filters .field{margin:0}.report-table{width:100%;border-collapse:collapse}.report-table td,.report-table th{border-bottom:1px solid var(--line);padding:10px;text-align:left}.report-table th{font-size:12px;color:var(--muted)}.toggle{background:none;border:0;padding:0;font-weight:750;color:var(--accent);cursor:pointer}.nowrap{white-space:nowrap}.hidden{display:none!important}@media(max-width:1090px){.checkout,.two{grid-template-columns:1fr}.cart{position:static}}@media(max-width:750px){.app{display:block}.sidebar{width:100%;flex-direction:row;overflow:auto;align-items:center;padding:7px}.brand{font-size:13px;padding:6px}.nav{white-space:nowrap;width:auto}.sidebottom{display:none}.main{padding:16px}.topbar{align-items:start;flex-direction:column}.rolegrid{grid-template-columns:1fr 1fr}.menu-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.menu-photo{height:115px}.employees{display:block;overflow-x:auto}.report-table{display:block;overflow-x:auto}}@media print{.sidebar,.actions,.btn,.topbar,.filters{display:none!important}.main{padding:0}}
+
+.menu-edit{padding:11px 0 0;border-top:1px solid var(--line);margin-top:12px}
+.countdown{font-weight:800;font-variant-numeric:tabular-nums;font-size:24px;color:#11804d}
+.countdown.overdue{color:#c13b35}
+.menu-edit .field{margin-bottom:9px}
+.report-page{margin-top:2px}
+.report-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:16px 0}
+.report-summary>div{padding:13px;border-radius:12px;background:#eef5f4}
+.receipt-preview{background:white;color:#111;width:300px;max-width:100%;padding:18px;border:1px dashed #a4b9b6;margin:16px auto;font:12px/1.5 'Courier New',monospace;text-align:center;overflow-wrap:anywhere}
+.receipt-preview hr{border:0;border-top:1px dashed #888}
+.receipt-preview .rline{display:flex;justify-content:space-between;text-align:left;gap:8px}
+.receipt-preview img{max-height:75px;max-width:170px;object-fit:contain}
+.reportscroll{max-width:100%;overflow:auto}
+.report-table td{min-width:80px}
+@media(max-width:750px){.report-summary{grid-template-columns:1fr}}
+.category-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.cat-tab{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:22px;padding:9px 14px;cursor:pointer;font-weight:650}.cat-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}.cart .row{align-items:center}
+.modifier-group{margin-top:9px;padding:8px;border-radius:9px;background:var(--bg)}.modifier-option{display:block;margin:5px 0;font-size:12px}.modifier-option input{width:auto!important;margin-right:6px}.checkout-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:15px}.checkout-actions button{min-width:0}.totals{padding:12px 0;border-top:1px solid var(--line);margin-top:12px}.totals .row{margin:7px 0}.pos-modal-shade{position:fixed;inset:0;background:#182a31a8;z-index:90;display:grid;place-items:center;padding:16px}.pos-payment-modal{background:white;border-radius:18px;padding:24px;width:min(650px,100%);max-height:90vh;overflow:auto;box-shadow:0 20px 75px #0002}.payment-line{display:grid;grid-template-columns:1fr 110px 1fr auto;gap:8px;align-items:end;margin-top:12px}.payment-status{font-size:12px;font-weight:800;margin:7px 0}.payment-status.paid{color:#138044}.payment-status.unpaid{color:#b67a16}.category-tabs{margin-bottom:16px}
+@media(max-width:580px){.payment-line{grid-template-columns:1fr 1fr}.checkout-actions{grid-template-columns:1fr}}
+.modifier-admin-grid{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:9px;align-items:end}.modifier-admin-grid .field{min-width:0}@media(max-width:650px){.modifier-admin-grid{grid-template-columns:1fr 1fr}}.modifier-admin-grid{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:9px;align-items:end}.modifier-admin-grid .field{min-width:0}@media(max-width:650px){.modifier-admin-grid{grid-template-columns:1fr 1fr}}
+.recon-method{display:grid;grid-template-columns:1fr 1fr 1.5fr;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}
+@media(max-width:700px){.recon-method{grid-template-columns:1fr}}
+</style></head><body><div id="root"><div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div><h2>FinSight POS</h2><p>Preparing secure sign-in…</p></div></div></div><script>
+'use strict';
+const SUPABASE_URL='https://kwyvytwyhslhmdqtfrkf.supabase.co';
+const KEY='sb_publishable_jEMjFFLw8D3DfbCdtD7fGg_cxKK9SbR';
+const root=document.getElementById('root');
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=x=>'KES '+Number(x||0).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+const when=x=>x?new Date(x).toLocaleString('en-KE',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Nairobi'}):'—';
+const localDay=x=>x?new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Nairobi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(x)):'';
+function newUuid(){if(globalThis.crypto?.randomUUID)return crypto.randomUUID();if(!globalThis.crypto?.getRandomValues)throw Error('Secure random identifiers are unavailable. Open through a local server.');const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const hex=[...bytes].map(v=>v.toString(16).padStart(2,'0')).join('');return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-')}
+const b=(name,call,cls='')=>`<button class="btn ${cls}" type="button" onclick="${call}">${name}</button>`;
+const S={db:null,user:null,ws:null,selection:'',role:'',employee:null,token:null,choices:[],page:'',setup:null,employees:[],menu:[],orders:[],tables:[],reports:[],reportLines:[],selectedShift:null,reportDate:'',historyDate:'',cart:[],category:'All',orderNotes:'',checkoutDialog:false,checkoutRequest:null,paymentRows:[],pricingOptions:[],selectedRules:[],modifierGroups:[],adminPricing:[],adminModifiers:{groups:[],options:[],links:[]},adminPaymentTypes:[],incomeAccounts:[],menuMapping:null,preferences:null,tillSummary:null,reconInfo:null,liveChannel:null,paymentOrder:null,paymentBalance:null,paymentMethods:[],paymentRequest:null,orderType:'Dine In',tableId:'',requestId:null,busy:false,notice:'',noticeType:'ok',showEmployees:false,resetId:null,prepFilter:'active',timer:null,uploading:'',hasAdmin:false,discardOpen:false,menuEditId:null,shiftDetail:null,receipt:null,receiptLogoUploading:false};
+const CACHE={times:Object.create(null),inflight:new Map(),epoch:0};
+const TTL={management:45000,reports:30000,receipt:60000,checkout:90000,history:20000,tables:15000,shift:15000,kitchen:25000};
+const validCache=(name)=>Date.now()-(CACHE.times[name]||0)<(TTL[name]||30000);
+const stamp=(name)=>{CACHE.times[name]=Date.now()};
+const clearCache=()=>{CACHE.times=Object.create(null);CACHE.inflight.clear();CACHE.epoch++};
+const arg=(extra={})=>({p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_token:S.token,...extra});
+function show(text,kind='ok'){S.notice=String(text||'');S.noticeType=kind;render()}
+function notice(){return S.notice?`<div class="notice ${S.noticeType==='error'?'error':''}" role="status">${esc(S.notice)}</div>`:''}
+async function rpc(name,payload={}){const {data,error}=await S.db.rpc(name,payload);if(error)throw new Error(error.message);return data}
+function buttonBusy(){return S.busy?' disabled':''}
+async function emailLogin(){if(S.busy)return;const email=document.getElementById('email')?.value.trim(),password=document.getElementById('password')?.value;if(!email||!password)return show('Enter email and password.','error');S.busy=true;try{const {data,error}=await S.db.auth.signInWithPassword({email,password});if(error)throw error;await connectCompany(data?.session)}catch(e){show(e.message,'error')}finally{S.busy=false}}
+async function logout(){clearCache();if(S.liveChannel){await S.db.removeChannel(S.liveChannel);S.liveChannel=null;}clearInterval(S.timer);S.timer=null;S.selection='';S.role='';S.employee=null;S.token=null;S.ws=null;S.user=null;S.cart=[];await S.db.auth.signOut();S.notice='';render()}
+function loginPage(){root.innerHTML=`<div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div><h2>Company Sign In</h2>${notice()}<div class="field"><label>Email</label><input type="email" id="email" autocomplete="username"></div><div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')emailLogin()"></div>${b('Sign In','emailLogin()','primary wide')}</div></div>`}
+async function connectCompany(session=null){
+ const current=session|| (await S.db.auth.getSession()).data?.session;
+ if(!current?.user){S.user=null;S.ws=null;render();return}
+ S.user=current.user;
+ const entry=await rpc('pos_fast_entry');
+ S.ws=Array.isArray(entry?.workspaces)?entry.workspaces[0]:null;
+ if(!S.ws){render();return}
+ S.choices=entry.choices||[];S.hasAdmin=S.choices.some(e=>e.role==='Admin');
+ S.preferences=entry.preferences||null;applyPreferences();
+ S.selection='';S.role='';S.employee=null;S.token=null;S.notice='';S.cart=[];
+ clearCache();render();
+}
+async function loadPreferences(){
+ try{S.preferences=await rpc('pos_preferences',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_token:null,p_data:null});applyPreferences()}catch(e){console.warn('Appearance preferences unavailable',e.message)}
+}
+function applyPreferences(){
+ const x=S.preferences||{},scale=Math.min(1.4,Math.max(.85,Number(x.font_scale||1)));
+ const fonts={Modern:"Inter,'Segoe UI',Arial,sans-serif",Classic:"Georgia,'Times New Roman',serif",Accessible:"Verdana,Arial,sans-serif"};
+ document.documentElement.style.setProperty('--pos-font-scale',String(scale));
+ document.documentElement.style.setProperty('--pos-font',fonts[x.font_family]||fonts.Modern);
+}
+async function loadChoices(){if(!S.ws)return;S.choices=await rpc('pos_employee_list',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_role:null})||[];S.hasAdmin=S.choices.some(e=>e.role==='Admin')}
+function noAccess(){root.innerHTML=`<div class="modalwrap"><div class="authpanel"><h2>POS Access</h2>${notice()}<p>Your shared FinSight login does not have an active POS workspace.</p>${b('Sign Out','logout()')}</div></div>`}
+function chooseRole(){clearCache();if(S.liveChannel){S.db.removeChannel(S.liveChannel);S.liveChannel=null;}clearInterval(S.timer);S.selection='';S.notice='';S.token=null;S.employee=null;S.role='';S.page='';S.cart=[];S.orders=[];S.menu=[];S.setup=null;S.employees=[];S.tillSummary=null;S.shiftDetail=null;S.reconInfo=null;S.paymentBalance=null;S.paymentMethods=[];render()}
+function selectRole(role){S.selection=role;S.notice='';render()}
+function choicePage(){const names=S.choices.filter(e=>e.role===S.selection);root.innerHTML=`<div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div>${notice()}${!S.selection?`<h2>Choose Workspace</h2><p class="muted">${esc(S.ws.company_name)} · ${esc(S.ws.outlet_name)}</p><div class="rolegrid"><button class="role" onclick="selectRole('Cashier')"><span>▣</span>Cashier</button><button class="role" onclick="selectRole('Kitchen')"><span>♨</span>Kitchen</button><button class="role" onclick="selectRole('Admin')"><span>⚙</span>Admin</button></div>`:`<h2>${esc(S.selection)} Sign In</h2>${S.selection==='Admin'&&!S.hasAdmin&&S.ws.role==='admin'?`<div class="field"><label>First Admin Name</label><input id="bootstrapName" maxlength="100"></div><div class="field"><label>Admin PIN</label><input id="bootstrapPin" type="password" inputmode="numeric" maxlength="8"></div>${b('Create First Admin','bootstrapAdmin()','primary wide')}`:`<div class="field"><label>Employee</label><select id="chosenEmployee">${names.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select></div><div class="field"><label>PIN</label><input id="employeePin" type="password" maxlength="8" inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter')enterEmployee()"></div>${b('Sign In','enterEmployee()','primary wide')}${names.length?'':'<p class="hint">No active employees for this role. Admin can add them in Employees.</p>'}`}<div style="margin-top:14px">${b('Back','chooseRole()')} ${b('Sign Out','logout()')}</div>`}</div></div>`}
+async function bootstrapAdmin(){const name=document.getElementById('bootstrapName')?.value.trim(),pin=document.getElementById('bootstrapPin')?.value;if(!name||!/^[0-9]{4,8}$/.test(pin||''))return show('Enter Admin name and a 4–8 digit PIN.','error');if(S.busy)return;S.busy=true;try{await rpc('pos_bootstrap_admin',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_name:name,p_pin:pin});await loadChoices();S.notice='Admin created. Select the Admin name and enter the PIN.';S.noticeType='ok';render()}catch(e){show('Could not create Admin: '+e.message,'error')}finally{S.busy=false}}
+async function enterEmployee(){
+ if(S.busy)return;
+ const id=document.getElementById('chosenEmployee')?.value,pin=document.getElementById('employeePin')?.value;
+ if(!id||!pin)return show('Select your name and enter the PIN.','error');
+ S.busy=true;
+ try{
+  const result=await rpc('pos_cashier_login',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_cashier:id,p_pin:pin});
+  if(!result?.success||result.role!==S.selection)throw new Error('PIN or role is incorrect.');
+  S.role=result.role;S.token=result.token;S.employee={id:result.cashier_id,name:result.name,role:result.role};
+  S.notice='';S.page=S.role==='Admin'?'management':S.role==='Kitchen'?'kitchen':'checkout';
+  S.orders=[];S.menu=[];S.tables=[];S.setup=null;S.employees=[];S.reports=[];S.tillSummary=null;S.paymentMethods=[];S.shiftDetail=null;
+  clearCache();render();setRefresh();
+  const work=loadPage(S.page,true);
+  const wsWork=S.role==='Cashier'?refreshWorkspace():Promise.resolve();
+  void Promise.allSettled([work,wsWork]).then(()=>{if(S.token===result.token&&S.role!=='Kitchen')render()});
+ }catch(e){const field=document.getElementById('employeePin');if(field)field.value='';show(e.message,'error')}
+ finally{S.busy=false}
+}
+async function refreshWorkspace(){if(!S.ws)return;const original=S.ws.outlet_id,identity=S.token;const w=await rpc('pos_my_workspaces');if(!S.ws||S.ws.outlet_id!==original||S.token!==identity)return;S.ws=(w||[]).find(x=>x.outlet_id===original)||S.ws}
+function setRefresh(){
+ clearInterval(S.timer);S.timer=null;
+ if(S.liveChannel){S.db.removeChannel(S.liveChannel);S.liveChannel=null}
+ if(S.role!=='Kitchen')return;
+ let busy=false,debounce=null;
+ const refresh=async()=>{
+  if(S.role!=='Kitchen'||S.page!=='kitchen'||busy||document.hidden)return;
+  busy=true;
+  try{
+   const before=JSON.stringify(S.orders);
+   await loadKitchen();stamp('kitchen');
+   if(before!==JSON.stringify(S.orders)&&!document.activeElement?.matches('input,textarea,select'))render();
+  }catch(e){console.warn('Kitchen refresh:',e.message)}finally{busy=false}
+ };
+ const notify=()=>{if(debounce)clearTimeout(debounce);debounce=setTimeout(refresh,75)};
+ S.liveChannel=S.db.channel('pos-kitchen-'+S.ws.outlet_id)
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'pos_kitchen_notifications',filter:'outlet_id=eq.'+S.ws.outlet_id},notify)
+  .subscribe(status=>{if(status==='CHANNEL_ERROR')console.warn('Kitchen Realtime disconnected; fallback remains active')});
+ S.timer=setInterval(refresh,15000);
+}
+function shell(){const groups=S.role==='Admin'?[['management','Back Office','⚙'],['reports','Shift Reports','▤'],['receipt','Receipt Templates','▧']]:S.role==='Kitchen'?[['kitchen','Kitchen Orders','♨']]:[['checkout','Checkout','▣'],['history','Order History','▤'],['tables','Tables','▦'],['shift','Till Shift','◷']];return `<div class="app"><aside class="sidebar"><div class="brand"><span class="mark">F</span> FinSight POS</div>${groups.map(([id,label,ico])=>`<button class="nav ${S.page===id?'active':''}" onclick="go('${id}')">${ico} &nbsp; ${label}</button>`).join('')}<div class="sidebottom">${esc(S.ws.company_name)} · ${esc(S.role)}</div></aside><main class="main"><div class="topbar"><div><div class="sub">${esc(S.ws.company_name)} · ${esc(S.ws.outlet_name)}</div><h1 style="margin:2px 0 0">${esc(Object.fromEntries(groups.map(([id,label])=>[id,label]))[S.page]||'FinSight POS')}</h1></div><div class="actions"><span class="pill">${esc(S.employee?.name)}</span>${b('Switch Workspace','chooseRole()')}${b('Sign Out','logout()')}</div></div>${notice()}${screen()}</main></div>`}
+function screen(){switch(S.page){case 'management':return management();case 'reports':return reports();case 'receipt':return receiptPage();case 'checkout':return checkout();case 'history':return history();case 'tables':return tables();case 'shift':return shift();case 'kitchen':return kitchen();default:return ''}}
+function render(){if(!S.db){root.innerHTML='<div class="card">Connecting to Supabase…</div>';return}if(!S.user)return loginPage();if(!S.ws)return noAccess();if(!S.role||!S.token)return choicePage();root.innerHTML=shell();updateKitchenTimers()}
+async function go(page){
+ const allowed=S.role==='Admin'?['management','reports','receipt']:S.role==='Kitchen'?['kitchen']:['checkout','history','tables','shift'];
+ if(!allowed.includes(page))return;
+ S.page=page;S.notice='';render();
+ void loadPage(page,false);
+}
+async function loadPage(page,force=false){
+ if(!S.ws||!S.role||!S.token)return;
+ if(!force&&validCache(page))return;
+ if(CACHE.inflight.has(page))return CACHE.inflight.get(page);
+ const role=S.role,token=S.token,epoch=CACHE.epoch;
+ const work=(async()=>{
+  try{
+   if(page==='management')await loadAdmin();
+   else if(page==='reports')await loadReports();
+   else if(page==='receipt')await loadReceipt();
+   else if(page==='kitchen')await loadKitchen();
+   else if(page==='history')await loadHistory();
+   else if(page==='tables')await loadTables();
+   else if(page==='shift')await Promise.all([refreshWorkspace(),loadTillSummary()]);
+   else if(page==='checkout')await loadCashier();
+   if(S.role!==role||S.token!==token||CACHE.epoch!==epoch)return;
+   stamp(page);
+   if(S.page===page)render();
+  }catch(e){
+   if(S.role===role&&S.token===token){S.notice=e.message;S.noticeType='error';if(S.page===page)render()}
+  }finally{CACHE.inflight.delete(page)}
+ })();
+ CACHE.inflight.set(page,work);return work;
+}
+async function loadAdmin(){
+ const identity=S.token,d=await rpc('pos_fast_admin',arg());
+ if(identity!==S.token)return;
+ S.setup=d.setup;S.employees=d.employees||[];S.menu=d.menu||[];
+ S.adminPricing=d.pricing||[];
+ S.adminModifiers=d.modifiers||{groups:[],options:[],links:[],custom_links:[]};
+ S.adminPaymentTypes=d.payments||[];S.incomeAccounts=d.income||[];S.menuMapping=d.mapping||{};
+ stamp('management');
+}
+async function loadReports(){S.reports=await rpc('pos_employee_reports',arg())||[]}
+async function loadCashier(){
+ const identity=S.token,d=await rpc('pos_fast_cashier',arg());
+ if(identity!==S.token)return;
+ S.menu=d.menu||[];S.pricingOptions=d.pricing||[];S.modifierGroups=d.modifiers||[];
+ S.paymentMethods=d.methods||[];S.tables=d.tables||[];S.tillSummary=d.shift||null;
+ if(!S.tables.some(t=>t.id===S.tableId))S.tableId=S.tables[0]?.id||'';
+ stamp('checkout');stamp('tables');stamp('shift');
+}
+async function loadKitchen(){const token=S.token;const orders=await rpc('pos_employee_kitchen_feed',arg())||[];if(token===S.token){for(const o of orders){if(kitchenUpdatesInFlight.has(o.id))o.kitchen_status=kitchenUpdatesInFlight.get(o.id)}S.orders=orders}}
+async function loadHistory(){const date=S.historyDate;const start=date?new Date(date+'T00:00:00+03:00'):null;const end=start?new Date(start.getTime()+86400000):null;S.orders=await rpc('pos_employee_order_history',arg({p_from:start?.toISOString()||null,p_to:end?.toISOString()||null}))||[]}
+async function loadTables(){S.tables=await rpc('pos_table_occupancy',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id})||[];if(!S.tables.find(t=>t.id===S.tableId))S.tableId=S.tables[0]?.id||''}
+async function action(name,params,feedback,after){if(S.busy)return;S.busy=true;try{await rpc(name,params);if(after)await after();show(feedback)}catch(e){show(e.message,'error')}finally{S.busy=false}}
+function employeesSection(){const list=S.employees;return `<div class="card"><div class="section-head" style="margin-top:0"><h3 style="margin:0">Employees</h3><span class="pill">${list.filter(x=>x.active).length} active</span></div><div class="two"><div class="field"><label>Employee Name</label><input id="newName" maxlength="100" placeholder="Name"></div><div class="field"><label>Role</label><select id="newRole"><option>Cashier</option><option>Kitchen</option><option>Admin</option></select></div></div><div class="field"><label>PIN (4–8 digits)</label><input id="newPin" type="password" inputmode="numeric" maxlength="8" autocomplete="new-password"></div>${b('Add Employee','addEmployee()','primary')}<div class="section-head"><button class="toggle" onclick="S.showEmployees=!S.showEmployees;render()">${S.showEmployees?'▾ Hide':'▸ Show'} Employee List (${list.length})</button></div>${S.showEmployees?`<div style="overflow-x:auto"><table class="employees"><thead><tr><th>Employee</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>${list.map(e=>`<tr><td>${esc(e.name)}</td><td>${esc(e.role)}</td><td>${e.active?'Active':'Disabled'}</td><td><div class="actions">${b('Reset PIN',`toggleReset('${esc(e.id)}')`,'small')}${e.active?b('Disable',`employeeStatus('${esc(e.id)}','disable')`,'danger small'):b('Activate',`employeeStatus('${esc(e.id)}','activate')`,'small')}</div>${S.resetId===e.id?`<div class="field" style="margin-top:10px"><label>New PIN</label><input id="resetPin_${esc(e.id)}" type="password" inputmode="numeric" maxlength="8"></div>${b('Save PIN',`savePin('${esc(e.id)}')`,'primary small')}`:''}</td></tr>`).join('')}</tbody></table></div>`:''}</div>`}
+
+function adminPricingSection(){return `<div class="card" style="margin-top:16px"><div class="row"><h3>Discounts / Surcharges</h3><span class="hint">Shown in Cashier checkout</span></div>
+ <div class="modifier-admin-grid"><div class="field"><label>Name</label><input id="ruleName" maxlength="80" placeholder="e.g. Loyalty discount"></div>
+ <div class="field"><label>Type</label><select id="ruleKind"><option>Discount</option><option>Surcharge</option></select></div>
+ <div class="field"><label>Calculation</label><select id="ruleCalculation"><option>Percent</option><option>Amount</option></select></div>
+ <div class="field"><label>Value</label><input id="ruleValue" type="number" min="0" step="0.01" placeholder="10"></div></div>
+ ${b('Add Rule','addPricingRule()','primary')}
+ <div class="list" style="margin-top:12px">${S.adminPricing.map(r=>`<div class="line"><span><strong>${esc(r.name)}</strong> · ${esc(r.kind)} ${r.calculation==='Percent'?Number(r.value)+'%':money(r.value)}</span><div class="actions">${b(r.active?'Disable':'Activate',`pricingRuleStatus('${esc(r.id)}',${r.active?'false':'true'})`,'small')}</div></div>`).join('')||'<div class="hint">No discount or surcharge configured</div>'}</div>
+ </div>`}
+async function addPricingRule(){const data={name:document.getElementById('ruleName')?.value.trim(),kind:document.getElementById('ruleKind')?.value,
+ calculation:document.getElementById('ruleCalculation')?.value,value:Number(document.getElementById('ruleValue')?.value)};
+ if(!data.name||!Number.isFinite(data.value)||data.value<0)return show('Enter a valid pricing rule.','error');
+ await action('pos_admin_pricing_rules',arg({p_action:'save',p_data:data}),'Pricing rule saved.',loadAdmin)}
+async function pricingRuleStatus(id,active){await action('pos_admin_pricing_rules',arg({p_action:'set_active',p_data:{id,active}}),'Rule updated.',loadAdmin)}
+function adminModifierSection(){const groups=S.adminModifiers.groups||[],options=S.adminModifiers.options||[],links=[...(S.adminModifiers.links||[]),...(S.adminModifiers.custom_links||[])];
+ return `<div class="card" style="margin-top:16px"><h3>Menu Modifiers</h3>
+ <div class="modifier-admin-grid"><div class="field"><label>New Modifier Group</label><input id="modGroupName" maxlength="80" placeholder="e.g. Extra toppings"></div>
+ <div class="field"><label>Minimum</label><input id="modMin" type="number" min="0" max="20" value="0"></div>
+ <div class="field"><label>Maximum</label><input id="modMax" type="number" min="0" max="20" value="1"></div>
+ <div class="field" style="align-self:end">${b('Add Group','addModifierGroup()','primary')}</div></div>
+ ${groups.length?`<div class="modifier-admin-grid" style="margin-top:14px"><div class="field"><label>Group</label><select id="modGroup">${groups.map(g=>`<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select></div>
+ <div class="field"><label>Modifier Name</label><input id="modName" placeholder="Extra cheese"></div>
+ <div class="field"><label>Price Change (KES)</label><input id="modPrice" type="number" step="0.01" value="0"></div>
+ <div class="field" style="align-self:end">${b('Add Option','addModifierOption()','primary')}</div></div>
+ <div class="modifier-admin-grid" style="margin-top:14px"><div class="field"><label>Menu Item</label><select id="modMenu">${S.menu.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select></div>
+ <div class="field"><label>Modifier Group</label><select id="modLinkGroup">${groups.map(g=>`<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select></div>
+ <div class="field" style="align-self:end">${b('Link to Item','linkModifierGroup()')}</div></div>`:''}
+ <div class="list" style="margin-top:12px">${groups.map(g=>`<div class="line"><span><strong>${esc(g.name)}</strong> · ${Number(g.min)}–${Number(g.max)} choices<br><span class="hint">${options.filter(x=>x.group_id===g.id).map(x=>esc(x.name)+' ('+money(x.price_delta)+')').join(', ')||'No options'} · Linked to ${links.filter(l=>l.group_id===g.id).length} menu item(s)</span></span></div>`).join('')||'<div class="hint">No modifier groups yet</div>'}</div></div>`;}
+async function addModifierGroup(){const data={name:document.getElementById('modGroupName')?.value.trim(),minimum:Number(document.getElementById('modMin')?.value),maximum:Number(document.getElementById('modMax')?.value)};
+ if(!data.name)return show('Enter modifier group name.','error');await action('pos_admin_modifiers',arg({p_action:'create_group',p_data:data}),'Modifier group added.',loadAdmin)}
+async function addModifierOption(){const data={group_id:document.getElementById('modGroup')?.value,name:document.getElementById('modName')?.value.trim(),price_delta:Number(document.getElementById('modPrice')?.value)};
+ if(!data.group_id||!data.name||!Number.isFinite(data.price_delta))return show('Enter a valid modifier.','error');await action('pos_admin_modifiers',arg({p_action:'create_option',p_data:data}),'Modifier added.',loadAdmin)}
+async function linkModifierGroup(){const data={menu_item_id:document.getElementById('modMenu')?.value,group_id:document.getElementById('modLinkGroup')?.value};
+ if(!data.menu_item_id||!data.group_id)return show('Select a menu item and group.','error');await action('pos_admin_modifiers',arg({p_action:'link_menu',p_data:data}),'Modifier group linked.',loadAdmin)}
+
+function adminCatalogSection(){const activeMapping=!!S.menuMapping?.configured;
+ return `<div class="card" style="margin-top:16px"><h3>Add Menu Item</h3><div class="modifier-admin-grid">
+ <div class="field"><label>Item Name</label><input id="catalogName" maxlength="120" placeholder="e.g. Chicken Wrap"></div>
+ <div class="field"><label>Category</label><input id="catalogCategory" maxlength="100" placeholder="Burgers, Pizza…"></div>
+ <div class="field"><label>Selling Price (KES)</label><input id="catalogPrice" type="number" min="0" step="0.01"></div>
+ <div class="field"><label>Prep Time (min)</label><input id="catalogPrep" type="number" min="0" max="240" value="10"></div></div>
+ <div style="margin-top:10px">${b('Add Menu Item','addCatalogItem()','primary')}</div>
+ <details style="margin-top:14px" class="detail-fold"><summary><strong>Accounting Menu Linking</strong> · ${activeMapping?'Enabled':'Disabled'}</summary>
+ <p class="hint">With an explicitly selected Income account, new items are created in Accounting and POS together. Without one, items remain independent POS records.</p>
+ <div class="two"><div class="field"><label>Income Account</label><select id="linkedIncomeAccount"><option value="">Do not link</option>${S.incomeAccounts.map(a=>`<option value="${esc(a.id)}" ${S.menuMapping?.income_account_id===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
+ <div class="field"><label>Automatic Accounting Linking</label><select id="linkedAccountingEnabled"><option value="false" ${!activeMapping?'selected':''}>Off</option><option value="true" ${activeMapping?'selected':''}>On</option></select></div></div>
+ ${b('Save Mapping','saveAccountingLink()')}<p class="hint">Existing Accounting sales and stock are not changed by changing this setting.</p></details></div>`;
+}
+async function addCatalogItem(){const name=document.getElementById('catalogName')?.value.trim(),category=document.getElementById('catalogCategory')?.value.trim()||'General';
+ const raw=document.getElementById('catalogPrice')?.value,price=Number(raw),prep=Number(document.getElementById('catalogPrep')?.value);
+ if(!name||raw===''||!Number.isFinite(price)||price<0||!Number.isInteger(prep)||prep<0||prep>240)return show('Enter an item name, price and valid preparation time.','error');
+ await action('pos_admin_catalog',arg({p_action:'create',p_data:{name,category,price,preparation_minutes:prep}}),'Menu item created.',loadAdmin);
+}
+async function saveAccountingLink(){const enabled=document.getElementById('linkedAccountingEnabled')?.value==='true',income=document.getElementById('linkedIncomeAccount')?.value||null;
+ if(enabled&&!income)return show('Choose the company Income account first.','error');
+ await action('pos_admin_catalog',arg({p_action:'set_accounting_mapping',p_data:{enabled,income_account_id:income}}),'Accounting menu mapping updated.',loadAdmin);
+}
+function adminPaymentTypesSection(){return `<div class="card" style="margin-top:16px"><h3>Payment Types</h3><div class="row"><div class="field" style="flex:1"><label>New Payment Type</label><input id="newPaymentName" maxlength="80" placeholder="e.g. Card, M-Pesa, Cash"></div><div style="align-self:end">${b('Add Payment Type','addPaymentType()','primary')}</div></div>
+ <div class="list">${S.adminPaymentTypes.map(m=>`<div class="line"><strong>${esc(m.name)}</strong><div class="actions"><span class="hint">${m.active?'Active':'Disabled'}</span>${b(m.active?'Disable':'Activate',`changePaymentType('${esc(m.id)}',${!m.active})`,'small')}</div></div>`).join('')||'<div class="hint">No payment types yet.</div>'}</div></div>`;}
+async function addPaymentType(){const name=document.getElementById('newPaymentName')?.value.trim();if(!name)return show('Enter a payment type name.','error');
+ await action('pos_admin_payment_types',arg({p_action:'create',p_data:{name}}),'Payment type added.',loadAdmin)}
+async function changePaymentType(id,active){await action('pos_admin_payment_types',arg({p_action:'set_active',p_data:{id,active}}),'Payment type updated.',loadAdmin)}
+function adminAppearanceSection(){const p=S.preferences||{};return `<div class="card" style="margin-top:16px"><h3>Appearance</h3><div class="two">
+ <div class="field"><label>Font Style</label><select id="prefFont"><option ${p.font_family==='Modern'?'selected':''}>Modern</option><option ${p.font_family==='Classic'?'selected':''}>Classic</option><option ${p.font_family==='Accessible'?'selected':''}>Accessible</option></select></div>
+ <div class="field"><label>Font Size</label><select id="prefScale"><option value="0.90" ${Number(p.font_scale)===.9?'selected':''}>Compact</option><option value="1" ${!p.font_scale||Number(p.font_scale)===1?'selected':''}>Normal</option><option value="1.15" ${Number(p.font_scale)===1.15?'selected':''}>Large</option><option value="1.30" ${Number(p.font_scale)===1.3?'selected':''}>Extra Large</option></select></div></div>
+ ${b('Save Appearance','saveAppearance()','primary')}<p class="hint">Applies to the POS interface for this company.</p></div>`;}
+async function saveAppearance(){const prefs={font_family:document.getElementById('prefFont')?.value,font_scale:Number(document.getElementById('prefScale')?.value)};
+ if(S.busy)return;S.busy=true;try{S.preferences=await rpc('pos_preferences',arg({p_data:prefs}));applyPreferences();show('Appearance updated.')}catch(e){show(e.message,'error')}finally{S.busy=false}}
+function management(){return `<div class="two"><div>${employeesSection()}</div><div class="stack"><div class="card"><h3>Restaurant Tables</h3><div class="field"><label>Table Name</label><input id="newTable" placeholder="Table 02"></div>${b('Add Table','addTable()','primary')}<div class="list" style="margin-top:10px">${(S.setup?.tables||[]).map(t=>`<div class="line">${esc(t.name)}</div>`).join('')}</div></div></div></div>${adminPricingSection()}${adminModifierSection()}${adminCatalogSection()}${adminPaymentTypesSection()}${adminAppearanceSection()}<div class="section-head"><h3 style="margin:0">Menu Management</h3></div><div class="menu-grid">${S.menu.map(m=>`<div class="menu-card"><div class="menu-photo">${picture(m)}</div><div class="menu-title">${esc(m.name)}</div><div class="row"><span class="pill">${m.price==null?'Not priced':money(m.price)}</span><span class="hint">${Number(m.preparation_minutes??10)} min</span></div><div class="hint">${esc(m.category||'')} · ${m.available?'Available':'Unavailable'}</div><div style="margin-top:12px">${b(S.menuEditId===m.id?'Close':'Edit',`toggleMenuEdit('${esc(m.id)}')`,'small wide')}</div>${S.menuEditId===m.id?`<div class="menu-edit"><div class="field"><label>Selling Price (KES)</label><input id="price_${esc(m.id)}" type="number" min="0" step="0.01" value="${m.price==null?'':Number(m.price)}"></div><div class="field"><label>Preparation (minutes)</label><input id="prep_${esc(m.id)}" type="number" min="0" max="240" value="${Number(m.preparation_minutes??10)}"></div><label class="hint"><input type="checkbox" id="avail_${esc(m.id)}" ${m.available?'checked':''}> Available</label><div class="actions" style="margin-top:10px"><button class="btn small" type="button" onclick="document.getElementById('upload_${esc(m.id)}').click()">${S.uploading===m.id?'Uploading…':'Upload Photo'}</button><input class="hidden" id="upload_${esc(m.id)}" type="file" accept="image/jpeg,image/png,image/webp" onchange="uploadPhoto('${esc(m.id)}',this)">${b('Save Item',`saveItem('${esc(m.id)}')`,'primary small')}</div></div>`:''}</div>`).join('')||'<div class="card">No Accounting menu items found.</div>'}</div>`}
+function toggleMenuEdit(id){S.menuEditId=S.menuEditId===id?null:id;render()}
+function toggleReset(id){S.resetId=S.resetId===id?null:id;render()}
+function addEmployee(){const name=document.getElementById('newName')?.value.trim(),role=document.getElementById('newRole')?.value,pin=document.getElementById('newPin')?.value;if(!name||!['Cashier','Kitchen','Admin'].includes(role)||!/^[0-9]{4,8}$/.test(pin||''))return show('Enter a name, role and 4–8 digit PIN.','error');action('pos_employee_manage',arg({p_action:'add',p_data:{outlet_id:S.ws.outlet_id,name,role,pin}}),'Employee added.',loadAdmin)}
+function savePin(id){const pin=document.getElementById('resetPin_'+id)?.value;if(!/^[0-9]{4,8}$/.test(pin||''))return show('PIN must be 4–8 digits.','error');action('pos_employee_manage',arg({p_action:'reset_pin',p_data:{outlet_id:S.ws.outlet_id,id,pin}}),'PIN reset.',async()=>{S.resetId=null;if(id===S.employee?.id){S.token=null;S.role='';S.selection='Admin';await loadChoices()}else await loadAdmin()})}
+function employeeStatus(id,status){action('pos_employee_manage',arg({p_action:status,p_data:{outlet_id:S.ws.outlet_id,id}}),'Employee '+(status==='activate'?'activated.':'disabled.'),loadAdmin)}
+function addTable(){const name=document.getElementById('newTable')?.value.trim();if(!name)return show('Enter table name.','error');action('pos_employee_setup',arg({p_action:'add_table',p_data:{outlet_id:S.ws.outlet_id,name}}),'Table added.',loadAdmin)}
+function saveItem(id){const raw=document.getElementById('price_'+id)?.value,p=Number(raw),minutes=Number(document.getElementById('prep_'+id)?.value),available=!!document.getElementById('avail_'+id)?.checked;if(raw===''||!Number.isFinite(p)||p<0||!Number.isInteger(minutes)||minutes<0||minutes>240)return show('Enter a valid price and preparation minutes.','error');action('pos_employee_save_item',arg({p_item:id,p_price:p,p_minutes:minutes,p_available:available}),'Menu item saved.',loadAdmin)}
+function picture(item){const path=item.image_url;if(!path||!path.startsWith(S.ws.company_id+'/'+item.id+'/'))return '🍽️';const url=S.db.storage.from('finsight-pos-menu').getPublicUrl(path).data.publicUrl;return `<img src="${esc(url)}" alt="${esc(item.name)}" loading="lazy" onerror="this.style.display='none';this.parentElement.textContent='🍽️'">`}
+async function uploadPhoto(id,input){const file=input.files?.[0];if(!file||S.busy)return;S.busy=true;S.uploading=id;try{const blob=await convertPhoto(file);const path=S.ws.company_id+'/'+id+'/'+newUuid()+'.jpg';const {error}=await S.db.storage.from('finsight-pos-menu').upload(path,blob,{contentType:'image/jpeg',upsert:false,cacheControl:'3600'});if(error)throw Error('Storage rejected image: '+error.message);await rpc('pos_employee_menu_image',arg({p_item:id,p_path:path}));await loadAdmin();S.notice='Menu photo saved.';S.noticeType='ok'}catch(e){S.notice='Image upload failed: '+e.message;S.noticeType='error'}finally{S.uploading='';S.busy=false;render()}}
+function reports(){const shifts=S.reports.filter(r=>!S.reportDate||localDay(r.opened_at)===S.reportDate);if(S.selectedShift&&S.shiftDetail)return reportDetail();return `<div class="card"><div class="row"><div class="field"><label>Filter by date</label><input type="date" value="${esc(S.reportDate)}" onchange="S.reportDate=this.value;render()"></div><div class="actions">${b('All Dates',"S.reportDate='';render()")}${b('Refresh',"go('reports')")}</div></div><div class="reportscroll"><table class="report-table"><thead><tr><th>Date</th><th>Shift</th><th>Status</th><th>Review</th><th>Orders</th><th>Sales</th><th></th></tr></thead><tbody>${shifts.map(r=>`<tr><td>${esc(when(r.opened_at))}</td><td>${esc(String(r.id).slice(0,8))}</td><td>${esc(r.status)}</td><td>${esc(r.review)}</td><td>${Number(r.orders)}</td><td>${money(r.order_total)}</td><td>${b('View Report',`viewShift('${esc(r.id)}')`,'small')}</td></tr>`).join('')||'<tr><td colspan="7">No shifts found.</td></tr>'}</tbody></table></div></div>`}
+function reportRows(){return (S.shiftDetail?.orders||[]).flatMap(order=>(order.items||[]).map(item=>({date:when(order.date),order:order.order_id?.slice(0,8)||'',item:item.item,quantity:item.quantity,gross:item.revenue_before_discount,discount:item.discount,net:item.revenue_after_discount,payment:order.payment_types,cashier:order.cashier,status:order.payment_status}))) }
+function reportDetail(){const d=S.shiftDetail,rows=reportRows(),shift=S.reports.find(r=>r.id===S.selectedShift),recon=S.reconInfo||{status:'Not Submitted',lines:[]};
+ const orders=d.orders||[],payments=d.payments||[];
+ const gross=orders.reduce((s,o)=>s+Number(o.gross_amount??o.order_total??0),0);
+ const discount=orders.reduce((s,o)=>s+Number(o.discount_amount||0),0),surcharge=orders.reduce((s,o)=>s+Number(o.surcharge_amount||0),0);
+ const collections=payments.reduce((s,p)=>s+Number(p.amount||0),0);
+ const reviewable=['Closed','Submitted','Returned'].includes(shift?.status);
+ return `<div class="report-page"><div class="row" style="margin-bottom:15px">${b('← All Shifts','closeShiftDetail()')}<div class="actions">${b('Export Excel','exportShiftExcel()','primary')}${b('Print / Save PDF','printShiftReport()')}</div></div>
+ <div class="card"><h2>Detailed Till Shift Report</h2><div class="hint">${esc(d.company_name)} · ${esc(d.outlet_name)} · ${esc(String(d.id).slice(0,8))}</div>
+ <div class="hint">Business Date: ${esc(d.business_date||localDay(d.opened_at))} · Opened ${esc(when(d.opened_at))} · Closed ${esc(when(d.closed_at))}</div>
+ <div class="report-summary"><div><div class="hint">Revenue Before Discount</div><h3>${money(gross)}</h3></div><div><div class="hint">Discounts / Surcharges</div><h3>−${money(discount)} / +${money(surcharge)}</h3></div><div><div class="hint">Net Order Revenue</div><h3>${money(gross-discount+surcharge)}</h3></div><div><div class="hint">Collections Received</div><h3>${money(collections)}</h3></div></div>
+ <h3>Sales Items</h3><div class="reportscroll"><table class="report-table"><thead><tr><th>Date</th><th>Order</th><th>Item</th><th>Qty</th><th>Before Discount</th><th>Discount</th><th>After Discount</th><th>Payment Type(s)</th><th>Order Cashier</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.order)}</td><td>${esc(r.item)}</td><td>${Number(r.quantity)}</td><td>${money(r.gross)}</td><td>${money(r.discount||0)}</td><td>${money(r.net||0)}</td><td>${esc(r.payment)}</td><td>${esc(r.cashier)}</td></tr>`).join('')||'<tr><td colspan="9">No items found.</td></tr>'}</tbody></table></div>
+ <h3 style="margin-top:25px">Payment Collections</h3><div class="reportscroll"><table class="report-table"><thead><tr><th>Received At</th><th>Order</th><th>Payment Type</th><th>Amount</th><th>Receiving Cashier</th><th>Reference</th></tr></thead><tbody>${payments.map(p=>`<tr><td>${esc(when(p.collected_at))}</td><td>${esc(String(p.order_id||'').slice(0,8))}</td><td>${esc(p.method)}</td><td>${money(p.amount)}</td><td>${esc(p.receiver)}</td><td>${esc(p.reference||'')}</td></tr>`).join('')||'<tr><td colspan="6">No payments recorded.</td></tr>'}</tbody></table></div>
+ <h3 style="margin-top:25px">Reconciliation — ${esc(recon.status)}</h3>
+ ${recon.lines?.length?`<div class="reportscroll"><table class="report-table"><thead><tr><th>Payment Type</th><th>Expected</th><th>Actual</th><th>Variance</th><th>Explanation</th></tr></thead><tbody>${recon.lines.map(x=>`<tr><td>${esc(x.payment_type)}</td><td>${money(x.expected)}</td><td>${money(x.actual)}</td><td>${money(x.variance)}</td><td>${esc(x.explanation||'')}</td></tr>`).join('')}</tbody></table></div>`:'<p class="hint">Cashier reconciliation has not been submitted.</p>'}
+ ${recon.status==='Submitted'?`<div class="field" style="margin-top:12px"><label>Review note (required when returning)</label><textarea id="reviewReconNote">${esc(recon.note||'')}</textarea></div><div class="actions">${b('Approve Reconciliation',"reviewReconciliation('approve')",'primary')}${b('Return for Correction',"reviewReconciliation('return')")}</div>`:''}
+ <div class="actions" style="margin-top:18px">${reviewable?`${b('Accept',"reviewShift('Accepted')")}${b('Approve Shift',"reviewShift('Approved')",'primary')}${b('Discard',"S.discardOpen=!S.discardOpen;render()",'danger')}`:''}</div>
+ ${S.discardOpen?`<div class="field"><label>Discard reason</label><textarea id="discardReason"></textarea></div>${b('Confirm Discard',"reviewShift('Discarded')",'danger')}`:''}
+ <p class="hint">Shift approval requires an approved reconciliation. Approval does not post into Accounting.</p></div></div>`;
+}
+function xmlEscape(text){return String(text??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function downloadBlob(blob,name){const uri=globalThis.URL.createObjectURL(blob);const a=document.createElement('a');a.href=uri;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>globalThis.URL.revokeObjectURL(uri),3000)}
+function exportShiftExcel(){if(!S.shiftDetail)return;const rows=reportRows(),payments=S.shiftDetail.payments||[];
+ const items=[['Date','Order','Item','Quantity','Revenue Before Discount','Discount','Revenue After Discount','Payment Type','Order Cashier'],...rows.map(r=>[r.date,r.order,r.item,r.quantity,Number(r.gross),Number(r.discount||0),Number(r.net||0),r.payment,r.cashier])];
+ const collected=[['Collected At','Order','Payment Type','Amount','Receiving Cashier','Reference'],...payments.map(p=>[when(p.collected_at),String(p.order_id||'').slice(0,8),p.method,Number(p.amount),p.receiver,p.reference||''])];
+ const xmlSheet=(name,values)=>'<Worksheet ss:Name="'+xmlEscape(name)+'"><Table>'+values.map(row=>'<Row>'+row.map(v=>{const isNumber=typeof v==='number'&&Number.isFinite(v);return '<Cell><Data ss:Type="'+(isNumber?'Number':'String')+'">'+xmlEscape(v)+'</Data></Cell>'}).join('')+'</Row>').join('')+'</Table></Worksheet>';
+ const xml='<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">'+xmlSheet('Shift Items',items)+xmlSheet('Payments',collected)+'</Workbook>';
+ downloadBlob(new Blob([xml],{type:'application/vnd.ms-excel'}),'FinSight_Shift_'+String(S.selectedShift).slice(0,8)+'.xls');
+}
+function printShiftReport(){if(!S.shiftDetail)return;const d=S.shiftDetail,rows=reportRows(),payments=d.payments||[];
+ const itemRows=rows.map(r=>'<tr><td>'+esc(r.date)+'</td><td>'+esc(r.order)+'</td><td>'+esc(r.item)+'</td><td>'+Number(r.quantity)+'</td><td>'+money(r.gross)+'</td><td>'+money(r.discount||0)+'</td><td>'+money(r.net||0)+'</td><td>'+esc(r.payment)+'</td><td>'+esc(r.cashier)+'</td></tr>').join('');
+ const payRows=payments.map(p=>'<tr><td>'+esc(when(p.collected_at))+'</td><td>'+esc(p.method)+'</td><td>'+money(p.amount)+'</td><td>'+esc(p.receiver)+'</td><td>'+esc(p.reference||'')+'</td></tr>').join('');
+ const body='<h2>Detailed Till Shift Report</h2><p>'+esc(d.company_name)+' · '+esc(d.outlet_name)+' · '+esc(d.business_date||localDay(d.opened_at))+'</p><h3>Itemized Sales</h3><table><thead><tr><th>Date</th><th>Order</th><th>Item</th><th>Qty</th><th>Gross</th><th>Discount</th><th>After Discount</th><th>Payment</th><th>Order Cashier</th></tr></thead><tbody>'+itemRows+'</tbody></table><h3>Collections by Receiving Cashier</h3><table><thead><tr><th>Date</th><th>Payment Method</th><th>Amount</th><th>Receiving Cashier</th><th>Reference</th></tr></thead><tbody>'+payRows+'</tbody></table><p>FinSight POS operational report; Accounting posting and fiscal documentation are separate processes.</p>';
+ openPrintWindow('FinSight Shift Report',body,'A4 landscape');
+}
+async function viewShift(id){S.selectedShift=id;S.discardOpen=false;S.shiftDetail=null;S.reconInfo=null;
+ try{const [details,recon]=await Promise.all([
+  rpc('pos_employee_shift_report',arg({p_shift:id})),
+  rpc('pos_admin_reconciliation',arg({p_shift:id,p_action:'view',p_note:null}))]);
+ S.shiftDetail=details;S.reconInfo=recon;render();}
+ catch(e){S.selectedShift=null;show(e.message,'error')}
+}
+async function reviewReconciliation(actionName){const note=document.getElementById('reviewReconNote')?.value.trim()||null;
+ if(actionName==='return'&&!note)return show('Enter a return reason.','error');
+ await action('pos_admin_reconciliation',arg({p_shift:S.selectedShift,p_action:actionName,p_note:note}),
+ 'Reconciliation '+(actionName==='approve'?'approved.':'returned to Cashier.'),async()=>{
+  S.reconInfo=await rpc('pos_admin_reconciliation',arg({p_shift:S.selectedShift,p_action:'view',p_note:null}));await loadReports();
+ });
+}
+function closeShiftDetail(){S.selectedShift=null;S.shiftDetail=null;S.reportLines=[];S.discardOpen=false;render()}
+function openAdminShift(){action('pos_employee_setup',arg({p_action:'open_shift',p_data:{outlet_id:S.ws.outlet_id}}),'Till shift opened.',async()=>{await loadReports();await refreshWorkspace()})}
+function reviewShift(status){if(!S.selectedShift)return;const note=status==='Discarded'?(document.getElementById('discardReason')?.value.trim()||''):'';if(status==='Discarded'&&note.length<5)return show('Enter a reason for discarding the shift.','error');action('pos_employee_review_shift',arg({p_shift:S.selectedShift,p_status:status,p_note:note}),'Shift review: '+status,async()=>{await loadReports();S.shiftDetail=await rpc('pos_employee_shift_report',arg({p_shift:S.selectedShift}))})}
+
+async function loadReceipt(){S.receipt=await rpc('pos_receipt_settings',arg({p_data:null}))}
+function receiptLogo(){const path=S.receipt?.logo_path;if(!path||!path.startsWith(S.ws.company_id+'/receipt/'))return '';return S.db.storage.from('finsight-pos-menu').getPublicUrl(path).data.publicUrl}
+function receiptPreview(data){const company=esc(S.ws.company_name),logo=data.logo_path?receiptLogo():'';return `<div class="receipt-preview" style="width:${data.paper_mm===58?230:300}px">${logo?`<img src="${esc(logo)}" alt="Company logo">`:''}<div style="font-weight:bold;font-size:16px">${company}</div><div>${esc(S.ws.outlet_name)}</div><div>${esc(data.address_text||'')}</div><div>${esc(data.phone_text||'')}</div><hr><strong>${esc(data.receipt_heading||'RECEIPT')}</strong><div>PREVIEW ONLY · NOT A FISCAL RECEIPT</div>${data.show_order_number?'<div>Order: SAMPLE-001</div>':''}<div>Date: '+esc(when(new Date().toISOString()))+'</div>${data.show_cashier?'<div>Cashier: Sample Cashier</div>':''}<hr><div class="rline"><span>1 × Sample Item</span><span>KES 750.00</span></div><hr><div class="rline"><strong>Total</strong><strong>KES 750.00</strong></div>${data.show_payment_method?'<div>Payment: Sample only</div>':''}<hr><div>${esc(data.footer_text||'')}</div></div>`}
+function receiptPage(){const d=S.receipt||{paper_mm:80,receipt_heading:'RECEIPT',address_text:'',phone_text:'',footer_text:'Thank you for visiting!',logo_path:null,show_cashier:true,show_payment_method:true,show_order_number:true};return `<div class="two"><div class="card"><h3>Company Receipt Template</h3><div class="field"><label>Paper width</label><select id="receiptPaper"><option value="80" ${d.paper_mm===80?'selected':''}>80 mm</option><option value="58" ${d.paper_mm===58?'selected':''}>58 mm</option></select></div><div class="field"><label>Receipt heading</label><input id="receiptHeading" maxlength="80" value="${esc(d.receipt_heading)}"></div><div class="field"><label>Address / branch details</label><textarea id="receiptAddress" maxlength="400">${esc(d.address_text)}</textarea></div><div class="field"><label>Phone / contact</label><input id="receiptPhone" maxlength="100" value="${esc(d.phone_text)}"></div><div class="field"><label>Footer message</label><textarea id="receiptFooter" maxlength="400">${esc(d.footer_text)}</textarea></div><label><input type="checkbox" id="receiptCashier" ${d.show_cashier?'checked':''}> Show cashier</label><br><label><input type="checkbox" id="receiptPayment" ${d.show_payment_method?'checked':''}> Show payment method</label><br><label><input type="checkbox" id="receiptOrderNo" ${d.show_order_number?'checked':''}> Show order number</label><div class="actions" style="margin-top:14px"><button class="btn" onclick="document.getElementById('receiptLogoInput').click()" ${S.receiptLogoUploading?'disabled':''}>${S.receiptLogoUploading?'Uploading…':'Upload Company Logo'}</button><input type="file" id="receiptLogoInput" accept="image/jpeg,image/png,image/webp" class="hidden" onchange="uploadReceiptLogo(this)">${d.logo_path?b('Remove Logo','removeReceiptLogo()'):''}</div><div class="actions" style="margin-top:16px">${b('Save Template','saveReceipt()','primary')}${b('Preview Changes','previewReceiptChanges()')}${b('Test Print','testPrintReceipt()')}</div></div><div class="card"><h3>Receipt Preview</h3><div id="receiptPreview">${receiptPreview(d)}</div><p class="hint">Thermal printing uses the browser print dialog and a configured printer. This is a sample layout, not a completed customer transaction or tax invoice.</p></div></div>`}
+function readReceiptForm(){const d={paper_mm:Number(document.getElementById('receiptPaper')?.value),receipt_heading:document.getElementById('receiptHeading')?.value||'RECEIPT',address_text:document.getElementById('receiptAddress')?.value||'',phone_text:document.getElementById('receiptPhone')?.value||'',footer_text:document.getElementById('receiptFooter')?.value||'',logo_path:S.receipt?.logo_path||null,show_cashier:!!document.getElementById('receiptCashier')?.checked,show_payment_method:!!document.getElementById('receiptPayment')?.checked,show_order_number:!!document.getElementById('receiptOrderNo')?.checked};return d}
+function previewReceiptChanges(){const holder=document.getElementById('receiptPreview');if(holder)holder.innerHTML=receiptPreview(readReceiptForm())}
+async function saveReceipt(){if(S.busy)return;const data=readReceiptForm();S.busy=true;try{S.receipt=await rpc('pos_receipt_settings',arg({p_data:data}));show('Company receipt template saved.')}catch(e){show('Template not saved: '+e.message,'error')}finally{S.busy=false}}
+function removeReceiptLogo(){S.receipt={...S.receipt,logo_path:null};render()}
+async function uploadReceiptLogo(input){const file=input.files?.[0];if(!file)return;if(S.busy)return;S.busy=true;S.receiptLogoUploading=true;try{const blob=await convertPhoto(file);const path=S.ws.company_id+'/receipt/'+newUuid()+'.jpg';const {error}=await S.db.storage.from('finsight-pos-menu').upload(path,blob,{contentType:'image/jpeg',upsert:false});if(error)throw error;S.receipt={...S.receipt,logo_path:path};show('Logo uploaded. Save the template to keep it.')}catch(e){show('Logo upload failed: '+e.message,'error')}finally{S.busy=false;S.receiptLogoUploading=false}}
+function testPrintReceipt(){const data=readReceiptForm();const preview=receiptPreview(data);openPrintWindow('FinSight Receipt Test',preview,data.paper_mm+'mm auto')}
+function openPrintWindow(title,html,pageSize){const popup=window.open('','_blank');if(!popup){show('Allow pop-ups for this site to print.','error');return}const width=pageSize.startsWith('58')?'58mm':pageSize.startsWith('80')?'80mm':'A4';popup.document.open();popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>@page{size:'+width+';margin:4mm}body{font:12px Arial;color:#111}table{width:100%;border-collapse:collapse}th,td{padding:5px;border-bottom:1px solid #ccc;text-align:left}.receipt-preview{font:12px/1.4 monospace;text-align:center;width:100%;max-width:100%}.rline{display:flex;justify-content:space-between}.receipt-preview img{max-width:150px;max-height:70px}.receipt-preview hr{border:0;border-top:1px dashed #999}</style></head><body>'+html+'</body></html>');popup.document.close();popup.focus();setTimeout(()=>popup.print(),350)}
+async function convertPhoto(file){if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('Use JPEG, PNG or WebP.');const img=await createImageBitmap(file);const scale=Math.min(1,1200/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));const ctx=canvas.getContext('2d');if(!ctx)throw Error('Image processing unavailable.');ctx.drawImage(img,0,0,canvas.width,canvas.height);img.close?.();const blob=await new Promise((resolve,reject)=>canvas.toBlob(x=>x?resolve(x):reject(Error('Conversion failed.')),'image/jpeg',.83));if(blob.size>3145728)throw Error('Image exceeds 3 MB.');return blob}
+
+async function loadTillSummary(){try{S.tillSummary=await rpc('pos_cashier_latest_shift',arg())}catch(e){S.tillSummary=null;console.warn('Till summary:',e.message)}}
+async function submitTillReconciliation(){if(!S.tillSummary?.shift_id||S.busy)return;
+ const methods=S.tillSummary.payment_types||[],actuals=methods.map((m,i)=>({payment_type_id:m.id,actual:Number(document.getElementById('actual_'+i)?.value),explanation:document.getElementById('explain_'+i)?.value.trim()||null}));
+ if(actuals.some(x=>!Number.isFinite(x.actual)||x.actual<0||Math.round(x.actual*100)!==x.actual*100))return show('Enter valid collection amounts.','error');
+ await action('pos_cashier_submit_reconciliation',arg({p_shift:S.tillSummary.shift_id,p_actuals:actuals}),
+ 'Till reconciliation submitted for Admin review.',loadTillSummary);
+}
+function shift(){const t=S.tillSummary||{status:'None',payment_types:[]},open=!!S.ws.shift_id;
+ const closedToday=!open&&t.business_date===localDay(new Date().toISOString())&&t.status!=='None';
+ const pending=!!t.shift_id&&t.status==='Closed'&&['Not Submitted','Returned'].includes(t.reconciliation_status);
+ return `<div class="card" style="max-width:790px"><h3>Till Shift</h3>
+ <div class="row"><span>Current cashier</span><strong>${esc(S.employee?.name)}</strong></div>
+ <div class="row" style="margin-top:10px"><span>Business date</span><strong>${esc(t.business_date||localDay(new Date().toISOString()))}</strong></div>
+ <div class="row" style="margin-top:10px"><span>Shift</span><span class="pill">${esc(open?'Open':t.status||'None')}</span></div>
+ <div class="row" style="margin-top:10px"><span>Reconciliation</span><span class="pill">${esc(t.reconciliation_status||'Not Submitted')}</span></div>
+ <div class="actions" style="margin-top:18px">${open?b('Close Till Shift','closeTill()','primary'):!closedToday?b('Open Till Shift','openTill()','primary'):'<span class="hint">Today’s shift is already closed. A new shift begins on the next business day.</span>'}${b('Refresh','reloadTill()')}</div>
+ ${pending?`<div class="section-head"><h3>Submit Shift Reconciliation</h3></div><p class="hint">Count and enter actual collections. Explain each difference before submitting for approval.</p>
+ ${t.payment_types.map((m,i)=>`<div class="recon-method"><div><strong>${esc(m.name)}</strong><div class="hint">Expected: ${money(m.expected)}</div></div><div class="field"><label>Actual Received</label><input id="actual_${i}" type="number" min="0" step="0.01" value="${m.actual==null?Number(m.expected).toFixed(2):Number(m.actual).toFixed(2)}"></div><div class="field"><label>Variance Explanation</label><input id="explain_${i}" maxlength="500" value="${esc(m.explanation||'')}" placeholder="If different from expected"></div></div>`).join('')}
+ ${b('Submit Reconciliation','submitTillReconciliation()','primary')}`:''}
+ <p class="hint" style="margin-top:16px">One outlet shift per day. All cashiers work under the same shift, while payments retain the receiving cashier. Unpaid Guest Bills must be settled before the shift can close.</p>
+ </div>`;
+}
+async function reloadTill(){await refreshWorkspace();await loadTillSummary();render()}
+function openTill(){action('pos_cashier_open_shift',arg(),'Till shift opened.',async()=>{await refreshWorkspace();await loadTillSummary()})}
+function closeTill(){action('pos_cashier_close_shift',arg({p_shift:S.ws.shift_id}),'Till shift closed.',async()=>{await refreshWorkspace();await loadTillSummary()})}
+function selectCategoryIndex(index){const categories=['All',...new Set(S.menu.map(x=>x.category||'Uncategorized'))];if(categories[index]!==undefined){S.category=categories[index];render()}}
+function cartLineGross(x){const ids=x.modifiers||[];const modCost=ids.reduce((sum,id)=>{const opt=S.modifierGroups.flatMap(g=>g.options||[]).find(m=>m.id===id);return sum+Number(opt?.price_delta||0)},0);return Math.round((Number(x.price)+modCost)*x.qty*100)/100;}
+function checkoutTotals(){const gross=S.cart.reduce((sum,x)=>sum+cartLineGross(x),0);let discount=0,surcharge=0;
+ for(const r of S.pricingOptions.filter(r=>S.selectedRules.includes(r.id))){const value=r.calculation==='Percent'?Math.round(gross*Number(r.value))/100:Number(r.value);if(r.kind==='Discount')discount+=value;else surcharge+=value;}
+ return {gross,discount,surcharge,net:Math.round((gross-discount+surcharge)*100)/100};}
+function togglePricingRule(id,checked){S.selectedRules=checked?[...new Set([...S.selectedRules,id])]:S.selectedRules.filter(x=>x!==id);render()}
+function newCartLine(id){const m=S.menu.find(x=>x.id===id);if(!m)return;S.cart.push({key:newUuid(),id:m.id,name:m.name,price:Number(m.price),qty:1,modifiers:[]});render()}
+function cartModifier(key,id,checked){const line=S.cart.find(x=>x.key===key);if(!line)return;
+ line.modifiers=checked?[...new Set([...line.modifiers,id])]:line.modifiers.filter(x=>x!==id);render()}
+function checkout(){
+ const totals=checkoutTotals(),categories=['All',...new Set(S.menu.map(m=>m.category||'Uncategorized'))];
+ const shown=S.menu.filter(m=>S.category==='All'||(m.category||'Uncategorized')===S.category);
+ return `<div class="checkout"><div>
+ <div class="category-tabs">${categories.map((c,i)=>`<button class="cat-tab ${S.category===c?'active':''}" onclick="selectCategoryIndex(${i})">${esc(c)}</button>`).join('')}</div>
+ <div class="menu-grid">${shown.map(m=>`<button class="menu-card" style="text-align:left" onclick="addCart('${esc(m.id)}')"><div class="menu-photo">${picture(m)}</div><div class="menu-title">${esc(m.name)}</div><div class="pill">${money(m.price)}</div></button>`).join('')||'<div class="card">No items in this category.</div>'}</div>
+ </div><div class="card cart">
+  <div class="row"><h3 style="margin:0">New Order</h3><span class="pill">${S.cart.length} lines</span></div>
+  <div class="row" style="margin-top:14px"><div class="field" style="flex:1"><label>Order Type</label><select onchange="S.orderType=this.value;render()">${['Dine In','Takeaway','Pickup','Delivery'].map(t=>`<option ${S.orderType===t?'selected':''}>${t}</option>`).join('')}</select></div>${S.orderType==='Dine In'?`<div class="field" style="flex:1"><label>Table</label><select id="orderTable" onchange="S.tableId=this.value">${S.tables.map(t=>`<option value="${esc(t.id)}" ${S.tableId===t.id?'selected':''}>${esc(t.name)}${t.occupied?' (Occupied)':''}</option>`).join('')}</select></div>`:''}</div>
+  ${S.cart.map((x,i)=>`<div class="cart-line"><div class="row"><strong>${esc(x.name)}</strong><strong>${money(cartLineGross(x))}</strong></div><div class="row"><span class="hint">${money(x.price)} × ${x.qty}</span><div class="actions">${b('−',`cartQty('${esc(x.key)}',-1)`,'small')}${b('+',`cartQty('${esc(x.key)}',1)`,'small')}${b('Another',`newCartLine('${esc(x.id)}')`,'small')}</div></div>
+ ${S.modifierGroups.filter(g=>g.menu_item_id===x.id).map(g=>`<div class="modifier-group"><div class="hint"><strong>${esc(g.group)}</strong> · Select ${Number(g.minimum)}–${Number(g.maximum)}</div>${(g.options||[]).map(m=>`<label class="modifier-option"><input type="checkbox" ${x.modifiers.includes(m.id)?'checked':''} onchange="cartModifier('${esc(x.key)}','${esc(m.id)}',this.checked)"> ${esc(m.name)} ${Number(m.price_delta)?'('+money(m.price_delta)+')':''}</label>`).join('')}</div>`).join('')}
+ </div>`).join('')||'<div class="empty">Select items</div>'}
+ <div class="field" style="margin-top:12px"><label>General Order Comment (optional)</label><textarea id="orderNotes" maxlength="2000" placeholder="Special instructions for the whole order" oninput="S.orderNotes=this.value">${esc(S.orderNotes)}</textarea></div>
+ ${S.pricingOptions.length?`<div class="field"><label>Discounts / Surcharges</label>${S.pricingOptions.map(r=>`<label class="modifier-option"><input type="checkbox" ${S.selectedRules.includes(r.id)?'checked':''} onchange="togglePricingRule('${esc(r.id)}',this.checked)"> ${esc(r.name)} · ${esc(r.kind)} ${r.calculation==='Percent'?Number(r.value)+'%':money(r.value)}</label>`).join('')}</div>`:''}
+ <div class="totals"><div class="row"><span>Before adjustments</span><strong>${money(totals.gross)}</strong></div>${totals.discount?`<div class="row"><span>Discount</span><strong>−${money(totals.discount)}</strong></div>`:''}${totals.surcharge?`<div class="row"><span>Surcharge</span><strong>+${money(totals.surcharge)}</strong></div>`:''}<div class="row"><strong>Total</strong><strong>${money(totals.net)}</strong></div></div>
+ <div class="checkout-actions">${b('Payment','beginCheckoutPayment()','primary')}${b('Print Guest Bill','checkoutGuestBill()')}</div>
+ <p class="hint">Payment opens the payment window. Guest Bill sends the order to Kitchen as unpaid.</p>
+ </div></div>${S.checkoutDialog?checkoutPaymentModal():''}`;
+}
+function addCart(id){const m=S.menu.find(x=>x.id===id);if(!m)return;
+ const existing=S.cart.find(x=>x.id===id&&!x.modifiers.length);
+ if(existing)existing.qty++;else S.cart.push({key:newUuid(),id:m.id,name:m.name,price:Number(m.price),qty:1,modifiers:[]});render();}
+function cartQty(key,delta){const line=S.cart.find(x=>x.key===key);if(!line)return;line.qty+=delta;if(line.qty<=0)S.cart=S.cart.filter(x=>x.key!==key);render();}
+function beginCheckoutPayment(){if(!S.cart.length)return show('Select items first.','error');
+ const totals=checkoutTotals();if(totals.net<0)return show('Discount exceeds the order total.','error');
+ S.checkoutDialog=true;S.paymentRows=[{method:S.paymentMethods[0]?.id||'',amount:totals.net.toFixed(2),reference:''}];render();}
+function closeCheckoutPayment(){S.checkoutDialog=false;render()}
+function captureCheckoutPaymentRows(){S.paymentRows=S.paymentRows.map((r,i)=>({method:document.getElementById('method_'+i)?.value||r.method,amount:document.getElementById('amount_'+i)?.value??r.amount,reference:document.getElementById('reference_'+i)?.value??r.reference}));}
+function addCheckoutPaymentRow(){captureCheckoutPaymentRows();S.paymentRows.push({method:S.paymentMethods[0]?.id||'',amount:'',reference:''});render()}
+function removeCheckoutPaymentRow(index){captureCheckoutPaymentRows();S.paymentRows.splice(index,1);render()}
+function checkoutPaymentModal(){const totals=checkoutTotals();return `<div class="pos-modal-shade"><div class="pos-payment-modal"><div class="row"><h2 style="margin:0">Payment</h2>${b('Close','closeCheckoutPayment()')}</div>
+ <p class="hint">The order has not been sent to Kitchen or printed.</p><div class="row"><strong>Total due</strong><strong>${money(totals.net)}</strong></div>
+ ${S.paymentRows.map((row,i)=>`<div class="payment-line"><div class="field"><label>Payment Type</label><select id="method_${i}">${S.paymentMethods.map(m=>`<option value="${esc(m.id)}" ${m.id===row.method?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div><div class="field"><label>Amount</label><input id="amount_${i}" type="number" min="0" step="0.01" value="${esc(row.amount)}"></div><div class="field"><label>Reference</label><input id="reference_${i}" maxlength="150" placeholder="M-Pesa/card reference" value="${esc(row.reference)}"></div>${S.paymentRows.length>1?b('Remove',`removeCheckoutPaymentRow(${i})`,'small danger'):''}</div>`).join('')}
+ <div class="row" style="margin-top:14px">${b('Split Payment','addCheckoutPaymentRow()')}${b('Pay & Print Receipt','payAndPrint()','primary')}</div>
+ <p class="hint">For noncash payments, enter the transaction reference. Do not confirm a digital payment before verifying it.</p></div></div>`}
+function readCheckoutPayments(){return S.paymentRows.map((r,i)=>({payment_type_id:document.getElementById('method_'+i)?.value,amount:Number(document.getElementById('amount_'+i)?.value),reference:document.getElementById('reference_'+i)?.value.trim()||null}));}
+function checkoutPayload(mode,payments){const table=S.orderType==='Dine In'?(document.getElementById('orderTable')?.value||S.tableId):null;
+ return {p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_token:S.token,p_shift:S.ws.shift_id,p_terminal:S.ws.terminal_id,
+  p_table:table,p_request:S.checkoutRequest,p_type:S.orderType,
+  p_items:S.cart.map(x=>({menu_item_id:x.id,quantity:x.qty,modifiers:x.modifiers})),
+  p_notes:S.orderNotes||null,p_mode:mode,p_rules:S.selectedRules,p_payments:payments};}
+async function submitCheckout(mode,payments){if(S.busy)return; if(!S.ws.shift_id)return show('Open Till Shift first.','error');
+ if(!S.cart.length)return show('Select items first.','error');
+ const due=checkoutTotals().net;if(due<0)return show('Discount exceeds gross sale.','error');
+ if(mode==='Paid'){
+  const sum=payments.reduce((acc,p)=>acc+Math.round(Number(p.amount)*100),0);
+  if(payments.some(p=>!p.payment_type_id||!Number.isFinite(p.amount)||p.amount<=0)||sum!==Math.round(due*100))return show('Payment amounts must add up exactly to the amount due.','error');
+ }
+ // Reserve print window synchronously on the user's click, before awaiting network I/O.
+ const printTab=window.open('','_blank');if(printTab)printTab.document.write('<p>FinSight POS — preparing your document...</p>');
+ S.busy=true;S.checkoutRequest=S.checkoutRequest||newUuid();
+ try{
+  const completed=await rpc('pos_checkout_atomic',checkoutPayload(mode,payments));
+  S.checkoutDialog=false;S.paymentRows=[];S.checkoutRequest=null;S.cart=[];S.orderNotes='';S.selectedRules=[];
+  S.paymentOrder=null;
+  try{await printCheckoutDocument(completed.order_id,printTab)}catch(printError){if(printTab)printTab.close();show('Checkout saved. Printing failed: '+printError.message,'error');return}
+  show(mode==='Paid'?'Paid order sent to Kitchen.':'Guest Bill sent to Kitchen — unpaid.');
+  void loadHistory().catch(e=>console.warn('History refresh:',e.message));
+ }catch(e){if(printTab)printTab.close();show('Order not saved: '+e.message,'error')}
+ finally{S.busy=false;}
+}
+function payAndPrint(){if(!S.checkoutDialog)return;submitCheckout('Paid',readCheckoutPayments())}
+function checkoutGuestBill(){submitCheckout('Guest Bill',[])}
+async function printCheckoutDocument(id,existingTab=null){
+ const d=await rpc('pos_cashier_print_document',arg({p_order:id}));
+ const t=d.template||{},paid=d.status==='Paid',paperMm=Number(t.paper_mm)===58?58:80;
+ const header=paid?esc(t.receipt_heading||'RECEIPT'):'GUEST BILL — UNPAID';
+ const logo=t.logo_path&&String(t.logo_path).startsWith(S.ws.company_id+'/receipt/')?S.db.storage.from('finsight-pos-menu').getPublicUrl(t.logo_path).data.publicUrl:null;
+ const balance=Math.max(0,Number(d.total||0)-Number(d.paid||0));
+ const html=`<div class="receipt-preview">${logo?`<img src="${esc(logo)}" alt="Company logo">`:''}<div><strong>${esc(d.company_name)}</strong></div><div>${esc(d.outlet_name)}</div><div>${esc(t.address_text||'')}</div><div>${esc(t.phone_text||'')}</div><hr><strong>${header}</strong><div>Order ${esc(String(d.order_id).slice(0,8))}</div><div>${esc(when(d.date))}</div><div>Cashier: ${esc(d.cashier)}</div>${d.table_name?`<div>Table: ${esc(d.table_name)}</div>`:''}<hr>
+ ${(d.items||[]).map(x=>`<div class="rline"><span>${Number(x.quantity)} × ${esc(x.name)}</span><span>${money(x.total)}</span></div>${(x.modifiers||[]).map(m=>`<div class="hint">+ ${esc(m.name)}</div>`).join('')}`).join('')}
+ <hr><div class="rline"><span>Before adjustments</span><span>${money(d.gross)}</span></div>${Number(d.discount)?`<div class="rline"><span>Discount</span><span>−${money(d.discount)}</span></div>`:''}${Number(d.surcharge)?`<div class="rline"><span>Surcharge</span><span>+${money(d.surcharge)}</span></div>`:''}
+ <div class="rline"><strong>Total</strong><strong>${money(d.total)}</strong></div>${(d.payments||[]).map(x=>`<div class="rline"><span>${esc(x.method)}</span><span>${money(x.amount)}</span></div>`).join('')}
+ ${!paid?`<div><strong>AMOUNT DUE: ${money(balance)}</strong></div>`:''}<hr><div>${esc(t.footer_text||'Thank you!')}</div><div class="hint">POS document • Fiscal invoice issued separately where required.</div></div>`;
+ const tab=existingTab||window.open('','_blank');
+ if(!tab){show('Allow pop-ups for this site, then use Order History to reprint.','error');return}
+ const paper=paperMm+'mm',printable=(paperMm-6)+'mm';
+ // @page size: 80mm auto is INVALID. A two-length declaration is valid, with the height measured below.
+ const style=`<style id="receipt-page-rule">@page{size:${paper} 180mm;margin:0}</style><style>
+ html,body{margin:0;padding:0;width:${paper};max-width:${paper};background:#fff;color:#111}
+ body{font:11px/1.35 'Courier New',monospace;box-sizing:border-box;padding:3mm}
+ .receipt-preview{width:${printable};max-width:${printable};overflow-wrap:anywhere;text-align:center;margin:0 auto}
+ .receipt-preview img{max-width:80%;max-height:18mm;object-fit:contain}
+ .rline{display:flex;justify-content:space-between;gap:2mm;text-align:left;padding:1mm 0}
+ .rline span:first-child{flex:1;min-width:0}.rline span:last-child{text-align:right;flex-shrink:0}
+ .hint{font-size:9px;color:#444}hr{border:0;border-top:1px dashed #888;margin:2mm 0}
+ @media print{html,body{margin:0!important;box-shadow:none!important}body{padding:3mm}}
+ </style>`;
+ const printScript=`<script>(async()=>{
+  try{await document.fonts.ready;await Promise.all(Array.from(document.images).map(im=>im.complete?Promise.resolve():new Promise(resolve=>{im.onload=resolve;im.onerror=resolve;setTimeout(resolve,1400)})));}catch(e){}
+  const receipt=document.querySelector('.receipt-preview');
+  const contentPx=Math.max(receipt?.scrollHeight||0,document.body.scrollHeight||0);
+  const heightMm=Math.max(45,Math.min(1500,Math.ceil(contentPx*25.4/96+9)));
+  document.getElementById('receipt-page-rule').textContent='@page{size:${paper} '+heightMm+'mm;margin:0}';
+  requestAnimationFrame(()=>setTimeout(()=>{window.focus();window.print()},100));
+ })();<\/script>`;
+ tab.document.open();tab.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+header+'</title>'+style+'</head><body>'+html+printScript+'</body></html>');tab.document.close();
+}
+function reprintOrder(id){const tab=window.open('','_blank');if(tab)tab.document.write('<p>Preparing document...</p>');printCheckoutDocument(id,tab).catch(e=>{if(tab)tab.close();show('Printing failed: '+e.message,'error')})}
+function history(){
+ return `<div class="filters"><div class="field"><label>Order Date</label><input type="date" value="${esc(S.historyDate)}" onchange="historyDateChanged(this.value)"></div>${b('All Dates',"historyDateChanged('')")}${b('Refresh',"go('history')")}</div>
+ ${S.paymentOrder?paymentPanel():''}<div class="order-grid">${S.orders.map(o=>`<div class="order-card"><div class="row"><strong>Order ${esc(o.id.slice(0,8))}</strong><span class="tag ${esc(o.kitchen_status)}">${esc(o.kitchen_status)}</span></div><div class="hint">${esc(when(o.created_at))} · ${esc(o.order_type)}</div><div class="payment-status ${o.payment_status==='Paid'?'paid':'unpaid'}">${o.payment_status==='Paid'?'Paid':o.checkout_kind==='Guest Bill'?'Guest Bill — Unpaid':'Unpaid'}</div><div style="margin:12px 0">${(o.pos_order_lines||[]).map(l=>`<div>${Number(l.quantity)} × ${esc(l.name_snapshot)}</div>`).join('')}</div><div class="row"><strong>${money(o.total)}</strong><div class="actions">${o.payment_status!=='Paid'?b('Take Payment',`openPayment('${esc(o.id)}')`,'primary small'):''}${b(o.payment_status==='Paid'?'Reprint Receipt':'Print Guest Bill',`reprintOrder('${esc(o.id)}')`,'small')}</div></div></div>`).join('')||'<div class="card">No orders found.</div>'}</div>`
+}
+async function openPayment(id){
+ try{
+  S.paymentOrder=id;
+  const [balance,methods]=await Promise.all([
+   rpc('pos_cashier_order_balance',arg({p_order:id})),
+   rpc('pos_cashier_payment_types',arg())
+  ]);
+  S.paymentBalance=balance;S.paymentMethods=methods||[];S.paymentRequest=null;render();
+ }catch(e){S.paymentOrder=null;show('Cannot load payment: '+e.message,'error')}
+}
+function paymentPanel(){
+ const d=S.paymentBalance||{},remaining=Math.max(0,Number(d.total||0)-Number(d.confirmed||0));
+ return `<div class="card" style="margin-bottom:16px;border:2px solid var(--accent)">
+ <div class="row"><h3>Collect Payment · ${esc((S.paymentOrder||'').slice(0,8))}</h3>${b('Close',"S.paymentOrder=null;render()")}</div>
+ <div class="row"><span>Order Total</span><strong>${money(d.total)}</strong></div>
+ <div class="row"><span>Already Paid</span><strong>${money(d.confirmed)}</strong></div>
+ <div class="row"><span>Balance Due</span><strong>${money(remaining)}</strong></div>
+ ${(d.payments||[]).map(p=>`<div class="hint">${esc(p.method)} · ${money(p.amount)} ${esc(p.reference||'')}</div>`).join('')}
+ ${remaining>0?`<div class="two" style="margin-top:14px">
+ <div class="field"><label>Payment Type</label><select id="payMethod">${S.paymentMethods.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select></div>
+ <div class="field"><label>Amount</label><input id="payAmount" type="number" min="0.01" step="0.01" max="${remaining}" value="${remaining.toFixed(2)}"></div></div>
+ <div class="field"><label>Payment Reference (required except Cash)</label><input id="payRef" maxlength="150" placeholder="M-Pesa / card transaction reference"></div>
+ ${b('Record Payment','recordPayment()','primary')}${b('Pay & Print Receipt','recordPayment(true)')}`:'<p class="pill">Paid in full</p>'}
+ <p class="hint">For split payments, record each payment separately until the balance reaches zero. This records collections in POS only.</p>
+ </div>`
+}
+async function recordPayment(printAfter=false){
+ if(!S.paymentOrder||S.busy)return;
+ const orderId=S.paymentOrder,method=document.getElementById('payMethod')?.value,
+ amount=Number(document.getElementById('payAmount')?.value),ref=document.getElementById('payRef')?.value.trim()||null;
+ const remaining=Number(S.paymentBalance.total)-Number(S.paymentBalance.confirmed);
+ if(!method||!Number.isFinite(amount)||amount<=0||Math.round(amount*100)>Math.round(remaining*100)||Math.abs(Math.round(amount*100)-amount*100)>0.001)
+ return show('Enter an amount not exceeding the balance.','error');
+ if(printAfter&&Math.round(amount*100)!==Math.round(remaining*100))return show('Pay the full remaining balance to print a final receipt. Record partial payments separately.','error');
+ const tab=printAfter?window.open('','_blank'):null;
+ if(tab)tab.document.write('<p>Preparing receipt...</p>');
+ S.busy=true;S.paymentRequest=S.paymentRequest||newUuid();
+ try{await rpc('pos_cashier_record_payment',arg({p_order:orderId,p_method:method,p_amount:amount,p_request:S.paymentRequest,p_reference:ref}));
+ S.paymentRequest=null;S.paymentBalance=await rpc('pos_cashier_order_balance',arg({p_order:orderId}));await loadHistory();
+ if(printAfter){try{await printCheckoutDocument(orderId,tab)}catch(e){if(tab)tab.close();show('Payment saved, but printing failed: '+e.message,'error');return}}
+ show('Payment recorded'+(printAfter?' and receipt opened.':'.'));}
+ catch(e){if(tab)tab.close();show('Payment not recorded: '+e.message,'error')}
+ finally{S.busy=false}
+}
+async function historyDateChanged(date){S.historyDate=date;try{await loadHistory();render()}catch(e){show(e.message,'error')}}
+function tables(){return `<div class="row" style="margin-bottom:15px"><span class="hint">Tables are Empty after Kitchen marks the order Served.</span>${b('Refresh',"go('tables')")}</div><div class="tablegrid">${S.tables.map(t=>`<div class="table-tile ${t.occupied?'occupied':''}"><div style="font-size:31px">🍽️</div><strong>${esc(t.name)}</strong><p class="tag">${t.occupied?'Occupied':'Empty'}</p></div>`).join('')||'<div class="card">No restaurant tables configured.</div>'}</div>`}
+function kitchen(){const orders=S.orders.filter(x=>S.prepFilter==='served'?x.kitchen_status==='Served':x.status==='Open'&&x.kitchen_status!=='Served');return `<div class="actions" style="margin-bottom:16px">${b('Active Orders',"S.prepFilter='active';render()",S.prepFilter==='active'?'primary':'')}${b('Served',"S.prepFilter='served';render()",S.prepFilter==='served'?'primary':'')}${b('Refresh',"go('kitchen')")}</div><div class="order-grid">${orders.map(o=>{const longest=Math.max(0,...(o.items||[]).map(l=>Number(l.preparation_minutes??10)));return `<div class="order-card"><div class="row"><strong>Order ${esc(o.id.slice(0,8))}</strong><span class="tag ${esc(o.kitchen_status)}">${esc(o.kitchen_status)}</span></div><div class="hint">${esc(o.table||o.order_type)} · ${esc(when(o.created_at))}</div>${['New','Preparing'].includes(o.kitchen_status)?`<div class="countdown" data-kitchen-start="${esc(o.created_at)}" data-kitchen-duration="${longest}">--:--</div>`:''}<div style="margin:14px 0">${(o.items||[]).map(l=>`<div class="cart-line"><strong>${Number(l.quantity)} × ${esc(l.name_snapshot)}</strong><div class="hint">Preparation: ${Number(l.preparation_minutes??10)} min ${l.instructions?'· '+esc(l.instructions):''}</div></div>`).join('')}</div>${o.kitchen_status==='New'?b('Start Preparing',`kitchenNext('${esc(o.id)}','Preparing')`,'primary wide'):o.kitchen_status==='Preparing'?b('Mark Ready',`kitchenNext('${esc(o.id)}','Ready')`,'primary wide'):o.kitchen_status==='Ready'?b('Mark Served',`kitchenNext('${esc(o.id)}','Served')`,'primary wide'):''}</div>`}).join('')||'<div class="card">No orders in this view.</div>'}</div>`}
+function updateKitchenTimers(){if(S.role!=='Kitchen'||S.page!=='kitchen')return;document.querySelectorAll('[data-kitchen-start]').forEach(el=>{const start=Date.parse(el.dataset.kitchenStart||'');const duration=Number(el.dataset.kitchenDuration||0);if(!Number.isFinite(start)||!Number.isFinite(duration))return;const remaining=Math.ceil((start+duration*60000-Date.now())/1000);const magnitude=Math.abs(remaining);el.textContent=(remaining<0?'−':'')+String(Math.floor(magnitude/60)).padStart(2,'0')+':'+String(magnitude%60).padStart(2,'0');el.classList.toggle('overdue',remaining<0)})}
+const kitchenUpdatesInFlight=new Map();
+async function kitchenNext(id,status){
+ if(kitchenUpdatesInFlight.has(id))return;
+ const order=S.orders.find(o=>o.id===id);if(!order)return;
+ const previous=order.kitchen_status;
+ const valid=(previous==='New'&&status==='Preparing')||(previous==='Preparing'&&status==='Ready')||(previous==='Ready'&&status==='Served');
+ if(!valid)return show('The Kitchen status has changed. Refresh the order.','error');
+ kitchenUpdatesInFlight.set(id,status);
+ order.kitchen_status=status;render(); // Instant visual response, but NOT yet confirmed as saved.
+ try{
+  await rpc('pos_employee_kitchen_status',arg({p_order:id,p_status:status}));
+  kitchenUpdatesInFlight.delete(id);
+  // No blocking refetch before the cashier/kitchen can continue.
+  show('Order marked '+status+'.');
+  void loadKitchen().then(()=>{if(S.role==='Kitchen'&&S.page==='kitchen')render()}).catch(e=>console.warn('Kitchen refresh:',e.message));
+ }catch(e){
+  kitchenUpdatesInFlight.delete(id);
+  const current=S.orders.find(o=>o.id===id);if(current)current.kitchen_status=previous;
+  show('Not saved: '+e.message,'error');
+ }
+}
+// Load Supabase without blocking HTML rendering. Every failure leaves a visible recovery screen.
+function startupScreen(message, retry=false){
+ root.innerHTML='<div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div><h2>'+esc(retry?'Connection problem':'Starting FinSight POS')+'</h2><p>'+esc(message)+'</p>'+(retry?'<button type="button" class="btn primary wide" onclick="start()">Try Again</button>':'')+'</div></div>';
+}
+function loadLibrary(url,timeoutMs=6500){return new Promise((resolve,reject)=>{
+ const script=document.createElement('script');let done=false;
+ const timer=setTimeout(()=>finish(new Error('Supabase script timed out')),timeoutMs);
+ function finish(err){if(done)return;done=true;clearTimeout(timer);script.onload=null;script.onerror=null;if(err){script.remove();reject(err)}else resolve()}
+ script.src=url;script.async=true;script.onload=()=>finish();script.onerror=()=>finish(new Error('Could not load '+url));document.head.appendChild(script);
+})}
+async function timeoutPromise(promise,ms){return Promise.race([promise,new Promise((_,reject)=>setTimeout(()=>reject(new Error('Connection is taking too long. Check your internet and retry.')),ms))])}
+let kitchenTicker=null;
+let starting=false;
+async function start(){
+ if(starting)return;starting=true;
+ startupScreen('Connecting to FinSight…');
+ try{
+   if(!window.supabase?.createClient){
+     let failure;
+     for(const url of [
+       'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js',
+       'https://unpkg.com/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js'
+     ]){try{await loadLibrary(url);if(window.supabase?.createClient)break}catch(e){failure=e}}
+     if(!window.supabase?.createClient)throw new Error('Unable to load the Supabase sign-in library. Check your internet connection or try opening this HTML through a local server. '+(failure?.message||''));
+   }
+   if(!kitchenTicker)kitchenTicker=setInterval(updateKitchenTimers,1000);
+   if(!S.db)S.db=window.supabase.createClient(SUPABASE_URL,KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+   startupScreen('Checking your existing sign-in…');
+   const result=await timeoutPromise(S.db.auth.getSession(),8000);
+   if(result.error)throw result.error;
+   if(result.data?.session?.user)await timeoutPromise(connectCompany(result.data.session),12000);
+   else render();
+ }catch(e){console.error('FinSight POS startup:',e);startupScreen(e?.message||'Unable to start FinSight POS.',true)}
+ finally{starting=false}
+}
+window.addEventListener('error',e=>{if(!root?.innerHTML?.trim()){startupScreen('Startup error: '+(e.message||'Unknown error'),true)}});
+window.addEventListener('unhandledrejection',e=>{console.error('FinSight POS asynchronous error',e.reason);if(!root?.innerHTML?.trim())startupScreen('Connection error: '+(e.reason?.message||'Unknown error'),true)});
+start();
+</script></body></html>
