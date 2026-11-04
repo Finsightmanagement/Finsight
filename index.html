@@ -1162,8 +1162,6 @@ function renderAccounting(){
  const coa=$("#coaTable");coa.innerHTML=state.accounts.map(a=>`<tr><td><b>${a.name}</b></td><td>${a.type}</td><td>${a.sub}</td><td>${a.cashflow}</td><td><span class="badge green">Active</span></td><td><div class="account-actions"><button class="mini-btn editAccount" data-id="${a.id}">Edit</button><button class="mini-btn danger deleteAccount" data-id="${a.id}">Delete</button></div></td></tr>`).join("");
  $$(".editAccount").forEach(b=>b.onclick=()=>openAccountForm(accountById(b.dataset.id)));
  $$(".deleteAccount").forEach(b=>b.onclick=()=>{const id=b.dataset.id,used=state.sales.some(x=>x.incomeId===id)||state.receipts.some(x=>x.accountId===id)||state.bills.some(x=>x.lines.some(l=>l.accountId===id))||state.cheques.some(x=>x.bankId===id||x.lines.some(l=>l.accountId===id))||state.billPayments.some(x=>x.bankId===id);if(used)return toast("This account is already used by transactions and cannot be deleted");if(confirm("Delete this account?")){state.accounts=state.accounts.filter(x=>x.id!==id);save()}});
- const p=plData(filters.plFrom,filters.plTo),rev=p.revenue||0;
- $("#plBox").innerHTML=`<table><tr><td>Revenue</td><td>${fmt(p.revenue)}</td><td class="percent-cell">100.0%</td></tr><tr><td>Cost of Sales</td><td>${fmt(p.cogs)}</td><td class="percent-cell">${rev?(p.cogs/rev*100).toFixed(1):"0.0"}%</td></tr><tr><td><b>Gross Profit</b></td><td><b>${fmt(p.gross)}</b></td><td class="percent-cell"><b>${rev?(p.gross/rev*100).toFixed(1):"0.0"}%</b></td></tr><tr><td>Operating Expenses</td><td>${fmt(p.opex)}</td><td class="percent-cell">${rev?(p.opex/rev*100).toFixed(1):"0.0"}%</td></tr><tr><td><b>Net Profit</b></td><td><b>${fmt(p.net)}</b></td><td class="percent-cell"><b>${rev?(p.net/rev*100).toFixed(1):"0.0"}%</b></td></tr></table>`;
  const c=allCashFlow(filters.cfFrom,filters.cfTo);$("#cfBox").innerHTML=`<div class="grid three"><div class="metric-box"><span>Money In</span><div class="big up">${fmt(c.moneyIn)}</div></div><div class="metric-box"><span>Money Out</span><div class="big down">${fmt(c.moneyOut)}</div></div><div class="metric-box"><span>Net Effect</span><div class="big ${c.net>=0?"up":"down"}">${c.net>=0?"+":""}${fmt(c.net)}</div></div></div><div class="insight" style="margin-top:12px"><strong>${c.net>=0?"Positive cash movement":"Negative cash movement"}</strong><p>${c.net>=0?"Cash inflows exceeded cash outflows for the selected period.":"Cash outflows exceeded cash inflows for the selected period."}</p></div>`
 }
 $("#applyPlFilter").onclick=()=>{filters.plFrom=$("#plFrom").value;filters.plTo=$("#plTo").value;renderAccounting()};$("#applyCfFilter").onclick=()=>{filters.cfFrom=$("#cfFrom").value;filters.cfTo=$("#cfTo").value;renderAccounting()};
@@ -1193,24 +1191,7 @@ function balanceSheetData(asAt="9999-12-31"){
  const totalAssets=assets.reduce((a,b)=>a+b.amount,0),totalLiabilities=liabilities.reduce((a,b)=>a+b.amount,0),equity=totalAssets-totalLiabilities;
  return {assets,liabilities,totalAssets,totalLiabilities,equity}
 }
-function renderReports(){
- const f=filters.reportFrom,t=filters.reportTo;
- const dates=[...new Set(state.sales.filter(x=>inRange(x.date,f,t)).map(x=>x.date))].sort();
- $("#reportDaily").innerHTML=`<div class="report-card">${reportHeader("DAILY SALES REPORT",f,t)}<table><thead><tr><th>Date</th>${state.paymentTypes.map(x=>`<th>${x}</th>`).join("")}<th>Total Sales</th><th>Received</th><th>Outstanding</th></tr></thead><tbody>${dates.length?dates.map(d=>{const daySales=state.sales.filter(x=>x.date===d),total=daySales.reduce((a,b)=>a+b.amount,0),ids=daySales.map(x=>x.id),rec=state.receipts.filter(x=>ids.includes(x.saleId)).reduce((a,b)=>a+b.amount,0);return `<tr><td>${d}</td>${state.paymentTypes.map(p=>`<td>${fmt(daySales.filter(x=>x.paymentType===p).reduce((a,b)=>a+b.amount,0))}</td>`).join("")}<td><b>${fmt(total)}</b></td><td>${fmt(rec)}</td><td>${fmt(total-rec)}</td></tr>`}).join(""):`<tr><td colspan="${state.paymentTypes.length+4}"><div class="empty-state">No sales in this period.</div></td></tr>`}</tbody></table></div>`;
-
- const inventoryItems=[...new Set([...state.stockItems.map(x=>x.name),...state.stock.opening.map(x=>x.item),...state.stock.closing.map(x=>x.item)])];
- const purchaseDates=[...new Set(state.bills.filter(b=>inRange(b.date,f,t)).flatMap(b=>b.lines.filter(l=>accountById(l.accountId)?.sub==="Inventory").map(()=>b.date)))].sort();
- let rows="",grandConsumption=0,rowObjs=[];
- inventoryItems.forEach(item=>{const op=state.stock.opening.find(x=>x.item===item),cl=state.stock.closing.find(x=>x.item===item),p=stockPurchaseSummary(item,f,t),openQty=op?.qty||0,openCost=op?.unitCost||0,openVal=openQty*openCost,totalPurch=p.value,cogas=openVal+totalPurch,closeQty=cl?.qty||0,wac=weightedCost(item),closeVal=closeQty*wac,cons=cogas-closeVal;grandConsumption+=cons;rowObjs.push({item,openQty,openCost,openVal,p,cogas,closeQty,wac,closeVal,cons})});
- rowObjs.forEach(o=>{rows+=`<tr><td><b>${o.item}</b></td><td>${o.openQty.toFixed(3)}</td><td>${fmt(o.openCost)}</td><td>${fmt(o.openVal)}</td>${purchaseDates.map(d=>`<td>${fmt(o.p.byDate[d]||0)}</td>`).join("")}<td>${fmt(o.p.value)}</td><td>${fmt(o.cogas)}</td><td>${o.closeQty.toFixed(3)}</td><td>${fmt(o.wac)}</td><td>${fmt(o.closeVal)}</td><td>${fmt(o.cons)}</td><td>${grandConsumption?((o.cons/grandConsumption)*100).toFixed(1):"0.0"}%</td></tr>`});
- $("#reportCogs").innerHTML=`<div class="report-card">${reportHeader("COST OF SALES REPORT",f,t)}<table class="cogs-report-table"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Unit Price</th><th>Opening Value</th>${purchaseDates.map(d=>`<th>Purchases ${d}</th>`).join("")}<th>Total Purchases</th><th>COGAS</th><th>Closing Units</th><th>Closing Unit Price (WAC)</th><th>Closing Value</th><th>Consumption</th><th>Consumption %</th></tr></thead><tbody>${rows||`<tr><td colspan="12"><div class="empty-state">No inventory data in this period.</div></td></tr>`}</tbody></table><div class="small-note" style="margin-top:12px">Closing unit price uses weighted average cost: (opening stock value + purchase value) ÷ (opening units + purchased units).</div></div>`;
-
- const map={};state.saleItems.filter(x=>inRange(x.date,f,t)).forEach(x=>{map[x.item]=map[x.item]||{category:x.category,qty:0,revenue:0};map[x.item].qty+=x.qty;map[x.item].revenue+=x.revenue});const itemRows=Object.entries(map).sort((a,b)=>b[1].revenue-a[1].revenue),itemTotal=itemRows.reduce((a,b)=>a+b[1].revenue,0);
- $("#reportItems").innerHTML=`<div class="report-card">${reportHeader("TOP ITEMS SOLD REPORT",f,t)}<table><thead><tr><th>Rank</th><th>Category</th><th>Item Sold</th><th>Quantity Sold</th><th>Average Price</th><th>Revenue</th><th>% of Item Sales</th></tr></thead><tbody>${itemRows.length?itemRows.map(([n,v],i)=>`<tr><td>${i+1}</td><td>${v.category}</td><td><b>${n}</b></td><td>${v.qty}</td><td>${fmt(v.qty?v.revenue/v.qty:0)}</td><td>${fmt(v.revenue)}</td><td>${itemTotal?(v.revenue/itemTotal*100).toFixed(1):"0.0"}%</td></tr>`).join(""):`<tr><td colspan="7"><div class="empty-state">No item-level sales data in this period.</div></td></tr>`}</tbody></table></div>`;
- const p=plData(f,t),rev=p.revenue||0;$("#reportPl").innerHTML=`<div class="report-card">${reportHeader("PROFIT & LOSS",f,t)}<table><thead><tr><th>Account</th><th>Amount</th><th>% of Revenue</th></tr></thead><tbody><tr><td>Revenue</td><td>${fmt(p.revenue)}</td><td>100.0%</td></tr><tr><td>Cost of Sales</td><td>${fmt(p.cogs)}</td><td>${rev?(p.cogs/rev*100).toFixed(1):"0.0"}%</td></tr><tr><td><b>Gross Profit</b></td><td><b>${fmt(p.gross)}</b></td><td><b>${rev?(p.gross/rev*100).toFixed(1):"0.0"}%</b></td></tr><tr><td>Operating Expenses</td><td>${fmt(p.opex)}</td><td>${rev?(p.opex/rev*100).toFixed(1):"0.0"}%</td></tr><tr><td><b>Net Profit</b></td><td><b>${fmt(p.net)}</b></td><td><b>${rev?(p.net/rev*100).toFixed(1):"0.0"}%</b></td></tr></tbody></table></div>`;
- const cf=allCashFlow(f,t);$("#reportCashFlow").innerHTML=`<div class="report-card">${reportHeader("CASH FLOW STATEMENT",f,t)}<table><thead><tr><th>Cash Flow</th><th>Amount</th></tr></thead><tbody><tr><td>Money In — Sales Receipts</td><td>${fmt(cf.moneyIn)}</td></tr><tr><td>Money Out — Cheques & Bill Payments</td><td>${fmt(cf.moneyOut)}</td></tr><tr><td><b>Net Cash Movement</b></td><td><b>${fmt(cf.net)}</b></td></tr></tbody></table></div>`;
- const bs=balanceSheetData(t);$("#reportBalance").innerHTML=`<div class="report-card">${reportHeader("BALANCE SHEET","",t)}<div class="report-balance-grid"><div><h4>Assets</h4><table>${bs.assets.map(x=>`<tr><td>${x.name}</td><td>${fmt(x.amount)}</td></tr>`).join("")}<tr><td><b>Total Assets</b></td><td><b>${fmt(bs.totalAssets)}</b></td></tr></table></div><div><h4>Liabilities & Equity</h4><table>${bs.liabilities.map(x=>`<tr><td>${x.name}</td><td>${fmt(x.amount)}</td></tr>`).join("")}<tr><td><b>Total Liabilities</b></td><td><b>${fmt(bs.totalLiabilities)}</b></td></tr><tr><td>Equity / Retained Earnings</td><td>${fmt(bs.equity)}</td></tr><tr><td><b>Total Liabilities & Equity</b></td><td><b>${fmt(bs.totalLiabilities+bs.equity)}</b></td></tr></table></div></div></div>`
-}
+function renderReports(){const f=filters.reportFrom,t=filters.reportTo,dates=[...new Set(state.sales.filter(x=>inRange(x.date,f,t)).map(x=>x.date))].sort();const periodPaymentTotals=new Map();state.sales.filter(s=>inRange(s.date,f,t)).forEach(s=>{const pt=s.paymentType;periodPaymentTotals.set(pt,(periodPaymentTotals.get(pt)||0)+Number(s.amount||0))});const visiblePaymentTypes=state.paymentTypes.filter(pt=>Math.abs(periodPaymentTotals.get(pt)||0)>0.000001);$('#reportDaily').innerHTML=`<div class="report-card">${reportHeader('DAILY SALES REPORT',f,t)}<table><thead><tr class="grouped-head"><th rowspan="2">Date</th>${visiblePaymentTypes.map(p=>`<th colspan="3">${p.toUpperCase()}</th>`).join('')}<th rowspan="2" class="fs-daily-number">Total Sales</th><th rowspan="2">Comment</th></tr><tr class="sub-head">${visiblePaymentTypes.map(()=>'<th>POS</th><th>ACTUAL</th><th>UNRECEIVED</th>').join('')}</tr></thead><tbody>${dates.length?dates.map(d=>`<tr><td>${d}</td>${visiblePaymentTypes.map(pt=>{const ss=state.sales.filter(s=>s.date===d&&s.paymentType===pt),pos=ss.reduce((a,b)=>a+b.amount,0),ids=ss.map(x=>x.id),act=state.receipts.filter(r=>ids.includes(r.saleId)).reduce((a,b)=>a+b.amount,0);return `<td>${fmt(pos)}</td><td>${fmt(act)}</td><td>${fmt(pos-act)}</td>`}).join('')}<td class="fs-daily-number"><b>${fmt(state.sales.filter(s=>s.date===d).reduce((total,s)=>total+Number(s.amount||0),0))}</b></td><td><input class="comment-input dailyComment" data-date="${d}" value="${state.dailyComments[d]||''}" placeholder="Explanation / comment"></td></tr>`).join(''):`<tr><td colspan="${visiblePaymentTypes.length*3+3}"><div class="empty-state">No sales in this period.</div></td></tr>`}</tbody><tfoot><tr class="fs-daily-footer"><th colspan="${1+visiblePaymentTypes.length*3}" style="text-align:right">Total Sales</th><th class="fs-daily-number">${fmt(state.sales.filter(s=>inRange(s.date,f,t)).reduce((total,s)=>total+Number(s.amount||0),0))}</th><th></th></tr></tfoot></table></div>`;$$('.dailyComment').forEach(x=>x.onchange=()=>{state.dailyComments[x.dataset.date]=x.value;localStorage.setItem('finsight_v5_state',JSON.stringify(state))});const items=[...new Set([...state.stockItems.map(x=>x.name),...state.stock.opening.map(x=>x.item),...state.stock.closing.map(x=>x.item)])],purchaseDates=[...new Set(state.bills.filter(b=>inRange(b.date,f,t)).flatMap(b=>b.lines.filter(l=>l.group==='Purchase Item'||(!l.group&&accountById(l.accountId)?.sub==='Inventory')).map(()=>b.date)))].sort(),rows=[];let totc=0;items.forEach(item=>{const op=state.stock.opening.find(x=>x.item===item),cl=state.stock.closing.find(x=>x.item===item),p=purchaseSummary(item,f,t),oq=op?.qty||0,oc=op?.unitCost||0,ov=oq*oc,cogas=ov+p.value,cq=cl?.qty||0,w=weightedCost(item),cv=cq*w,cons=cogas-cv;totc+=cons;rows.push({item,oq,oc,ov,p,cogas,cq,w,cv,cons})});$('#reportCogs').innerHTML=`<div class="report-card">${reportHeader('COST OF SALES REPORT',f,t)}<table class="cogs-report-table"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Price</th><th>Opening Value</th>${purchaseDates.map(d=>`<th>Purchases ${d}</th>`).join('')}<th>Total Purchases</th><th>COGAS</th><th>Closing Units</th><th>Closing Unit Price</th><th>Closing Value</th><th>Consumption</th><th>Consumption %</th></tr></thead><tbody>${rows.length?rows.map(o=>`<tr><td><b>${o.item}</b></td><td>${o.oq.toFixed(3)}</td><td>${fmt(o.oc)}</td><td>${fmt(o.ov)}</td>${purchaseDates.map(d=>`<td>${fmt(o.p.byDate[d]||0)}</td>`).join('')}<td>${fmt(o.p.value)}</td><td>${fmt(o.cogas)}</td><td>${o.cq.toFixed(3)}</td><td>${fmt(o.w)}</td><td>${fmt(o.cv)}</td><td>${fmt(o.cons)}</td><td>${totc?(o.cons/totc*100).toFixed(1):'0.0'}%</td></tr>`).join(''):'<tr><td colspan="12"><div class="empty-state">No inventory data.</div></td></tr>'}</tbody></table></div>`;const im={};state.saleItems.filter(x=>inRange(x.date,f,t)).forEach(x=>{im[x.item]=im[x.item]||{category:x.category,qty:0,revenue:0};im[x.item].qty+=x.qty;im[x.item].revenue+=x.revenue});state.sales.filter(x=>x.item&&inRange(x.date,f,t)&&!state.saleItems.some(si=>si.saleId===x.id)).forEach(x=>{im[x.item]=im[x.item]||{category:x.category,qty:0,revenue:0};im[x.item].qty+=x.qty||0;im[x.item].revenue+=x.amount});const ir=Object.entries(im).sort((a,b)=>b[1].revenue-a[1].revenue),it=ir.reduce((a,b)=>a+b[1].revenue,0);$('#reportItems').innerHTML=`<div class="report-card">${reportHeader('TOP ITEMS SOLD REPORT',f,t)}<table><thead><tr><th>Rank</th><th>Category</th><th>Item</th><th>Quantity</th><th>Average Price</th><th>Revenue</th><th>% Sale</th></tr></thead><tbody>${ir.length?ir.map(([n,v],i)=>`<tr><td>${i+1}</td><td>${v.category}</td><td>${n}</td><td>${v.qty}</td><td>${fmt(v.qty?v.revenue/v.qty:0)}</td><td>${fmt(v.revenue)}</td><td>${it?(v.revenue/it*100).toFixed(1):'0.0'}%</td></tr>`).join(''):'<tr><td colspan="7"><div class="empty-state">No item sales data.</div></td></tr>'}</tbody></table></div>`}
 $$(".report-tab").forEach(b=>b.onclick=()=>{$$(".report-tab").forEach(x=>x.classList.remove("active"));b.classList.add("active");$$(".report-panel").forEach(x=>{x.classList.add("hidden");x.classList.remove("active")});const map={daily:"reportDaily",cogs:"reportCogs",items:"reportItems",pl:"reportPl",cashflow:"reportCashFlow",balance:"reportBalance"};$("#"+map[b.dataset.report]).classList.remove("hidden");$("#"+map[b.dataset.report]).classList.add("active")});
 $("#refreshReportsBtn").onclick=()=>{filters.reportFrom=$("#reportFrom").value;filters.reportTo=$("#reportTo").value;renderReports();toast("Report refreshed")};$("#printReportBtn").onclick=()=>window.print();
 
@@ -1460,9 +1441,8 @@ function drawRecon(){const id=$('#reconBank').value,m=$('#reconMonth').value;if(
 $('#reconBank').onchange=drawRecon;$('#reconMonth').onchange=drawRecon;$('#checkReconBtn').onclick=()=>{const id=$('#reconBank').value,m=$('#reconMonth').value;if(!id||!m)return toast('Choose bank and month');if($('#statementBalance').value==='')return toast('Enter statement closing balance');const end=bankTx(id,m).end,book=accountBalance(id,end),stmt=+$('#statementBalance').value,diff=stmt-book;$('#reconBook').textContent=fmt(book);$('#reconDifference').textContent=fmt(diff);$('#reconMessage').textContent=Math.abs(diff)<.005?'Matched — book and statement closing balances agree.':'Not matched — review the transaction list and investigate the difference.'};
 $('#downloadReconBtn').onclick=()=>{const id=$('#reconBank').value,m=$('#reconMonth').value;if(!id||!m)return toast('Choose bank and month');const b=accountById(id),{start,end,rows}=bankTx(id,m),prev=new Date(new Date(start+'T12:00:00').setDate(0)).toISOString().slice(0,10),opening=accountBalance(id,prev),closing=accountBalance(id,end);let run=opening;$('#reconPrint').innerHTML=`<h1>Bank Reconciliation Report</h1><div class="meta">${b?.name||''} · ${m}</div><table><tr><th>Opening Book Balance</th><td>${fmt(opening)}</td></tr><tr><th>Closing Book Balance</th><td>${fmt(closing)}</td></tr><tr><th>Statement Closing Balance</th><td>${$('#statementBalance').value===''?'Not entered':fmt(+$(' #statementBalance'.trim()).value)}</td></tr></table><table><thead><tr><th>Date</th><th>Transaction</th><th>Reference / Payee</th><th>Money In</th><th>Money Out</th><th>Running Balance</th></tr></thead><tbody>${rows.map(r=>{run+=r.in-r.out;return `<tr><td>${r.date}</td><td>${r.type}</td><td>${r.ref}</td><td>${r.in?fmt(r.in):'—'}</td><td>${r.out?fmt(r.out):'—'}</td><td>${fmt(run)}</td></tr>`}).join('')}</tbody></table>`;document.body.classList.add('print-recon');window.print();setTimeout(()=>document.body.classList.remove('print-recon'),500)};
 
-renderAccounting=function(){const coa=$('#coaTable');coa.innerHTML=state.accounts.map(a=>`<tr><td><b>${a.name}</b></td><td>${a.type}</td><td>${a.sub}</td><td>${a.cashflow}</td><td><span class="badge green">Active</span></td><td><div class="account-actions"><button class="mini-btn editAccount" data-id="${a.id}">Edit</button><button class="mini-btn danger deleteAccount" data-id="${a.id}">Delete</button></div></td></tr>`).join('');$$('.editAccount').forEach(b=>b.onclick=()=>openAccountForm(accountById(b.dataset.id)));$$('.deleteAccount').forEach(b=>b.onclick=()=>{const id=b.dataset.id,used=state.sales.some(x=>x.incomeId===id)||state.receipts.some(x=>x.accountId===id)||state.bills.some(x=>x.lines.some(l=>l.accountId===id))||state.cheques.some(x=>x.bankId===id||x.lines.some(l=>l.accountId===id))||state.billPayments.some(x=>x.bankId===id);if(used)return toast('Account is already used and cannot be deleted');if(confirm('Delete account?')){state.accounts=state.accounts.filter(x=>x.id!==id);save()}});const p=dp(filters.plFrom,filters.plTo);$('#plBox').innerHTML=plHtml(p,filters.plFrom,filters.plTo);const c=allCashFlow(filters.cfFrom,filters.cfTo);$('#cfBox').innerHTML=`<div class="grid three"><div class="metric-box"><span>Money In</span><div class="big up">${fmt(c.moneyIn)}</div></div><div class="metric-box"><span>Money Out</span><div class="big down">${fmt(c.moneyOut)}</div></div><div class="metric-box"><span>Net Effect</span><div class="big ${c.net>=0?'up':'down'}">${c.net>=0?'+':''}${fmt(c.net)}</div></div></div>`};
+renderAccounting=function(){const coa=$('#coaTable');coa.innerHTML=state.accounts.map(a=>`<tr><td><b>${a.name}</b></td><td>${a.type}</td><td>${a.sub}</td><td>${a.cashflow}</td><td><span class="badge green">Active</span></td><td><div class="account-actions"><button class="mini-btn editAccount" data-id="${a.id}">Edit</button><button class="mini-btn danger deleteAccount" data-id="${a.id}">Delete</button></div></td></tr>`).join('');$$('.editAccount').forEach(b=>b.onclick=()=>openAccountForm(accountById(b.dataset.id)));$$('.deleteAccount').forEach(b=>b.onclick=()=>{const id=b.dataset.id,used=state.sales.some(x=>x.incomeId===id)||state.receipts.some(x=>x.accountId===id)||state.bills.some(x=>x.lines.some(l=>l.accountId===id))||state.cheques.some(x=>x.bankId===id||x.lines.some(l=>l.accountId===id))||state.billPayments.some(x=>x.bankId===id);if(used)return toast('Account is already used and cannot be deleted');if(confirm('Delete account?')){state.accounts=state.accounts.filter(x=>x.id!==id);save()}});const c=allCashFlow(filters.cfFrom,filters.cfTo);$('#cfBox').innerHTML=`<div class="grid three"><div class="metric-box"><span>Money In</span><div class="big up">${fmt(c.moneyIn)}</div></div><div class="metric-box"><span>Money Out</span><div class="big down">${fmt(c.moneyOut)}</div></div><div class="metric-box"><span>Net Effect</span><div class="big ${c.net>=0?'up':'down'}">${c.net>=0?'+':''}${fmt(c.net)}</div></div></div>`};
 
-renderReports=function(){const f=filters.reportFrom,t=filters.reportTo,dates=[...new Set(state.sales.filter(x=>inRange(x.date,f,t)).map(x=>x.date))].sort();const periodPaymentTotals=new Map();state.sales.filter(s=>inRange(s.date,f,t)).forEach(s=>{const pt=s.paymentType;periodPaymentTotals.set(pt,(periodPaymentTotals.get(pt)||0)+Number(s.amount||0))});const visiblePaymentTypes=state.paymentTypes.filter(pt=>Math.abs(periodPaymentTotals.get(pt)||0)>0.000001);$('#reportDaily').innerHTML=`<div class="report-card">${reportHeader('DAILY SALES REPORT',f,t)}<table><thead><tr class="grouped-head"><th rowspan="2">Date</th>${visiblePaymentTypes.map(p=>`<th colspan="3">${p.toUpperCase()}</th>`).join('')}<th rowspan="2" class="fs-daily-number">Total Sales</th><th rowspan="2">Comment</th></tr><tr class="sub-head">${visiblePaymentTypes.map(()=>'<th>POS</th><th>ACTUAL</th><th>UNRECEIVED</th>').join('')}</tr></thead><tbody>${dates.length?dates.map(d=>`<tr><td>${d}</td>${visiblePaymentTypes.map(pt=>{const ss=state.sales.filter(s=>s.date===d&&s.paymentType===pt),pos=ss.reduce((a,b)=>a+b.amount,0),ids=ss.map(x=>x.id),act=state.receipts.filter(r=>ids.includes(r.saleId)).reduce((a,b)=>a+b.amount,0);return `<td>${fmt(pos)}</td><td>${fmt(act)}</td><td>${fmt(pos-act)}</td>`}).join('')}<td class="fs-daily-number"><b>${fmt(state.sales.filter(s=>s.date===d).reduce((total,s)=>total+Number(s.amount||0),0))}</b></td><td><input class="comment-input dailyComment" data-date="${d}" value="${state.dailyComments[d]||''}" placeholder="Explanation / comment"></td></tr>`).join(''):`<tr><td colspan="${visiblePaymentTypes.length*3+3}"><div class="empty-state">No sales in this period.</div></td></tr>`}</tbody><tfoot><tr class="fs-daily-footer"><th colspan="${1+visiblePaymentTypes.length*3}" style="text-align:right">Total Sales</th><th class="fs-daily-number">${fmt(state.sales.filter(s=>inRange(s.date,f,t)).reduce((total,s)=>total+Number(s.amount||0),0))}</th><th></th></tr></tfoot></table></div>`;$$('.dailyComment').forEach(x=>x.onchange=()=>{state.dailyComments[x.dataset.date]=x.value;localStorage.setItem('finsight_v5_state',JSON.stringify(state))});const items=[...new Set([...state.stockItems.map(x=>x.name),...state.stock.opening.map(x=>x.item),...state.stock.closing.map(x=>x.item)])],purchaseDates=[...new Set(state.bills.filter(b=>inRange(b.date,f,t)).flatMap(b=>b.lines.filter(l=>l.group==='Purchase Item'||(!l.group&&accountById(l.accountId)?.sub==='Inventory')).map(()=>b.date)))].sort(),rows=[];let totc=0;items.forEach(item=>{const op=state.stock.opening.find(x=>x.item===item),cl=state.stock.closing.find(x=>x.item===item),p=purchaseSummary(item,f,t),oq=op?.qty||0,oc=op?.unitCost||0,ov=oq*oc,cogas=ov+p.value,cq=cl?.qty||0,w=weightedCost(item),cv=cq*w,cons=cogas-cv;totc+=cons;rows.push({item,oq,oc,ov,p,cogas,cq,w,cv,cons})});$('#reportCogs').innerHTML=`<div class="report-card">${reportHeader('COST OF SALES REPORT',f,t)}<table class="cogs-report-table"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Price</th><th>Opening Value</th>${purchaseDates.map(d=>`<th>Purchases ${d}</th>`).join('')}<th>Total Purchases</th><th>COGAS</th><th>Closing Units</th><th>Closing Unit Price</th><th>Closing Value</th><th>Consumption</th><th>Consumption %</th></tr></thead><tbody>${rows.length?rows.map(o=>`<tr><td><b>${o.item}</b></td><td>${o.oq.toFixed(3)}</td><td>${fmt(o.oc)}</td><td>${fmt(o.ov)}</td>${purchaseDates.map(d=>`<td>${fmt(o.p.byDate[d]||0)}</td>`).join('')}<td>${fmt(o.p.value)}</td><td>${fmt(o.cogas)}</td><td>${o.cq.toFixed(3)}</td><td>${fmt(o.w)}</td><td>${fmt(o.cv)}</td><td>${fmt(o.cons)}</td><td>${totc?(o.cons/totc*100).toFixed(1):'0.0'}%</td></tr>`).join(''):'<tr><td colspan="12"><div class="empty-state">No inventory data.</div></td></tr>'}</tbody></table></div>`;const im={};state.saleItems.filter(x=>inRange(x.date,f,t)).forEach(x=>{im[x.item]=im[x.item]||{category:x.category,qty:0,revenue:0};im[x.item].qty+=x.qty;im[x.item].revenue+=x.revenue});state.sales.filter(x=>x.item&&inRange(x.date,f,t)&&!state.saleItems.some(si=>si.saleId===x.id)).forEach(x=>{im[x.item]=im[x.item]||{category:x.category,qty:0,revenue:0};im[x.item].qty+=x.qty||0;im[x.item].revenue+=x.amount});const ir=Object.entries(im).sort((a,b)=>b[1].revenue-a[1].revenue),it=ir.reduce((a,b)=>a+b[1].revenue,0);$('#reportItems').innerHTML=`<div class="report-card">${reportHeader('TOP ITEMS SOLD REPORT',f,t)}<table><thead><tr><th>Rank</th><th>Category</th><th>Item</th><th>Quantity</th><th>Average Price</th><th>Revenue</th><th>% Sale</th></tr></thead><tbody>${ir.length?ir.map(([n,v],i)=>`<tr><td>${i+1}</td><td>${v.category}</td><td>${n}</td><td>${v.qty}</td><td>${fmt(v.qty?v.revenue/v.qty:0)}</td><td>${fmt(v.revenue)}</td><td>${it?(v.revenue/it*100).toFixed(1):'0.0'}%</td></tr>`).join(''):'<tr><td colspan="7"><div class="empty-state">No item sales data.</div></td></tr>'}</tbody></table></div>`;$('#reportPl').innerHTML=`<div class="report-card">${reportHeader('PROFIT & LOSS',f,t)}${plHtml(dp(f,t),f,t)}</div>`};
 
 renderTables=function(){const total=state.sales.reduce((a,b)=>a+b.amount,0),received=state.receipts.reduce((a,b)=>a+b.amount,0);$('#salesTotal').textContent=fmt(total);$('#salesReceived').textContent=fmt(received);$('#salesOutstanding').textContent=fmt(total-received);$('#salesCount').textContent=state.sales.length;$('#salesTable').innerHTML=state.sales.length?state.sales.map(s=>{const rec=state.receipts.filter(r=>r.saleId===s.id).reduce((a,b)=>a+b.amount,0),o=s.amount-rec;return `<tr><td>${s.date}</td><td>${s.paymentType}</td><td>${s.item||'—'}</td><td>${s.category||'—'}</td><td>${accountName(s.incomeId)}</td><td>${s.memo||''}</td><td>${fmt(s.amount)}</td><td>${fmt(rec)}</td><td>${fmt(o)}</td><td><span class="badge ${o<=.01?'green':rec>0?'amber':'blue'}">${o<=.01?'Received':rec>0?'Part Received':'Open'}</span></td></tr>`}).join(''):'<tr><td colspan="10"><div class="empty-state">No sales posted yet.</div></td></tr>';$('#receiptTable').innerHTML=state.receipts.length?state.receipts.map(r=>{const s=state.sales.find(x=>x.id===r.saleId);return `<tr><td>${r.date}</td><td>${s?.date||''}</td><td>${s?.paymentType||''}</td><td>${accountName(r.accountId)}</td><td>${fmt(r.amount)}</td><td>${r.memo||''}</td></tr>`}).join(''):'<tr><td colspan="6"><div class="empty-state">No sales received yet.</div></td></tr>';$('#billTable').innerHTML=state.bills.length?state.bills.map(b=>{const paid=paidOnBill(b.id),bal=b.total-paid;return `<tr><td>${b.date}</td><td>${b.supplier}</td><td>${b.invoice}</td><td>${b.lines.length}</td><td>${fmt(b.total)}</td><td>${fmt(paid)}</td><td>${fmt(bal)}</td><td><span class="badge ${bal<=.01?'green':'blue'}">${bal<=.01?'Paid':'Open'}</span></td><td>${bal>.01?`<button class="mini-btn payBill" data-id="${b.id}">Pay Bill</button>`:'—'}</td></tr>`}).join(''):'<tr><td colspan="9"><div class="empty-state">No supplier bills yet.</div></td></tr>';$$('.payBill').forEach(b=>b.onclick=()=>payBill(b.dataset.id));$('#chequeTable').innerHTML=state.cheques.length?state.cheques.map(c=>`<tr><td>${c.date}</td><td>${c.no||'—'}</td><td>${c.payee||'—'}</td><td>${accountName(c.bankId)}</td><td>${c.lines.length}</td><td>${fmt(c.total)}</td><td>${c.memo||''}</td></tr>`).join(''):'<tr><td colspan="7"><div class="empty-state">No cheques posted yet.</div></td></tr>';const names=[...new Set([...state.stockItems.map(x=>x.name),...state.stock.opening.map(x=>x.item),...state.stock.closing.map(x=>x.item)])];$('#openingVal').textContent=fmt(state.stock.opening.reduce((a,x)=>a+x.qty*x.unitCost,0));$('#purchVal').textContent=fmt(inventoryPurchases());$('#closingVal').textContent=fmt(state.stock.closing.reduce((a,x)=>a+x.qty*x.unitCost,0));$('#calcCogs').textContent=fmt(state.stock.opening.reduce((a,x)=>a+x.qty*x.unitCost,0)+inventoryPurchases()-state.stock.closing.reduce((a,x)=>a+x.qty*x.unitCost,0));$('#inventoryTable').innerHTML=names.length?names.map(n=>{const o=state.stock.opening.find(x=>x.item===n),c=state.stock.closing.find(x=>x.item===n),p=purchaseSummary(n),w=weightedCost(n),cons=(o?.qty||0)*(o?.unitCost||0)+p.value-(c?.qty||0)*w;return `<tr><td><b>${n}</b></td><td>${(o?.qty||0).toFixed(3)}</td><td>${fmt(o?.unitCost||0)}</td><td>${fmt(p.value)}</td><td>${(c?.qty||0).toFixed(3)}</td><td>${fmt(w)}</td><td>${fmt(cons)}</td></tr>`}).join(''):'<tr><td colspan="7"><div class="empty-state">No stock items posted yet.</div></td></tr>'};
 
@@ -1754,8 +1734,6 @@ window.plHtml=function(p,f='',t=''){
 };
 
 // Accounting screen must use the final P&L function.
-const v6RenderAccounting=renderAccounting;
-renderAccounting=function(){v6RenderAccounting();const p=dp(filters.plFrom,filters.plTo);$('#plBox').innerHTML=plHtml(p,filters.plFrom,filters.plTo)};
 
 // ---------- 4) Cash Flow + Balance Sheet in Reports ----------
 function reportBalanceSheet(asAt){
@@ -1767,17 +1745,6 @@ function reportBalanceSheet(asAt){
   const totalAssets=assets.reduce((a,b)=>a+b.amount,0), totalLiabilities=liabilities.reduce((a,b)=>a+b.amount,0), equity=totalAssets-totalLiabilities;
   return {assets,liabilities,totalAssets,totalLiabilities,equity};
 }
-const v6RenderReports=renderReports;
-renderReports=function(){
-  v6RenderReports();
-  const f=filters.reportFrom||'',t=filters.reportTo||'';
-  const p=dp(f,t); $('#reportPl').innerHTML=`<div class="report-card">${reportHeader('PROFIT & LOSS',f,t)}${plHtml(p,f,t)}</div>`;
-  const cf=allCashFlow(f,t);
-  $('#reportCashFlow').innerHTML=`<div class="report-card">${reportHeader('CASH FLOW STATEMENT',f,t)}<table><thead><tr><th>Cash Flow</th><th>Amount</th></tr></thead><tbody><tr class="section-row"><td colspan="2">Operating Cash Flow</td></tr><tr><td>Cash In — Sales Receipts</td><td>${fmt(cf.moneyIn)}</td></tr><tr><td>Cash Out — Supplier Payments & Cheques</td><td>${fmt(cf.moneyOut)}</td></tr><tr class="grand"><td>Net Cash Movement</td><td>${fmt(cf.net)}</td></tr></tbody></table></div>`;
-  const bs=reportBalanceSheet(t),liab=bs.liabilities.length?bs.liabilities.map(x=>`<tr><td>${x.name}</td><td>${fmt(x.amount)}</td></tr>`).join(''):'<tr><td>No liabilities posted</td><td>${fmt(0)}</td></tr>',ast=bs.assets.length?bs.assets.map(x=>`<tr><td>${x.name}</td><td>${fmt(x.amount)}</td></tr>`).join(''):'<tr><td>No assets posted</td><td>${fmt(0)}</td></tr>';
-  $('#reportBalance').innerHTML=`<div class="report-card">${reportHeader('BALANCE SHEET','',t)}<div class="report-balance-grid"><div><h4>Assets</h4><table><tbody>${ast}<tr class="grand"><td>Total Assets</td><td>${fmt(bs.totalAssets)}</td></tr></tbody></table></div><div><h4>Liabilities & Equity</h4><table><tbody>${liab}<tr class="subtotal"><td>Total Liabilities</td><td>${fmt(bs.totalLiabilities)}</td></tr><tr><td>Equity / Retained Earnings</td><td>${fmt(bs.equity)}</td></tr><tr class="grand"><td>Total Liabilities & Equity</td><td>${fmt(bs.totalLiabilities+bs.equity)}</td></tr></tbody></table></div></div></div>`;
-};
-
 // Ensure report tabs always know the two restored reports.
 $$('.report-tab').forEach(b=>b.onclick=()=>{$$('.report-tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');$$('.report-panel').forEach(x=>{x.classList.add('hidden');x.classList.remove('active')});const map={daily:'reportDaily',cogs:'reportCogs',items:'reportItems',pl:'reportPl',cashflow:'reportCashFlow',balance:'reportBalance'};const panel=$('#'+map[b.dataset.report]);if(panel){panel.classList.remove('hidden');panel.classList.add('active')}});
 
@@ -1859,10 +1826,6 @@ renderAll();
   };
 
   // Make Accounting and Reports use the final P&L layout immediately.
-  const previousAccounting = renderAccounting;
-  renderAccounting = function(){previousAccounting(); const p=dp(filters.plFrom,filters.plTo); $('#plBox').innerHTML=plHtml(p,filters.plFrom,filters.plTo)};
-  const previousReports = renderReports;
-  renderReports = function(){previousReports(); const f=filters.reportFrom||'',t=filters.reportTo||''; const p=dp(f,t); $('#reportPl').innerHTML=`<div class="report-card">${reportHeader('PROFIT & LOSS',f,t)}${plHtml(p,f,t)}</div>`};
 
   renderAll();
 })();
@@ -1914,10 +1877,6 @@ renderAll();
       <tr class="grand"><td>Net Profit</td><td>${fmt(p.net)}</td><td><b>${pct(p.net)}</b></td></tr>
     </tbody></table>`;
   };
-  const v9Accounting=renderAccounting;
-  renderAccounting=function(){v9Accounting();const p=dp(filters.plFrom,filters.plTo);$('#plBox').innerHTML=plHtml(p,filters.plFrom,filters.plTo)};
-  const v9Reports=renderReports;
-  renderReports=function(){v9Reports();const f=filters.reportFrom||'',t=filters.reportTo||'',p=dp(f,t);$('#reportPl').innerHTML=`<div class="report-card">${reportHeader('PROFIT & LOSS',f,t)}${plHtml(p,f,t)}</div>`};
 
   // Report export: current visible report to CSV. PDF uses the browser's native Save as PDF/Print.
   function csvEscape(v){const s=String(v??'').replace(/\s+/g,' ').trim();return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s}
@@ -2015,77 +1974,6 @@ renderAll();
   const money=(n)=>typeof fmt==="function"?fmt(Number(n||0)):Number(n||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   const nval=v=>Number(v||0);
   const inRange=(d,f,t)=>(!f||d>=f)&&(!t||d<=t);
-
-  function latestPnl(from,to){
-    // Prefer the detailed V6/V8 P&L engine if available.
-    if(typeof dp==="function"){
-      const p=dp(from||"",to||"");
-      const revenueInclusive=nval(p.inclusive ?? p.revenueInclusive ?? p.revenue ?? 0);
-      const revenueExclusive=nval(p.base ?? p.revenueExclusive ?? (revenueInclusive/1.18));
-      const vat=nval(p.vat ?? revenueExclusive*.16);
-      const levy=nval(p.levy ?? p.catering ?? revenueExclusive*.02);
-      const opening=nval(p.opening ?? p.openingStock ?? 0);
-      const purchases=nval(p.purchases ?? 0);
-      const cogas=nval(p.cogas ?? p.goodsAvailable ?? (opening+purchases));
-      const closing=nval(p.closing ?? p.closingStock ?? 0);
-      const cogs=nval(p.cogs ?? p.consumption ?? (cogas-closing));
-      const gross=nval(p.gross ?? (revenueExclusive-cogs));
-      const expenses=p.expenses || {};
-      const totalExpenses=nval(p.totalExpenses ?? Object.values(expenses).reduce((a,b)=>a+nval(b),0));
-      const net=nval(p.net ?? p.netProfit ?? (gross-totalExpenses));
-      return {revenueInclusive,revenueExclusive,vat,levy,opening,purchases,cogas,closing,cogs,gross,expenses,totalExpenses,net};
-    }
-    // Fallback derived from transaction arrays
-    const sales=(state.sales||[]).filter(s=>inRange(s.date,from,to));
-    const revenueInclusive=sales.reduce((a,b)=>a+nval(b.amount),0);
-    const revenueExclusive=revenueInclusive/1.18, vat=revenueExclusive*.16, levy=revenueExclusive*.02;
-    const opening=(state.stock?.opening||[]).filter(x=>inRange(x.date||"",from,to)).reduce((a,x)=>a+nval(x.qty)*nval(x.unitCost),0);
-    const purchases=(state.bills||[]).filter(b=>inRange(b.date,from,to)).reduce((a,b)=>a+(b.lines||[]).filter(l=>l.group==="Purchase Item").reduce((x,l)=>x+nval(l.net ?? l.gross ?? (nval(l.qty)*nval(l.rate))),0),0);
-    const closing=(state.stock?.closing||[]).filter(x=>inRange(x.date||"",from,to)).reduce((a,x)=>a+nval(x.qty)*nval(x.unitCost),0);
-    const cogas=opening+purchases, cogs=cogas-closing, gross=revenueExclusive-cogs;
-    const expenses={};
-    (state.bills||[]).filter(b=>inRange(b.date,from,to)).forEach(b=>(b.lines||[]).filter(l=>l.group==="Expenditure").forEach(l=>{
-      const name=(typeof accountName==="function"&&l.accountId)?accountName(l.accountId):(l.desc||"Expense");
-      expenses[name]=(expenses[name]||0)+nval(l.net ?? l.gross ?? nval(l.qty)*nval(l.rate));
-    }));
-    (state.cheques||[]).filter(c=>inRange(c.date,from,to)).forEach(c=>(c.lines||[]).forEach(l=>{
-      const name=(typeof accountName==="function"&&l.accountId)?accountName(l.accountId):(l.desc||"Expense");
-      expenses[name]=(expenses[name]||0)+nval(l.net ?? l.gross ?? nval(l.qty)*nval(l.rate));
-    }));
-    const totalExpenses=Object.values(expenses).reduce((a,b)=>a+nval(b),0), net=gross-totalExpenses;
-    return {revenueInclusive,revenueExclusive,vat,levy,opening,purchases,cogas,closing,cogs,gross,expenses,totalExpenses,net};
-  }
-
-  function pnlHtml(from,to){
-    const p=latestPnl(from,to), base=p.revenueExclusive||0, pct=v=>base?`${(nval(v)/base*100).toFixed(1)}%`:"0.0%";
-    const expenseRows=Object.entries(p.expenses||{}).sort((a,b)=>a[0].localeCompare(b[0])).map(([k,v])=>
-      `<tr><td>${k}</td><td>${money(v)}</td><td>${pct(v)}</td></tr>`).join("");
-    return `<table>
-      <thead><tr><th>Item</th><th>Amount</th><th>Percentage</th></tr></thead>
-      <tbody>
-        <tr><td>Total Revenue (VAT + Catering Levy Inclusive)</td><td>${money(p.revenueInclusive)}</td><td>—</td></tr>
-        <tr><td><b>Total Revenue Exclusive of VAT & Catering Levy</b></td><td><b>${money(p.revenueExclusive)}</b></td><td><b>100.0%</b></td></tr>
-        <tr><td>VAT @ 16%</td><td>${money(p.vat)}</td><td>—</td></tr>
-        <tr><td>Catering Levy @ 2%</td><td>${money(p.levy)}</td><td>—</td></tr>
-        <tr><td>Opening Stock</td><td>${money(p.opening)}</td><td>—</td></tr>
-        <tr><td>Purchases (VAT Exclusive)</td><td>${money(p.purchases)}</td><td>—</td></tr>
-        <tr><td>COGAS / Goods Available</td><td>${money(p.cogas)}</td><td>—</td></tr>
-        <tr><td>Closing Stock</td><td>${money(p.closing)}</td><td>—</td></tr>
-        <tr><td><b>Cost of Sales / Consumption</b></td><td><b>${money(p.cogs)}</b></td><td><b>${pct(p.cogs)}</b></td></tr>
-        <tr><td><b>Gross Profit</b></td><td><b>${money(p.gross)}</b></td><td><b>${pct(p.gross)}</b></td></tr>
-        ${expenseRows || `<tr><td>Operating Expenses</td><td>${money(0)}</td><td>${pct(0)}</td></tr>`}
-        <tr><td><b>Total Expenses</b></td><td><b>${money(p.totalExpenses)}</b></td><td><b>${pct(p.totalExpenses)}</b></td></tr>
-        <tr><td><b>Net Profit</b></td><td><b>${money(p.net)}</b></td><td><b>${pct(p.net)}</b></td></tr>
-      </tbody>
-    </table>`;
-  }
-
-  function forceAccountingPnl(){
-    const box=$q("#plBox"); if(!box) return;
-    let f="",t="";
-    if(window.filters){ f=filters.plFrom||""; t=filters.plTo||""; }
-    box.innerHTML=pnlHtml(f,t);
-  }
 
   // ---- Chart of Accounts quick statement ----
   function accountStatementData(accountId){
@@ -2280,21 +2168,6 @@ renderAll();
     return {assets,liabilities,totalAssets,totalLiabilities,equity};
   }
 
-  function ensureReports(){
-    const f=$q("#reportFrom")?.value||"", t=$q("#reportTo")?.value||"";
-    const cf=$q("#reportCashFlow");
-    if(cf){
-      const d=cashFlowData(f,t);
-      cf.innerHTML=`<div class="report-card">${typeof reportHeader==="function"?reportHeader("CASH FLOW STATEMENT",f,t):"<h2>Cash Flow Statement</h2>"}<table><thead><tr><th>Item</th><th>Amount</th></tr></thead><tbody><tr><td>Money In</td><td>${money(d.moneyIn)}</td></tr><tr><td>Money Out</td><td>${money(d.moneyOut)}</td></tr><tr><td><b>Net Cash Movement</b></td><td><b>${money(d.net)}</b></td></tr></tbody></table></div>`;
-    }
-    const bs=$q("#reportBalance");
-    if(bs){
-      const d=balanceSheet(t);
-      bs.innerHTML=`<div class="report-card">${typeof reportHeader==="function"?reportHeader("BALANCE SHEET","",t):"<h2>Balance Sheet</h2>"}<div class="report-balance-grid"><div><h4>Assets</h4><table>${d.assets.map(x=>`<tr><td>${x.name}</td><td>${money(x.amount)}</td></tr>`).join("")}<tr><td><b>Total Assets</b></td><td><b>${money(d.totalAssets)}</b></td></tr></table></div><div><h4>Liabilities & Equity</h4><table>${d.liabilities.map(x=>`<tr><td>${x.name}</td><td>${money(x.amount)}</td></tr>`).join("")}<tr><td><b>Total Liabilities</b></td><td><b>${money(d.totalLiabilities)}</b></td></tr><tr><td>Equity / Retained Earnings</td><td>${money(d.equity)}</td></tr><tr><td><b>Total Liabilities & Equity</b></td><td><b>${money(d.totalLiabilities+d.equity)}</b></td></tr></table></div></div></div>`;
-    }
-    const rp=$q("#reportPl"); if(rp)rp.innerHTML=`<div class="report-card">${typeof reportHeader==="function"?reportHeader("PROFIT & LOSS",f,t):"<h2>Profit & Loss</h2>"}${pnlHtml(f,t)}</div>`;
-  }
-
   // ---- clean Excel export ----
   function currentReportPanel(){
     return $q(".report-panel:not(.hidden)") || $q("#reportDaily") || $q("#reportPl");
@@ -2330,10 +2203,8 @@ renderAll();
   }
 
   function finalRefresh(){
-    forceAccountingPnl();
     addCoaStatementButtons();
     renderPettyCashConsumption();
-    ensureReports();
     patchReportButtons();
   }
 
@@ -2350,268 +2221,7 @@ renderAll();
 </script>
 
 
-<script>
-/* === V11 FINAL OVERRIDES: requested changes only === */
-(function(){
-  const q=(s)=>document.querySelector(s);
-  const num=v=>Number(v||0);
-  const cashFmt=n=>typeof fmt==="function"?fmt(num(n)):num(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-  const range=(d,f,t)=>(!f||d>=f)&&(!t||d<=t);
 
-  function pnlV11(from,to){
-    let p;
-    if(typeof latestPnl==="function"){
-      p=latestPnl(from||"",to||"");
-    }else if(typeof dp==="function"){
-      const x=dp(from||"",to||"");
-      const inclusive=num(x.inclusive??x.revenueInclusive??x.revenue);
-      const exclusive=num(x.base??x.revenueExclusive??inclusive/1.18);
-      p={
-        revenueInclusive:inclusive,revenueExclusive:exclusive,
-        vat:num(x.vat??exclusive*.16),levy:num(x.levy??x.catering??exclusive*.02),
-        opening:num(x.opening??x.openingStock),purchases:num(x.purchases),
-        cogas:num(x.cogas??x.goodsAvailable),closing:num(x.closing??x.closingStock),
-        cogs:num(x.cogs??x.consumption),gross:num(x.gross),
-        expenses:x.expenses||{},totalExpenses:num(x.totalExpenses),net:num(x.net??x.netProfit)
-      };
-    }else return null;
-
-    const sales=(state.sales||[]).filter(s=>range(s.date,from,to));
-    const revenueByType={};
-    sales.forEach(s=>revenueByType[s.paymentType||"Other"]=(revenueByType[s.paymentType||"Other"]||0)+num(s.amount));
-
-    p.revenueInclusive=num(p.revenueInclusive);
-    p.revenueExclusive=num(p.revenueExclusive || p.revenueInclusive/1.18);
-    p.vat=num(p.vat || p.revenueExclusive*.16);
-    p.levy=num(p.levy || p.revenueExclusive*.02);
-    p.opening=num(p.opening); p.purchases=num(p.purchases);
-    p.cogas=num(p.cogas || (p.opening+p.purchases));
-    p.closing=num(p.closing); p.cogs=num(p.cogs || (p.cogas-p.closing));
-    p.gross=num(p.gross || (p.revenueExclusive-p.cogs));
-    p.expenses=p.expenses||{};
-    p.totalExpenses=num(p.totalExpenses || Object.values(p.expenses).reduce((a,b)=>a+num(b),0));
-    p.net=num(p.net || (p.gross-p.totalExpenses));
-    p.revenueByType=revenueByType;
-    return p;
-  }
-
-  function pnlHtmlV11(from,to){
-    const p=pnlV11(from,to); if(!p)return "";
-    const base=p.revenueExclusive||0;
-    const pct=v=>base?`${(num(v)/base*100).toFixed(1)}%`:"0.0%";
-    const revenueRows=Object.entries(p.revenueByType).sort((a,b)=>a[0].localeCompare(b[0])).map(([name,val])=>
-      `<tr><td>${name} Revenue</td><td>${cashFmt(val)}</td><td>—</td></tr>`).join("");
-    const expenses=Object.entries(p.expenses||{}).sort((a,b)=>a[0].localeCompare(b[0])).map(([name,val])=>
-      `<tr><td>${name}</td><td>${cashFmt(val)}</td><td>${pct(val)}</td></tr>`).join("");
-
-    return `<table class="pnl-statement">
-      <thead><tr><th>Item</th><th>Amount</th><th>Percentage</th></tr></thead>
-      <tbody>
-        <tr class="section-heading"><td colspan="3">Revenue</td></tr>
-        ${revenueRows || `<tr><td>Revenue</td><td>${cashFmt(p.revenueInclusive)}</td><td>—</td></tr>`}
-        <tr class="subtotal"><td>Total Revenue</td><td>${cashFmt(p.revenueInclusive)}</td><td>—</td></tr>
-
-        <tr><td>Less: VAT @ 16%</td><td>(${cashFmt(p.vat)})</td><td>—</td></tr>
-        <tr><td>Less: Catering Levy @ 2%</td><td>(${cashFmt(p.levy)})</td><td>—</td></tr>
-        <tr class="subtotal"><td>Revenue After VAT & Catering Levy</td><td>${cashFmt(p.revenueExclusive)}</td><td>100.0%</td></tr>
-
-        <tr class="section-heading"><td colspan="3">Cost of Sales</td></tr>
-        <tr><td>Opening Stock</td><td>${cashFmt(p.opening)}</td><td>—</td></tr>
-        <tr><td>Add: Purchases (VAT Exclusive)</td><td>${cashFmt(p.purchases)}</td><td>—</td></tr>
-        <tr><td>Goods Available for Sale</td><td>${cashFmt(p.cogas)}</td><td>—</td></tr>
-        <tr><td>Less: Closing Stock</td><td>(${cashFmt(p.closing)})</td><td>—</td></tr>
-        <tr class="subtotal"><td>Cost of Sales</td><td>${cashFmt(p.cogs)}</td><td>${pct(p.cogs)}</td></tr>
-
-        <tr class="grand"><td>Gross Profit</td><td>${cashFmt(p.gross)}</td><td>${pct(p.gross)}</td></tr>
-
-        <tr class="section-heading"><td colspan="3">Operating Expenses</td></tr>
-        ${expenses || `<tr><td>No operating expenses posted</td><td>${cashFmt(0)}</td><td>0.0%</td></tr>`}
-        <tr class="subtotal"><td>Total Expenses</td><td>${cashFmt(p.totalExpenses)}</td><td>${pct(p.totalExpenses)}</td></tr>
-
-        <tr class="grand"><td>Net Profit</td><td>${cashFmt(p.net)}</td><td>${pct(p.net)}</td></tr>
-      </tbody>
-    </table>`;
-  }
-
-  window.pnlHtml = pnlHtmlV11;
-
-  function forcePnl(){
-    const box=q("#plBox");
-    if(box){
-      const f=(window.filters&&filters.plFrom)||"", t=(window.filters&&filters.plTo)||"";
-      box.innerHTML=pnlHtmlV11(f,t);
-    }
-    const rp=q("#reportPl");
-    if(rp){
-      const f=q("#reportFrom")?.value || (window.filters&&filters.reportFrom)||"";
-      const t=q("#reportTo")?.value || (window.filters&&filters.reportTo)||"";
-      rp.innerHTML=`<div class="report-card">${typeof reportHeader==="function"?reportHeader("PROFIT & LOSS",f,t):"<h2>Profit & Loss</h2>"}${pnlHtmlV11(f,t)}</div>`;
-    }
-  }
-
-  function accountCFClass(accountId){
-    const a=(state.accounts||[]).find(x=>x.id===accountId);
-    if(!a)return "Operating";
-    const declared=(a.cashflow||a.cashFlow||"").toLowerCase();
-    if(declared.includes("invest"))return "Investing";
-    if(declared.includes("financ"))return "Financing";
-    if(a.type==="Equity" || a.sub==="Long-term Liability" || /loan|capital|equity/i.test(`${a.name} ${a.sub}`))return "Financing";
-    if(a.sub==="Fixed Asset" || /equipment|vehicle|furniture|fixture|property|asset purchase/i.test(a.name||""))return "Investing";
-    return "Operating";
-  }
-
-  function detailedCashFlow(from,to){
-    const sections={
-      Operating:{inflows:{},outflows:{}},
-      Investing:{inflows:{},outflows:{}},
-      Financing:{inflows:{},outflows:{}}
-    };
-    const add=(section,dir,label,amount)=>{
-      amount=num(amount); if(!amount)return;
-      sections[section][dir][label]=(sections[section][dir][label]||0)+amount;
-    };
-
-    (state.receipts||[]).filter(r=>range(r.date,from,to)).forEach(r=>{
-      const sale=(state.sales||[]).find(s=>s.id===r.saleId);
-      add("Operating","inflows",`Sales Receipts${sale?.paymentType?` — ${sale.paymentType}`:""}`,r.amount);
-    });
-
-    (state.cheques||[]).filter(c=>range(c.date,from,to)).forEach(c=>{
-      const lines=c.lines||[];
-      if(lines.length){
-        lines.forEach(l=>{
-          const a=(state.accounts||[]).find(x=>x.id===l.accountId);
-          const section=accountCFClass(l.accountId);
-          const label=a?.name || l.desc || "Direct Payment";
-          add(section,"outflows",label,num(l.gross??l.net??(num(l.qty)*num(l.rate))));
-        });
-      }else add("Operating","outflows","Cheques / Direct Payments",c.total);
-    });
-
-    (state.billPayments||[]).filter(p=>range(p.date,from,to)).forEach(pay=>{
-      const bill=(state.bills||[]).find(b=>b.id===pay.billId);
-      const lines=bill?.lines||[];
-      const grossTotal=lines.reduce((a,l)=>a+num(l.gross??(num(l.qty)*num(l.rate))),0);
-      if(!lines.length || !grossTotal){
-        add("Operating","outflows","Supplier Payments",pay.amount);
-        return;
-      }
-      lines.forEach(l=>{
-        const gross=num(l.gross??(num(l.qty)*num(l.rate)));
-        const allocated=num(pay.amount)*(gross/grossTotal);
-        if(l.group==="Purchase Item"){
-          add("Operating","outflows","Inventory / Food Purchases",allocated);
-        }else{
-          const a=(state.accounts||[]).find(x=>x.id===l.accountId);
-          add(accountCFClass(l.accountId),"outflows",a?.name||l.desc||"Supplier Expense",allocated);
-        }
-      });
-    });
-
-    const totals={};
-    for(const [name,s] of Object.entries(sections)){
-      const inflow=Object.values(s.inflows).reduce((a,b)=>a+b,0);
-      const outflow=Object.values(s.outflows).reduce((a,b)=>a+b,0);
-      totals[name]={inflow,outflow,net:inflow-outflow};
-    }
-    totals.net=totals.Operating.net+totals.Investing.net+totals.Financing.net;
-    return {sections,totals};
-  }
-
-  function cashFlowHtml(from,to){
-    const d=detailedCashFlow(from,to);
-    const sectionHtml=(name)=>{
-      const s=d.sections[name], t=d.totals[name];
-      const ins=Object.entries(s.inflows).map(([k,v])=>`<tr><td>${k}</td><td>${cashFmt(v)}</td></tr>`).join("");
-      const outs=Object.entries(s.outflows).map(([k,v])=>`<tr><td>${k}</td><td>(${cashFmt(v)})</td></tr>`).join("");
-      return `
-        <tr class="section-heading"><td colspan="2">Cash Flow from ${name} Activities</td></tr>
-        ${ins || `<tr><td>Cash inflows</td><td>${cashFmt(0)}</td></tr>`}
-        ${outs || `<tr><td>Cash outflows</td><td>${cashFmt(0)}</td></tr>`}
-        <tr class="subtotal"><td>Net Cash from ${name} Activities</td><td>${cashFmt(t.net)}</td></tr>`;
-    };
-    return `<table class="cashflow-statement">
-      <thead><tr><th>Item</th><th>Amount</th></tr></thead>
-      <tbody>
-        ${sectionHtml("Operating")}
-        ${sectionHtml("Investing")}
-        ${sectionHtml("Financing")}
-        <tr class="grand"><td>Net Increase / (Decrease) in Cash</td><td>${cashFmt(d.totals.net)}</td></tr>
-      </tbody>
-    </table>`;
-  }
-
-  function bsVerticalHtml(asAt){
-    const d=typeof balanceSheet==="function"?balanceSheet(asAt):null;
-    if(!d)return "";
-    const assetRows=(d.assets||[]).map(x=>`<tr><td>${x.name}</td><td>${cashFmt(x.amount)}</td></tr>`).join("");
-    const liabilityRows=(d.liabilities||[]).map(x=>`<tr><td>${x.name}</td><td>${cashFmt(x.amount)}</td></tr>`).join("");
-    return `<table class="balance-vertical">
-      <thead><tr><th>Item</th><th>Amount</th></tr></thead>
-      <tbody>
-        <tr class="section-heading"><td colspan="2">Assets</td></tr>
-        ${assetRows || `<tr><td>No asset balances posted</td><td>${cashFmt(0)}</td></tr>`}
-        <tr class="subtotal"><td>Total Assets</td><td>${cashFmt(d.totalAssets)}</td></tr>
-
-        <tr class="section-heading"><td colspan="2">Liabilities</td></tr>
-        ${liabilityRows || `<tr><td>No liability balances posted</td><td>${cashFmt(0)}</td></tr>`}
-        <tr class="subtotal"><td>Total Liabilities</td><td>${cashFmt(d.totalLiabilities)}</td></tr>
-
-        <tr class="section-heading"><td colspan="2">Equity</td></tr>
-        <tr><td>Equity / Retained Earnings</td><td>${cashFmt(d.equity)}</td></tr>
-        <tr class="subtotal"><td>Total Equity</td><td>${cashFmt(d.equity)}</td></tr>
-
-        <tr class="grand"><td>Total Liabilities & Equity</td><td>${cashFmt(num(d.totalLiabilities)+num(d.equity))}</td></tr>
-      </tbody>
-    </table>`;
-  }
-
-  function forceReports(){
-    const f=q("#reportFrom")?.value || (window.filters&&filters.reportFrom)||"";
-    const t=q("#reportTo")?.value || (window.filters&&filters.reportTo)||"";
-
-    const cf=q("#reportCashFlow");
-    if(cf) cf.innerHTML=`<div class="report-card">${typeof reportHeader==="function"?reportHeader("CASH FLOW STATEMENT",f,t):"<h2>Cash Flow Statement</h2>"}${cashFlowHtml(f,t)}</div>`;
-
-    const bs=q("#reportBalance");
-    if(bs) bs.innerHTML=`<div class="report-card">${typeof reportHeader==="function"?reportHeader("BALANCE SHEET","",t):"<h2>Balance Sheet</h2>"}${bsVerticalHtml(t)}</div>`;
-
-    forcePnl();
-  }
-
-  function spaceAccountButtons(){
-    document.querySelectorAll(".coa-statement-btn").forEach(b=>{
-      const td=b.parentElement;
-      if(!td)return;
-      td.style.whiteSpace="normal";
-      [...td.querySelectorAll("button")].forEach(btn=>{
-        btn.style.marginRight="7px";
-        btn.style.marginBottom="4px";
-      });
-    });
-  }
-
-  const oldRender=window.renderAll;
-  if(typeof oldRender==="function"){
-    window.renderAll=function(){
-      const r=oldRender.apply(this,arguments);
-      setTimeout(()=>{forceReports();spaceAccountButtons();},0);
-      return r;
-    };
-  }
-
-  document.addEventListener("click",e=>{
-    if(e.target.closest(".report-tab") || /accounting|reports/i.test(e.target.textContent||"")){
-      setTimeout(()=>{forceReports();spaceAccountButtons();},30);
-    }
-  });
-  ["reportFrom","reportTo","plFrom","plTo"].forEach(id=>{
-    q("#"+id)?.addEventListener("change",()=>setTimeout(forceReports,10));
-  });
-
-  setTimeout(()=>{forceReports();spaceAccountButtons();},80);
-})();
-</script>
 
 
 <script>
@@ -2622,161 +2232,6 @@ renderAll();
   const num=v=>Number(v||0);
   const money=n=>typeof fmt==="function"?fmt(num(n)):num(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
   const range=(d,f,t)=>(!f||d>=f)&&(!t||d<=t);
-
-  // ---------- P&L with visible percentage column ----------
-  function getPnlDataV12(from,to){
-    if(typeof pnlV11==="function"){
-      const p=pnlV11(from||"",to||"");
-      if(p) return p;
-    }
-    if(typeof latestPnl==="function"){
-      const p=latestPnl(from||"",to||"");
-      const sales=(state.sales||[]).filter(s=>range(s.date,from,to));
-      const by={};
-      sales.forEach(s=>by[s.paymentType||"Other"]=(by[s.paymentType||"Other"]||0)+num(s.amount));
-      p.revenueByType=by;
-      return p;
-    }
-    return null;
-  }
-
-  function pnlHtmlV12(from,to){
-    const raw = (typeof dp==="function") ? (dp(from||"",to||"")||{}) : {};
-    const inclusive = num(raw.revenue ?? raw.revenueInclusive ?? raw.inclusive ?? 0);
-
-    // Revenue after VAT (16%) + Catering Levy (2%) is the 100% base.
-    const exclusive = inclusive / 1.18;
-    const vat = exclusive * 0.16;
-    const levy = exclusive * 0.02;
-
-    const opening = num(raw.open ?? raw.opening ?? raw.openingStock ?? 0);
-    const purchases = num(raw.purch ?? raw.purchases ?? 0);
-    const cogas = opening + purchases;
-    const closing = num(raw.close ?? raw.closing ?? raw.closingStock ?? 0);
-    const cogs = num(raw.cogs ?? (cogas-closing));
-    const gross = exclusive - cogs;
-
-    const expenses = raw.expenses || {};
-    const totalExpenses = Object.values(expenses).reduce((a,b)=>a+num(b),0);
-    const net = gross - totalExpenses;
-
-    const pct = v => exclusive ? `${(num(v)/exclusive*100).toFixed(1)}%` : "0.0%";
-
-    const revenueByType = {};
-    (state.sales||[]).filter(s=>range(s.date,from,to)).forEach(s=>{
-      revenueByType[s.paymentType||"Other"]=(revenueByType[s.paymentType||"Other"]||0)+num(s.amount);
-    });
-
-    const revenueRows = Object.entries(revenueByType).sort((a,b)=>a[0].localeCompare(b[0])).map(([k,v]) =>
-      `<tr><td>${k} Revenue</td><td>${money(v)}</td><td>—</td></tr>`
-    ).join("");
-
-    const expRows = Object.entries(expenses).sort((a,b)=>a[0].localeCompare(b[0])).map(([k,v]) =>
-      `<tr><td>${k}</td><td>${money(v)}</td><td><strong>${pct(v)}</strong></td></tr>`
-    ).join("");
-
-    return `<table class="pnl-statement">
-      <thead>
-        <tr><th>Item</th><th>Amount</th><th>Percentage</th></tr>
-      </thead>
-      <tbody>
-        <tr class="section-heading"><td colspan="3">Revenue</td></tr>
-        ${revenueRows || `<tr><td>Revenue</td><td>${money(inclusive)}</td><td>—</td></tr>`}
-        <tr class="subtotal"><td>Total Revenue</td><td>${money(inclusive)}</td><td>—</td></tr>
-        <tr><td>Less: VAT @ 16%</td><td>(${money(vat)})</td><td>—</td></tr>
-        <tr><td>Less: Catering Levy @ 2%</td><td>(${money(levy)})</td><td>—</td></tr>
-        <tr class="subtotal"><td>Revenue After VAT & Catering Levy</td><td>${money(exclusive)}</td><td><strong>100.0%</strong></td></tr>
-
-        <tr class="section-heading"><td colspan="3">Cost of Sales</td></tr>
-        <tr><td>Opening Stock</td><td>${money(opening)}</td><td>—</td></tr>
-        <tr><td>Add: Purchases (VAT Exclusive)</td><td>${money(purchases)}</td><td>—</td></tr>
-        <tr><td>Goods Available for Sale</td><td>${money(cogas)}</td><td>—</td></tr>
-        <tr><td>Less: Closing Stock</td><td>(${money(closing)})</td><td>—</td></tr>
-        <tr class="subtotal"><td>Cost of Sales</td><td>${money(cogs)}</td><td><strong>${pct(cogs)}</strong></td></tr>
-
-        <tr class="grand"><td>Gross Profit</td><td>${money(gross)}</td><td><strong>${pct(gross)}</strong></td></tr>
-
-        <tr class="section-heading"><td colspan="3">Operating Expenses</td></tr>
-        ${expRows || `<tr><td>No operating expenses posted</td><td>${money(0)}</td><td><strong>0.0%</strong></td></tr>`}
-        <tr class="subtotal"><td>Total Expenses</td><td>${money(totalExpenses)}</td><td><strong>${pct(totalExpenses)}</strong></td></tr>
-
-        <tr class="grand"><td>Net Profit</td><td>${money(net)}</td><td><strong>${pct(net)}</strong></td></tr>
-      </tbody>
-    </table>`;
-  }
-  window.pnlHtml=pnlHtmlV12;
-  window.plHtml=function(_p,f="",t=""){ return pnlHtmlV12(f,t); };
-
-  function forcePnlV12(){
-    const f1=(window.filters&&filters.plFrom)||q("#plFrom")?.value||"";
-    const t1=(window.filters&&filters.plTo)||q("#plTo")?.value||"";
-    const box=q("#plBox");
-    if(box) box.innerHTML=pnlHtmlV12(f1,t1);
-
-    const rf=q("#reportFrom")?.value||"";
-    const rt=q("#reportTo")?.value||"";
-    const rp=q("#reportPl");
-    if(rp) rp.innerHTML=`<div class="report-card">${typeof reportHeader==="function"?reportHeader("PROFIT & LOSS",rf,rt):"<h2>Profit & Loss</h2>"}${pnlHtmlV12(rf,rt)}</div>`;
-  }
-
-  // ---------- Balance Sheet: guaranteed vertical render ----------
-  function balanceDataV12(asAt){
-    if(typeof balanceSheet==="function"){
-      const d=balanceSheet(asAt);
-      if(d && Array.isArray(d.assets) && Array.isArray(d.liabilities)) return d;
-    }
-    const assets=[], liabilities=[];
-    (state.accounts||[]).filter(a=>a.active&&a.type==="Asset").forEach(a=>{
-      let amount=0;
-      if(typeof accountStatementData==="function"){
-        const d=accountStatementData(a.id); amount=num(d?.balance);
-      } else {
-        (state.receipts||[]).filter(r=>r.accountId===a.id && (!asAt||r.date<=asAt)).forEach(r=>amount+=num(r.amount));
-        (state.cheques||[]).filter(c=>c.bankId===a.id && (!asAt||c.date<=asAt)).forEach(c=>amount-=num(c.total));
-        (state.billPayments||[]).filter(p=>p.bankId===a.id && (!asAt||p.date<=asAt)).forEach(p=>amount-=num(p.amount));
-      }
-      if(Math.abs(amount)>.005 || ["Bank","Cash"].includes(a.sub) || /petty cash/i.test(a.name||"")) assets.push({name:a.name,amount});
-    });
-    const sales=(state.sales||[]).filter(s=>!asAt||s.date<=asAt).reduce((a,b)=>a+num(b.amount),0);
-    const rec=(state.receipts||[]).filter(r=>!asAt||r.date<=asAt).reduce((a,b)=>a+num(b.amount),0);
-    if(Math.abs(sales-rec)>.005) assets.push({name:"Sales Receivable",amount:sales-rec});
-
-    const bills=(state.bills||[]).filter(b=>!asAt||b.date<=asAt).reduce((a,b)=>a+num(b.total),0);
-    const pays=(state.billPayments||[]).filter(p=>!asAt||p.date<=asAt).reduce((a,b)=>a+num(b.amount),0);
-    if(Math.abs(bills-pays)>.005) liabilities.push({name:"Accounts Payable",amount:bills-pays});
-
-    const totalAssets=assets.reduce((a,b)=>a+num(b.amount),0);
-    const totalLiabilities=liabilities.reduce((a,b)=>a+num(b.amount),0);
-    const equity=totalAssets-totalLiabilities;
-    return {assets,liabilities,totalAssets,totalLiabilities,equity};
-  }
-
-  function balanceHtmlV12(asAt){
-    const d=balanceDataV12(asAt);
-    const aRows=d.assets.length?d.assets.map(x=>`<tr><td>${x.name}</td><td>${money(x.amount)}</td></tr>`).join(""):`<tr><td>No asset balances posted</td><td>${money(0)}</td></tr>`;
-    const lRows=d.liabilities.length?d.liabilities.map(x=>`<tr><td>${x.name}</td><td>${money(x.amount)}</td></tr>`).join(""):`<tr><td>No liability balances posted</td><td>${money(0)}</td></tr>`;
-    return `<table class="balance-vertical">
-      <thead><tr><th>Item</th><th>Amount</th></tr></thead>
-      <tbody>
-        <tr class="section-heading"><td colspan="2">Assets</td></tr>
-        ${aRows}
-        <tr class="subtotal"><td>Total Assets</td><td>${money(d.totalAssets)}</td></tr>
-        <tr class="section-heading"><td colspan="2">Liabilities</td></tr>
-        ${lRows}
-        <tr class="subtotal"><td>Total Liabilities</td><td>${money(d.totalLiabilities)}</td></tr>
-        <tr class="section-heading"><td colspan="2">Equity</td></tr>
-        <tr><td>Equity / Retained Earnings</td><td>${money(d.equity)}</td></tr>
-        <tr class="subtotal"><td>Total Equity</td><td>${money(d.equity)}</td></tr>
-        <tr class="grand"><td>Total Liabilities & Equity</td><td>${money(num(d.totalLiabilities)+num(d.equity))}</td></tr>
-      </tbody>
-    </table>`;
-  }
-
-  function forceBalanceV12(){
-    const bs=q("#reportBalance"); if(!bs)return;
-    const asAt=q("#reportTo")?.value||"";
-    bs.innerHTML=`<div class="report-card">${typeof reportHeader==="function"?reportHeader("BALANCE SHEET","",asAt):"<h2>Balance Sheet</h2>"}${balanceHtmlV12(asAt)}</div>`;
-  }
 
   // ---------- Dashboard: amount labels are rendered by the active dashboard renderer ----------
   // The older post-render label injector was removed because it created duplicate labels.
@@ -2807,8 +2262,6 @@ renderAll();
   }
 
   function finalV12(){
-    forcePnlV12();
-    forceBalanceV12();
     renderPettyV12();
   }
 
@@ -3424,268 +2877,13 @@ renderAll();
 </style>
 
 
-<script>
-/* V12.7 — ONLY Accounting P&L refresh + complete expense aggregation */
-(function(){
-  const q=s=>document.querySelector(s);
-  const n=v=>Number(v||0);
-  const money=v=>typeof fmt==="function"
-    ? fmt(n(v))
-    : n(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-  const inRange=(d,f,t)=>(!f||d>=f)&&(!t||d<=t);
-
-  function accName(id, fallback){
-    const a=(state.accounts||[]).find(x=>x.id===id);
-    return a?.name || fallback || "Expense";
-  }
-
-  function grossLineValue(l){
-    if(l==null) return 0;
-    if(l.net!=null) return n(l.net);
-    if(l.amount!=null) return n(l.amount);
-    if(l.gross!=null){
-      const vat=n(l.vat||l.vatRate||0);
-      if(vat>0) return n(l.gross)/(1+vat/100);
-      return n(l.gross);
-    }
-    return n(l.qty)*n(l.rate);
-  }
-
-  function accountingPnlData(from,to){
-    const sales=(state.sales||[]).filter(s=>inRange(s.date,from,to));
-    const revenueByType={};
-    sales.forEach(s=>{
-      revenueByType[s.paymentType||"Other"]=(revenueByType[s.paymentType||"Other"]||0)+n(s.amount);
-    });
-    const inclusive=sales.reduce((a,s)=>a+n(s.amount),0);
-    const exclusive=inclusive/1.18;
-    const vat=exclusive*0.16;
-    const levy=exclusive*0.02;
-
-    // Start with existing stock/COGS engine so inventory logic stays unchanged.
-    const base=(typeof dp==="function") ? (dp(from||"",to||"")||{}) : {};
-    const opening=n(base.open ?? base.opening ?? base.openingStock ?? 0);
-    const purchases=n(base.purch ?? base.purchases ?? 0);
-    const closing=n(base.close ?? base.closing ?? base.closingStock ?? 0);
-    const cogas=opening+purchases;
-    const cogs=n(base.cogs ?? (cogas-closing));
-
-    const expenses={};
-
-    const addExp=(label,val)=>{
-      val=n(val);
-      if(!val) return;
-      expenses[label]=(expenses[label]||0)+val;
-    };
-
-    // 1) Supplier bill expenditure lines — these are expenses when the bill is posted,
-    // regardless of whether the supplier has been paid yet.
-    (state.bills||[]).filter(b=>inRange(b.date,from,to)).forEach(b=>{
-      (b.lines||[]).forEach(l=>{
-        if(l.group==="Purchase Item") return; // goes to purchases/COGS, not operating expenses
-        const val=grossLineValue(l);
-        addExp(accName(l.accountId,l.desc),val);
-      });
-    });
-
-    // 2) Direct Write Cheque expense lines.
-    (state.cheques||[]).filter(c=>inRange(c.date,from,to)).forEach(c=>{
-      (c.lines||[]).forEach(l=>{
-        const a=(state.accounts||[]).find(x=>x.id===l.accountId);
-        // Do not treat transfers to another asset/cash account as an expense.
-        if(a && a.type==="Asset") return;
-        // Do not duplicate AP settlement lines as expenses.
-        if(a && (a.sub==="Accounts Payable" || /accounts payable/i.test(a.name||""))) return;
-        const val=grossLineValue(l);
-        addExp(accName(l.accountId,l.desc),val);
-      });
-    });
-
-    // 3) Petty Cash standalone expense transactions, if this state array exists.
-    const pettyArrays=[
-      ...(Array.isArray(state.pettyCash)?state.pettyCash:[]),
-      ...(Array.isArray(state.pettyExpenses)?state.pettyExpenses:[]),
-      ...(Array.isArray(state.expenses)?state.expenses:[])
-    ];
-    pettyArrays.filter(x=>inRange(x.date,from,to)).forEach(x=>{
-      const val=n(x.net ?? x.amount ?? x.total);
-      const label=accName(x.accountId,x.category||x.expense||x.description||x.memo||"Petty Cash Expense");
-      addExp(label,val);
-    });
-
-    // 4) Existing dp() expense lines not otherwise present above.
-    // Merge only names/amounts that are not already represented to avoid doubling.
-    const legacy=base.expenses||{};
-    Object.entries(legacy).forEach(([k,v])=>{
-      if(expenses[k]==null) expenses[k]=n(v);
-    });
-
-    const totalExpenses=Object.values(expenses).reduce((a,b)=>a+n(b),0);
-    const gross=exclusive-cogs;
-    const net=gross-totalExpenses;
-
-    return {
-      revenueByType,inclusive,exclusive,vat,levy,
-      opening,purchases,cogas,closing,cogs,gross,
-      expenses,totalExpenses,net
-    };
-  }
-
-  function accountingPnlHtml(from,to){
-    const p=accountingPnlData(from,to);
-    const pct=v=>p.exclusive?`${(n(v)/p.exclusive*100).toFixed(1)}%`:"0.0%";
-
-    const revenueRows=Object.entries(p.revenueByType)
-      .sort((a,b)=>a[0].localeCompare(b[0]))
-      .map(([k,v])=>`<tr><td>${k} Revenue</td><td>${money(v)}</td><td>—</td></tr>`)
-      .join("");
-
-    const expRows=Object.entries(p.expenses)
-      .sort((a,b)=>a[0].localeCompare(b[0]))
-      .map(([k,v])=>`<tr><td>${k}</td><td>${money(v)}</td><td><strong>${pct(v)}</strong></td></tr>`)
-      .join("");
-
-    return `<table class="pnl-statement">
-      <thead><tr><th>Item</th><th>Amount</th><th>Percentage</th></tr></thead>
-      <tbody>
-        <tr class="section-heading"><td colspan="3">Revenue</td></tr>
-        ${revenueRows || `<tr><td>Revenue</td><td>${money(p.inclusive)}</td><td>—</td></tr>`}
-        <tr class="subtotal"><td>Total Revenue</td><td>${money(p.inclusive)}</td><td>—</td></tr>
-        <tr><td>Less: VAT @ 16%</td><td>(${money(p.vat)})</td><td>—</td></tr>
-        <tr><td>Less: Catering Levy @ 2%</td><td>(${money(p.levy)})</td><td>—</td></tr>
-        <tr class="subtotal"><td>Revenue After VAT & Catering Levy</td><td>${money(p.exclusive)}</td><td><strong>100.0%</strong></td></tr>
-
-        <tr class="section-heading"><td colspan="3">Cost of Sales</td></tr>
-        <tr><td>Opening Stock</td><td>${money(p.opening)}</td><td>—</td></tr>
-        <tr><td>Add: Purchases (VAT Exclusive)</td><td>${money(p.purchases)}</td><td>—</td></tr>
-        <tr><td>Goods Available for Sale</td><td>${money(p.cogas)}</td><td>—</td></tr>
-        <tr><td>Less: Closing Stock</td><td>(${money(p.closing)})</td><td>—</td></tr>
-        <tr class="subtotal"><td>Cost of Sales</td><td>${money(p.cogs)}</td><td><strong>${pct(p.cogs)}</strong></td></tr>
-
-        <tr class="grand"><td>Gross Profit</td><td>${money(p.gross)}</td><td><strong>${pct(p.gross)}</strong></td></tr>
-
-        <tr class="section-heading"><td colspan="3">Operating Expenses</td></tr>
-        ${expRows || `<tr><td>No operating expenses posted</td><td>${money(0)}</td><td><strong>0.0%</strong></td></tr>`}
-        <tr class="subtotal"><td>Total Expenses</td><td>${money(p.totalExpenses)}</td><td><strong>${pct(p.totalExpenses)}</strong></td></tr>
-        <tr class="grand"><td>Net Profit</td><td>${money(p.net)}</td><td><strong>${pct(p.net)}</strong></td></tr>
-      </tbody>
-    </table>`;
-  }
-
-  function renderAccountingPnl(){
-    const box=q("#plBox");
-    if(!box) return;
-    const f=q("#plFrom")?.value||"";
-    const t=q("#plTo")?.value||"";
-    box.innerHTML=accountingPnlHtml(f,t);
-  }
-
-  // V12.9: one canonical P&L renderer for Accounting + Reports.
-  window.finsightCompletePnlHtml = accountingPnlHtml;
-  window.pnlHtml = accountingPnlHtml;
-  window.plHtml = function(_p,f="",t=""){ return accountingPnlHtml(f,t); };
-
-  // Make the accounting page use this same P&L immediately on first load and refresh.
-  const oldAccounting=window.renderAccounting;
-  if(typeof oldAccounting==="function"){
-    window.renderAccounting=function(){
-      const r=oldAccounting.apply(this,arguments);
-      renderAccountingPnl();
-      return r;
-    };
-  }
-
-  ["plFrom","plTo"].forEach(id=>{
-    q("#"+id)?.addEventListener("change",renderAccountingPnl);
-  });
-
-  const applyBtn=q("#applyPlFilter");
-  if(applyBtn){
-    applyBtn.onclick=function(){
-      if(window.filters){
-        filters.plFrom=q("#plFrom")?.value||"";
-        filters.plTo=q("#plTo")?.value||"";
-      }
-      renderAccountingPnl();
-    };
-  }
-
-  // Initial render after state/localStorage has loaded.
-  if(document.readyState==="loading"){
-    document.addEventListener("DOMContentLoaded",()=>setTimeout(renderAccountingPnl,0));
-  } else {
-    setTimeout(renderAccountingPnl,0);
-  }
-})();
-</script>
 
 
-<script>
-/* V12.8 — ONLY preserve P&L percentages after Refresh Report */
-(function(){
-  const q=s=>document.querySelector(s);
-
-  function rerenderReportPnl(){
-    const rp=q("#reportPl");
-    const pnl = window.finsightCompletePnlHtml || window.pnlHtml;
-    if(!rp || typeof pnl!=="function") return;
-
-    const f=q("#reportFrom")?.value || "";
-    const t=q("#reportTo")?.value || "";
-    const head=typeof reportHeader==="function"
-      ? reportHeader("PROFIT & LOSS",f,t)
-      : "<h2>Profit & Loss</h2>";
-
-    rp.innerHTML=`<div class="report-card">${head}${pnl(f,t)}</div>`;
-  }
-
-  // Target the actual visible Refresh Report control only.
-  document.addEventListener("click",function(e){
-    const btn=e.target.closest("button");
-    if(!btn) return;
-    const label=(btn.textContent||"").replace(/\s+/g," ").trim();
-
-    if(/^Refresh Report$/i.test(label)){
-      // Let the existing refresh run first, then restore ONLY the P&L report table.
-      setTimeout(rerenderReportPnl,0);
-      setTimeout(rerenderReportPnl,80);
-    }
-  });
-
-  // Also keep the report P&L correct when report dates are changed.
-  ["reportFrom","reportTo"].forEach(id=>{
-    q("#"+id)?.addEventListener("change",()=>setTimeout(rerenderReportPnl,0));
-  });
-})();
-</script>
 
 
-<script>
-/* V12.9 — ONLY synchronize the two P&Ls */
-(function(){
-  const q=s=>document.querySelector(s);
 
-  function drawReportsPnl(){
-    const box=q("#reportPl");
-    const pnl=window.finsightCompletePnlHtml || window.pnlHtml;
-    if(!box || typeof pnl!=="function") return;
-    const f=q("#reportFrom")?.value||"";
-    const t=q("#reportTo")?.value||"";
-    const head=typeof reportHeader==="function"
-      ? reportHeader("PROFIT & LOSS",f,t)
-      : "<h2>Profit & Loss</h2>";
-    box.innerHTML=`<div class="report-card">${head}${pnl(f,t)}</div>`;
-  }
 
-  document.addEventListener("click",function(e){
-    const tab=e.target.closest('.report-tab[data-report="pl"]');
-    if(tab) setTimeout(drawReportsPnl,0);
-  });
 
-  // If Reports P&L is already visible on load/navigation, keep it on the canonical renderer.
-  setTimeout(drawReportsPnl,0);
-})();
-</script>
 
 
 <script>
@@ -5875,36 +5073,20 @@ async function renderFinancialReportsLive(){
 let fs109FinancialBound=false;function bind(){ensureTrialTab();if(fs109FinancialBound)return;fs109FinancialBound=true;const ap=q('#applyPlFilter'),ac=q('#applyCfFilter'),rr=q('#refreshReportsBtn');if(ap)ap.onclick=()=>{filters.plFrom=q('#plFrom').value;filters.plTo=q('#plTo').value;renderAccountingLive();};if(ac)ac.onclick=()=>{filters.cfFrom=q('#cfFrom').value;filters.cfTo=q('#cfTo').value;renderAccountingLive();};if(rr){const old=rr.onclick;rr.onclick=()=>{filters.reportFrom=q('#reportFrom').value;filters.reportTo=q('#reportTo').value;if(typeof window.renderReports==='function')window.renderReports();setTimeout(renderFinancialReportsLive,0);if(typeof toast==='function')toast('Live reports refreshed');};}document.addEventListener('click',e=>{const nav=e.target.closest('[data-page]');if(!nav)return;if(nav.dataset.page==='accounting')setTimeout(renderAccountingLive,20);if(nav.dataset.page==='reports')setTimeout(renderFinancialReportsLive,30);});}
 // Update the live P&L when its Reports tab is selected or its period changes.
 let livePnlOnlySequence=0;
-let canonicalPnlHTML='',canonicalPnlKey='',pnlDomWrite=false;
-function pnlReportKey(){return [window.finsightOnline?.companyId,q('#reportFrom')?.value,q('#reportTo')?.value].join('|')}
-function setCanonicalPnl(html){
- const box=q('#reportPl');if(!box)return;
- canonicalPnlHTML=html;canonicalPnlKey=pnlReportKey();pnlDomWrite=true;box.innerHTML=html;pnlDomWrite=false;
-}
-function protectReportsPnl(){
- const box=q('#reportPl');if(!box||box.dataset.fs109PnlGuard)return;
- box.dataset.fs109PnlGuard='1';
- new MutationObserver(()=>{
-  if(pnlDomWrite||!canonicalPnlHTML||canonicalPnlKey!==pnlReportKey())return;
-  if(box.innerHTML===canonicalPnlHTML)return;
-  pnlDomWrite=true;box.innerHTML=canonicalPnlHTML;pnlDomWrite=false;
- }).observe(box,{childList:true,subtree:true});
-}
-
 async function renderLiveReportPnlOnly(){
  const token=++livePnlOnlySequence;
  const box=q('#reportPl');if(!box||!window.finsightOnline?.companyId)return;
  const d=dates(q('#reportFrom')?.value,q('#reportTo')?.value);
- canonicalPnlKey="";canonicalPnlHTML="";box.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading live P&amp;L…</div></div>';
+  box.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading live P&amp;L…</div></div>';
  try{
   const [pr,inv,posting]=await Promise.all([pnl(d.start,d.end),inventoryForPnl(d.start,d.end),postingForPnl(d.start,d.end)]);
   if(token!==livePnlOnlySequence)return;
-  setCanonicalPnl(`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error)}</div>`);
+  box.innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error)}</div>`;
  }catch(e){if(token===livePnlOnlySequence)box.innerHTML=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;}
 }
 document.addEventListener('click',e=>{if(e.target.closest('.report-tab[data-report="pl"]'))setTimeout(renderLiveReportPnlOnly,40)});
 ['reportFrom','reportTo'].forEach(id=>q('#'+id)?.addEventListener('change',()=>{if(q('.report-tab[data-report="pl"]')?.classList.contains('active'))renderLiveReportPnlOnly()}));
-protectReportsPnl();window.finsightRenderLiveReportPnl=renderLiveReportPnlOnly;
+window.finsightRenderLiveReportPnl=renderLiveReportPnlOnly;
 window.finsightRenderLiveAccounting=renderAccountingLive;window.finsightRenderLiveFinancialReports=renderFinancialReportsLive;
 document.addEventListener('finsight:cloud-state-loaded',()=>{if(q('#accounting')?.classList.contains('active'))renderAccountingLive();if(q('#reports')?.classList.contains('active'))renderFinancialReportsLive();});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();setTimeout(bind,800);
@@ -10547,6 +9729,24 @@ el('fsBankFile26').addEventListener('change',async e=>{const f=e.target.files?.[
   #reports .cogs-report-table th,#reports .cogs-report-table td{white-space:normal!important;padding:4px!important}
 }
 </style>
+<style id="fs109-report-coherence-css">
+#reportCogs .cogs-report-table{border-collapse:separate;border-spacing:0;min-width:1160px;width:100%}
+#reportCogs .fs109-cogs-groups th{background:#243248;color:#fff;text-align:center;font-weight:750;border-bottom:1px solid #9fb4d0}
+#reportCogs .fs109-cogs-groups th:nth-child(2){background:#164f63}
+#reportCogs .fs109-cogs-groups th:nth-child(3){background:#6f511e}
+#reportCogs .fs109-cogs-groups th:nth-child(4){background:#444b65}
+#reportCogs .fs109-cogs-groups th:nth-child(5){background:#176452}
+#reportCogs .fs109-cogs-groups th:nth-child(6){background:#493b82}
+#reportCogs .fs109-cogs-fields th{font-weight:700;background:#f1f5f9;text-align:right;white-space:nowrap}
+#reportCogs .cogs-report-table tbody tr:nth-child(even){background:#fafbfd}
+#reportCogs .cogs-report-table th:nth-child(2),#reportCogs .cogs-report-table td:nth-child(2),
+#reportCogs .cogs-report-table td:nth-child(5),#reportCogs .cogs-report-table td:nth-child(7),
+#reportCogs .cogs-report-table td:nth-child(10){border-left:2px solid #c3cfdc}
+#reportCogs .cogs-report-table td:nth-child(4),#reportCogs .cogs-report-table td:nth-child(6),
+#reportCogs .cogs-report-table td:nth-child(9),#reportCogs .cogs-report-table td:nth-child(11){font-weight:650;background:rgba(221,232,244,.18)}
+#reportCogs .cogs-report-table tfoot th{border-top:2px solid #64748b;background:#eef2f8}
+#reportPl .live-fin-table .section-heading td{font-weight:800;background:#f1f5f9}
+</style>
 <script id="fs-index101-reports-export">
 (()=>{
 'use strict';
@@ -10585,24 +9785,7 @@ function printActive(){
  const w=window.open('','_blank');if(!w){alert('Allow pop-ups to export the PDF.');return}
  const styles=`@page{size:${wide?'A3 landscape':'A4 landscape'};margin:10mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px}h2,h3{font-size:17px;margin:6px 0 12px}table{width:100%;border-collapse:collapse;table-layout:auto;font-size:${wide?'7':'9'}px}th,td{border:1px solid #cbd5e1;padding:${wide?'3':'5'}px;text-align:right;vertical-align:middle;overflow-wrap:anywhere}th:first-child,td:first-child{text-align:left}thead{display:table-header-group}tfoot{display:table-footer-group}thead tr th{background:#eef2ff;font-weight:bold}.grouped-head .fs-pay-group{background:#dbeafe;text-align:center;border-left:2px solid #818cf8}.sub-head .fs-pay-start,tbody .fs-pay-start{border-left:2px solid #818cf8}tbody tr:nth-child(even){background:#f8fafc}.fs-daily-scroll,.report-card{overflow:visible!important}.cogs-report-table{min-width:0!important}.cogs-report-table td,.cogs-report-table th{white-space:normal!important}input,button,.no-print,.fs510-no-print{display:none!important}tr{page-break-inside:avoid;break-inside:avoid}.report-headline{display:flex;justify-content:space-between;border-bottom:2px solid #1e293b;margin-bottom:12px;padding-bottom:6px}.report-headline h3{margin:0}.report-headline div:last-child{text-align:right}.report-card{border:0}.live-fin-table td:nth-child(n+2){text-align:right}.fs-daily-footer th,.cogs-report-table tfoot th{background:#eef2ff;font-weight:bold}.fs-pay-group:nth-of-type(even){background:#dcfce7}`;
  w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title())}</title><style>${styles}</style></head><body>${panel.innerHTML}
-<style id="fs109-report-coherence-css">
-#reportCogs .cogs-report-table{border-collapse:separate;border-spacing:0;min-width:1160px;width:100%}
-#reportCogs .fs109-cogs-groups th{background:#243248;color:#fff;text-align:center;font-weight:750;border-bottom:1px solid #9fb4d0}
-#reportCogs .fs109-cogs-groups th:nth-child(2){background:#164f63}
-#reportCogs .fs109-cogs-groups th:nth-child(3){background:#6f511e}
-#reportCogs .fs109-cogs-groups th:nth-child(4){background:#444b65}
-#reportCogs .fs109-cogs-groups th:nth-child(5){background:#176452}
-#reportCogs .fs109-cogs-groups th:nth-child(6){background:#493b82}
-#reportCogs .fs109-cogs-fields th{font-weight:700;background:#f1f5f9;text-align:right;white-space:nowrap}
-#reportCogs .cogs-report-table tbody tr:nth-child(even){background:#fafbfd}
-#reportCogs .cogs-report-table th:nth-child(2),#reportCogs .cogs-report-table td:nth-child(2),
-#reportCogs .cogs-report-table td:nth-child(5),#reportCogs .cogs-report-table td:nth-child(7),
-#reportCogs .cogs-report-table td:nth-child(10){border-left:2px solid #c3cfdc}
-#reportCogs .cogs-report-table td:nth-child(4),#reportCogs .cogs-report-table td:nth-child(6),
-#reportCogs .cogs-report-table td:nth-child(9),#reportCogs .cogs-report-table td:nth-child(11){font-weight:650;background:rgba(221,232,244,.18)}
-#reportCogs .cogs-report-table tfoot th{border-top:2px solid #64748b;background:#eef2f8}
-#reportPl .live-fin-table .section-heading td{font-weight:800;background:#f1f5f9}
-</style>
+
 </body></html>`);w.document.close();w.focus();w.addEventListener('load',()=>w.print(),{once:true});
 }
 function styleDaily(){
