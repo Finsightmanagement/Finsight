@@ -51,7 +51,7 @@ const when=x=>x?new Date(x).toLocaleString('en-KE',{dateStyle:'medium',timeStyle
 const localDay=x=>x?new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Nairobi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(x)):'';
 function newUuid(){if(globalThis.crypto?.randomUUID)return crypto.randomUUID();if(!globalThis.crypto?.getRandomValues)throw Error('Secure random identifiers are unavailable. Open through a local server.');const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const hex=[...bytes].map(v=>v.toString(16).padStart(2,'0')).join('');return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-')}
 const b=(name,call,cls='')=>`<button class="btn ${cls}" type="button" onclick="${call}">${name}</button>`;
-const S={db:null,user:null,ws:null,selection:'',role:'',employee:null,token:null,choices:[],page:'',setup:null,employees:[],menu:[],orders:[],tables:[],reports:[],reportLines:[],selectedShift:null,reportDate:'',historyDate:'',cart:[],category:'All',orderNotes:'',checkoutDialog:false,checkoutRequest:null,paymentRows:[],pricingOptions:[],selectedRules:[],modifierGroups:[],adminPricing:[],adminModifiers:{groups:[],options:[],links:[]},adminPaymentTypes:[],incomeAccounts:[],menuMapping:null,preferences:null,tillSummary:null,reconInfo:null,liveChannel:null,paymentOrder:null,paymentBalance:null,paymentMethods:[],paymentRequest:null,mpesaIntentId:null,mpesaOrder:null,mpesaMessage:'',mpesaRequestId:null,mpesaTimer:null,mpesaChecks:0,orderType:'Dine In',tableId:'',requestId:null,busy:false,notice:'',noticeType:'ok',showEmployees:false,adminOpen:{tables:false,pricing:false,modifiers:false,payments:false,linking:false},appearanceOpen:false,adminMenuCategory:'',adminAddMenu:false,resetId:null,prepFilter:'active',timer:null,uploading:'',hasAdmin:false,discardOpen:false,menuEditId:null,shiftDetail:null,receipt:null,receiptLogoUploading:false,integrationData:null};
+const S={db:null,user:null,ws:null,selection:'',role:'',employee:null,token:null,choices:[],page:'',setup:null,employees:[],menu:[],orders:[],tables:[],reports:[],reportLines:[],selectedShift:null,reportDate:'',historyDate:'',cart:[],category:'All',orderNotes:'',checkoutDialog:false,checkoutRequest:null,checkoutMpesaPhone:'',checkoutMpesaMessage:'',paymentRows:[],pricingOptions:[],selectedRules:[],modifierGroups:[],adminPricing:[],adminModifiers:{groups:[],options:[],links:[]},adminPaymentTypes:[],incomeAccounts:[],menuMapping:null,preferences:null,tillSummary:null,reconInfo:null,liveChannel:null,paymentOrder:null,paymentBalance:null,paymentMethods:[],paymentRequest:null,mpesaIntentId:null,mpesaOrder:null,mpesaMessage:'',mpesaRequestId:null,mpesaTimer:null,mpesaChecks:0,orderType:'Dine In',tableId:'',requestId:null,busy:false,notice:'',noticeType:'ok',showEmployees:false,adminOpen:{tables:false,pricing:false,modifiers:false,payments:false,linking:false},appearanceOpen:false,adminMenuCategory:'',adminAddMenu:false,resetId:null,prepFilter:'active',timer:null,uploading:'',hasAdmin:false,discardOpen:false,menuEditId:null,shiftDetail:null,receipt:null,receiptLogoUploading:false,integrationData:null};
 const CACHE={times:Object.create(null),inflight:new Map(),epoch:0};
 const TTL={management:45000,reports:30000,receipt:60000,integrations:60000,checkout:90000,history:20000,tables:15000,shift:15000,kitchen:25000};
 const validCache=(name)=>Date.now()-(CACHE.times[name]||0)<(TTL[name]||30000);
@@ -464,16 +464,33 @@ function addCart(id){const m=S.menu.find(x=>x.id===id);if(!m)return;
 function cartQty(key,delta){const line=S.cart.find(x=>x.key===key);if(!line)return;line.qty+=delta;if(line.qty<=0)S.cart=S.cart.filter(x=>x.key!==key);render();}
 function beginCheckoutPayment(){if(!S.cart.length)return show('Select items first.','error');
  const totals=checkoutTotals();if(totals.net<0)return show('Discount exceeds the order total.','error');
- S.checkoutDialog=true;S.paymentRows=[{method:S.paymentMethods[0]?.id||'',amount:totals.net.toFixed(2),reference:''}];render();}
+ S.checkoutDialog=true;S.checkoutMpesaPhone='';S.checkoutMpesaMessage='';S.paymentRows=[{method:S.paymentMethods[0]?.id||'',amount:totals.net.toFixed(2),reference:''}];render();}
 function closeCheckoutPayment(){S.checkoutDialog=false;render()}
 function captureCheckoutPaymentRows(){S.paymentRows=S.paymentRows.map((r,i)=>({method:document.getElementById('method_'+i)?.value||r.method,amount:document.getElementById('amount_'+i)?.value??r.amount,reference:document.getElementById('reference_'+i)?.value??r.reference}));}
 function addCheckoutPaymentRow(){captureCheckoutPaymentRows();S.paymentRows.push({method:S.paymentMethods[0]?.id||'',amount:'',reference:''});render()}
 function removeCheckoutPaymentRow(index){captureCheckoutPaymentRows();S.paymentRows.splice(index,1);render()}
+function isCheckoutMpesa(method){return ['mpesa','m pesa'].includes(String(S.paymentMethods.find(x=>x.id===method)?.name||'').toLowerCase().replaceAll('-',''))}
+function checkoutPaymentMethodChanged(index,method){
+ captureCheckoutPaymentRows();S.paymentRows[index].method=method;S.checkoutMpesaMessage='';render();
+}
+function checkoutMpesaFields(index){
+ return `<div class="field"><label>Customer M-Pesa Phone</label><input type="tel" inputmode="tel" autocomplete="tel" id="checkoutMpesaPhone" value="${esc(S.checkoutMpesaPhone)}" placeholder="07XX XXX XXX" oninput="S.checkoutMpesaPhone=this.value"></div>
+ <div class="field"><label>STK Push</label><div class="actions">${b('Send STK Push','requestCheckoutMpesaStk()','primary')}</div></div>
+ ${S.checkoutMpesaMessage?`<div class="notice" role="status">${esc(S.checkoutMpesaMessage)}</div>`:''}`;
+}
+function requestCheckoutMpesaStk(){
+ const phone=String(document.getElementById('checkoutMpesaPhone')?.value||'').replace(/[\s()+-]/g,'');
+ S.checkoutMpesaPhone=phone;
+ if(!/^(0[17]\d{8}|254[17]\d{8})$/.test(phone))
+  return checkoutMpesaFeedback('Enter a valid Kenyan M-Pesa phone number.');
+ return checkoutMpesaFeedback('M-Pesa STK Push is not active yet. The secure pre-order payment flow and Daraja sandbox credentials must be connected first. No payment or order was submitted.');
+}
+function checkoutMpesaFeedback(message){S.checkoutMpesaMessage=message;render()}
 function checkoutPaymentModal(){const totals=checkoutTotals();return `<div class="pos-modal-shade"><div class="pos-payment-modal"><div class="row"><h2 style="margin:0">Payment</h2>${b('Close','closeCheckoutPayment()')}</div>
- <p class="hint">The order has not been sent to Kitchen or printed.</p><div class="row"><strong>Total due</strong><strong>${money(totals.net)}</strong></div>
- ${S.paymentRows.map((row,i)=>`<div class="payment-line"><div class="field"><label>Payment Type</label><select id="method_${i}">${S.paymentMethods.map(m=>`<option value="${esc(m.id)}" ${m.id===row.method?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div><div class="field"><label>Amount</label><input id="amount_${i}" type="number" min="0" step="0.01" value="${esc(row.amount)}"></div><div class="field"><label>Reference</label><input id="reference_${i}" maxlength="150" placeholder="M-Pesa/card reference" value="${esc(row.reference)}"></div>${S.paymentRows.length>1?b('Remove',`removeCheckoutPaymentRow(${i})`,'small danger'):''}</div>`).join('')}
+ <div class="row"><strong>Total due</strong><strong>${money(totals.net)}</strong></div>
+ ${S.paymentRows.map((row,i)=>`<div class="payment-line"><div class="field"><label>Payment Type</label><select id="method_${i}" onchange="checkoutPaymentMethodChanged(${i},this.value)">${S.paymentMethods.map(m=>`<option value="${esc(m.id)}" ${m.id===row.method?'selected':''}>${esc(m.name)}</option>`).join('')}</select></div><div class="field"><label>Amount</label><input id="amount_${i}" type="number" min="0" step="0.01" value="${esc(row.amount)}"></div>${isCheckoutMpesa(row.method)?checkoutMpesaFields(i):`<div class="field"><label>Reference</label><input id="reference_${i}" maxlength="150" placeholder="M-Pesa/card reference" value="${esc(row.reference)}"></div>`}${S.paymentRows.length>1?b('Remove',`removeCheckoutPaymentRow(${i})`,'small danger'):''}</div>`).join('')}
  <div class="row" style="margin-top:14px">${b('Split Payment','addCheckoutPaymentRow()')}${b('Pay & Print Receipt','payAndPrint()','primary')}</div>
- <p class="hint">For noncash payments, enter the transaction reference. Do not confirm a digital payment before verifying it.</p></div></div>`}
+ </div></div>`}
 function readCheckoutPayments(){return S.paymentRows.map((r,i)=>({payment_type_id:document.getElementById('method_'+i)?.value,amount:Number(document.getElementById('amount_'+i)?.value),reference:document.getElementById('reference_'+i)?.value.trim()||null}));}
 function checkoutPayload(mode,payments){const table=S.orderType==='Dine In'?(document.getElementById('orderTable')?.value||S.tableId):null;
  return {p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_token:S.token,p_shift:S.ws.shift_id,p_terminal:S.ws.terminal_id,
@@ -500,7 +517,7 @@ async function submitCheckout(mode,payments){if(S.busy)return; if(!S.ws.shift_id
  }catch(e){if(printTab)printTab.close();show('Order not saved: '+e.message,'error')}
  finally{S.busy=false;}
 }
-function payAndPrint(){if(!S.checkoutDialog)return;submitCheckout('Paid',readCheckoutPayments())}
+function payAndPrint(){if(!S.checkoutDialog)return;const payments=readCheckoutPayments();if(payments.some(p=>isCheckoutMpesa(p.payment_type_id))){return checkoutMpesaFeedback('M-Pesa requires verified STK payment before an order can be sent to Kitchen. No payment has been collected.')}submitCheckout('Paid',payments)}
 function checkoutGuestBill(){submitCheckout('Guest Bill',[])}
 async function printCheckoutDocument(id,existingTab=null){
  const d=await rpc('pos_cashier_print_document',arg({p_order:id}));
@@ -540,10 +557,12 @@ async function printCheckoutDocument(id,existingTab=null){
 function reprintOrder(id){const tab=window.open('','_blank');if(tab)tab.document.write('<p>Preparing document...</p>');printCheckoutDocument(id,tab).catch(e=>{if(tab)tab.close();show('Printing failed: '+e.message,'error')})}
 function history(){
  return `<div class="filters"><div class="field"><label>Order Date</label><input type="date" value="${esc(S.historyDate)}" onchange="historyDateChanged(this.value)"></div>${b('All Dates',"historyDateChanged('')")}${b('Refresh',"go('history')")}</div>
- ${S.paymentOrder?paymentPanel():''}<div class="order-grid">${S.orders.map(o=>`<div class="order-card"><div class="row"><strong>Order ${esc(o.id.slice(0,8))}</strong><span class="tag ${esc(o.kitchen_status)}">${esc(o.kitchen_status)}</span></div><div class="hint">${esc(when(o.created_at))} · ${esc(o.order_type)}</div><div class="payment-status ${o.payment_status==='Paid'?'paid':'unpaid'}">${o.payment_status==='Paid'?'Paid':o.checkout_kind==='Guest Bill'?'Guest Bill — Unpaid':'Unpaid'}</div><div style="margin:12px 0">${(o.pos_order_lines||[]).map(l=>`<div>${Number(l.quantity)} × ${esc(l.name_snapshot)}</div>`).join('')}</div><div class="row"><strong>${money(o.total)}</strong><div class="actions">${o.payment_status!=='Paid'?b('Take Payment',`openPayment('${esc(o.id)}')`,'primary small'):''}${b(o.payment_status==='Paid'?'Reprint Receipt':'Print Guest Bill',`reprintOrder('${esc(o.id)}')`,'small')}</div></div></div>`).join('')||'<div class="card">No orders found.</div>'}</div>`
+ ${S.paymentOrder?paymentPanel():''}<div class="order-grid">${S.orders.map(o=>`<div class="order-card"><div class="row"><strong>Order ${esc(o.id.slice(0,8))}</strong><span class="tag ${esc(o.kitchen_status)}">${esc(o.kitchen_status)}</span></div><div class="hint">${esc(when(o.created_at))} · ${esc(o.order_type)}</div><div class="payment-status ${o.payment_status==='Paid'?'paid':'unpaid'}">${o.payment_status==='Paid'?'Paid':o.checkout_kind==='Guest Bill'?'Guest Bill — Unpaid':'Unpaid'}</div><div style="margin:12px 0">${(o.pos_order_lines||[]).map(l=>`<div>${Number(l.quantity)} × ${esc(l.name_snapshot)}</div>`).join('')}</div><div class="row"><strong>${money(o.total)}</strong><div class="actions">${o.payment_status!=='Paid'&&o.checkout_kind==='Guest Bill'?b('Take Payment',`openPayment('${esc(o.id)}')`,'primary small'):''}${b(o.payment_status==='Paid'?'Reprint Receipt':'Print Guest Bill',`reprintOrder('${esc(o.id)}')`,'small')}</div></div></div>`).join('')||'<div class="card">No orders found.</div>'}</div>`
 }
 async function openPayment(id){
  try{
+  const selected=S.orders.find(o=>o.id===id);
+  if(!selected||selected.checkout_kind!=='Guest Bill')throw Error('Only Guest Bills can be paid from Order History.');
   S.paymentOrder=id;
   const [balance,methods]=await Promise.all([
    rpc('pos_cashier_order_balance',arg({p_order:id})),
@@ -551,75 +570,6 @@ async function openPayment(id){
   ]);
   S.paymentBalance=balance;S.paymentMethods=methods||[];S.paymentRequest=null;S.mpesaIntentId=null;S.mpesaOrder=id;S.mpesaMessage='';S.mpesaRequestId=null;clearTimeout(S.mpesaTimer);render();
  }catch(e){S.paymentOrder=null;show('Cannot load payment: '+e.message,'error')}
-}
-function mpesaPaymentMethod(){return S.paymentMethods.find(m=>['mpesa','m pesa'].includes(String(m.name||'').toLowerCase().replaceAll('-','')))||null}
-function mpesaPanel(remaining){
- const mpesa=mpesaPaymentMethod();if(!mpesa||remaining<=0)return '';
- return `<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px">
- <div class="row"><strong>M-Pesa STK Push</strong><span class="pill">Sandbox</span></div>
- <div class="field" style="margin-top:10px"><label>Customer phone</label><input id="mpesaPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="07XX XXX XXX"></div>
- <div class="actions">${b('Send STK Push','sendMpesaStk()','primary')}${S.mpesaIntentId?b('Check Status','checkMpesaStatus(true)'):''}</div>
- ${S.mpesaMessage?`<div class="notice" role="status">${esc(S.mpesaMessage)}</div>`:''}</div>`;
-}
-async function invokeMpesaFunction(name,body){
- const {data,error}=await S.db.functions.invoke(name,{body});
- if(error){
-  let detail=null;try{detail=await error.context?.json()}catch(_){}
-  throw new Error(detail?.error||error.message||'M-Pesa service unavailable');
- }
- if(data?.error)throw new Error(data.error);
- return data;
-}
-async function sendMpesaStk(){
- if(S.busy||!S.paymentOrder||S.mpesaIntentId)return;
- const method=mpesaPaymentMethod(),phone=document.getElementById('mpesaPhone')?.value.trim(),
- amount=Number(document.getElementById('payAmount')?.value),
- remaining=Number(S.paymentBalance?.total||0)-Number(S.paymentBalance?.confirmed||0);
- if(!method||!/^((0[17]\d{8})|(254[17]\d{8}))$/.test(String(phone||'').replace(/[\s()+-]/g,'')))
-  return show('Enter a valid Kenyan M-Pesa phone number.','error');
- if(!Number.isSafeInteger(amount)||amount<=0||amount>remaining)
-  return show('STK amount must be a whole number of shillings within the unpaid balance.','error');
- S.busy=true;S.mpesaRequestId=S.mpesaRequestId||newUuid();const order=S.paymentOrder;
- try{
-  const data=await invokeMpesaFunction('finsight-mpesa-stk',{
-   company_id:S.ws.company_id,outlet_id:S.ws.outlet_id,employee_token:S.token,
-   order_id:order,payment_type_id:method.id,amount,phone,request_id:S.mpesaRequestId});
-  if(!data?.intent_id)throw Error('No M-Pesa tracking reference received');
-  S.mpesaIntentId=data.intent_id;S.mpesaOrder=order;
-  S.mpesaMessage=data.message||'Waiting for M-Pesa confirmation';
-  S.mpesaChecks=0;render();scheduleMpesaCheck();
- }catch(e){show(e.message,'error')}finally{S.busy=false}
-}
-function scheduleMpesaCheck(){
- clearTimeout(S.mpesaTimer);
- if(!S.mpesaIntentId||S.mpesaChecks>=12)return;
- S.mpesaTimer=setTimeout(()=>{if(S.role==='Cashier'&&S.page==='history'&&S.paymentOrder===S.mpesaOrder)void checkMpesaStatus(false)},8000);
-}
-async function checkMpesaStatus(userInitiated=false){
- if(S.busy||!S.mpesaIntentId||S.mpesaOrder!==S.paymentOrder)return;
- S.busy=true;S.mpesaChecks++;
- try{
-  const data=await invokeMpesaFunction('finsight-mpesa-check',{
-   company_id:S.ws.company_id,outlet_id:S.ws.outlet_id,
-   employee_token:S.token,intent_id:S.mpesaIntentId});
-  if(data.state==='Confirmed'){
-   clearTimeout(S.mpesaTimer);
-   S.mpesaMessage='M-Pesa payment verified'+(data.receipt?' · '+data.receipt:'');
-   S.mpesaIntentId=null;S.mpesaRequestId=null;
-   S.paymentBalance=await rpc('pos_cashier_order_balance',arg({p_order:S.paymentOrder}));
-   await loadHistory();render();return;
-  }
-  if(['Failed','Cancelled','Expired'].includes(data.state)){
-   clearTimeout(S.mpesaTimer);
-   S.mpesaMessage='M-Pesa payment was not completed. The order remains unpaid.';
-   S.mpesaIntentId=null;S.mpesaRequestId=null;render();return;
-  }
-  S.mpesaMessage=data.message||'Waiting for M-Pesa confirmation';
-  render();scheduleMpesaCheck();
- }catch(e){
-  S.mpesaMessage='Payment verification unavailable. Do not manually record it until confirmed: '+e.message;
-  render();if(!userInitiated)scheduleMpesaCheck();
- }finally{S.busy=false}
 }
 function paymentPanel(){
  const d=S.paymentBalance||{},remaining=Math.max(0,Number(d.total||0)-Number(d.confirmed||0));
@@ -633,7 +583,7 @@ function paymentPanel(){
  <div class="field"><label>Payment Type</label><select id="payMethod">${S.paymentMethods.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Amount</label><input id="payAmount" type="number" min="0.01" step="0.01" max="${remaining}" value="${remaining.toFixed(2)}"></div></div>
  <div class="field"><label>Payment Reference (required except Cash)</label><input id="payRef" maxlength="150" placeholder="M-Pesa / card transaction reference"></div>
- ${b('Record Payment','recordPayment()','primary')}${b('Pay & Print Receipt','recordPayment(true)')}${mpesaPanel(remaining)}`:'<p class="pill">Paid in full</p>'}
+ ${b('Record Payment','recordPayment()','primary')}${b('Pay & Print Receipt','recordPayment(true)')}`:'<p class="pill">Paid in full</p>'}
  <p class="hint">For split payments, record each payment separately until the balance reaches zero. This records collections in POS only.</p>
  </div>`
 }
