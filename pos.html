@@ -224,19 +224,15 @@ async function addModifierOption(){const data={group_id:document.getElementById(
 async function linkModifierGroup(){const data={menu_item_id:document.getElementById('modMenu')?.value,group_id:document.getElementById('modLinkGroup')?.value};
  if(!data.menu_item_id||!data.group_id)return show('Select a menu item and group.','error');await action('pos_admin_modifiers',arg({p_action:'link_menu',p_data:data}),'Modifier group linked.',loadAdmin)}
 
-function adminCatalogSection(){const activeMapping=!!S.menuMapping?.configured;
- return `<div class="card" style="margin-top:16px"><h3>Add Menu Item</h3><div class="modifier-admin-grid">
+function adminCatalogSection(){
+ return `<div class="card menu-add-form"><div class="row"><h3>Add Menu Item</h3>${b("Close","toggleAdminAddMenu()","small")}</div><div class="modifier-admin-grid">
  <div class="field"><label>Item Name</label><input id="catalogName" maxlength="120" placeholder="e.g. Chicken Wrap"></div>
- <div class="field"><label>Category</label><input id="catalogCategory" maxlength="100" placeholder="Burgers, Pizza…"></div>
+ <div class="field"><label>Category</label><input id="catalogCategory" list="posMenuCategoryChoices" maxlength="100" value="${esc(S.adminMenuCategory && S.adminMenuCategory!=='All' ? S.adminMenuCategory : '')}" placeholder="Burgers, Pizza…"></div>
  <div class="field"><label>Selling Price (KES)</label><input id="catalogPrice" type="number" min="0" step="0.01"></div>
  <div class="field"><label>Prep Time (min)</label><input id="catalogPrep" type="number" min="0" max="240" value="10"></div></div>
- <div style="margin-top:10px">${b('Add Menu Item','addCatalogItem()','primary')}</div>
- <details style="margin-top:14px" class="detail-fold"><summary><strong>Accounting Menu Linking</strong> · ${activeMapping?'Enabled':'Disabled'}</summary>
- <p class="hint">With an explicitly selected Income account, new items are created in Accounting and POS together. Without one, items remain independent POS records.</p>
- <div class="two"><div class="field"><label>Income Account</label><select id="linkedIncomeAccount"><option value="">Do not link</option>${S.incomeAccounts.map(a=>`<option value="${esc(a.id)}" ${S.menuMapping?.income_account_id===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
- <div class="field"><label>Automatic Accounting Linking</label><select id="linkedAccountingEnabled"><option value="false" ${!activeMapping?'selected':''}>Off</option><option value="true" ${activeMapping?'selected':''}>On</option></select></div></div>
- ${b('Save Mapping','saveAccountingLink()')}<p class="hint">Existing Accounting sales and stock are not changed by changing this setting.</p></details></div>`;
-}
+ <div style="margin-top:10px">${b('Add Menu Item','addCatalogItem()','primary')}</div><datalist id="posMenuCategoryChoices">${adminCategories().map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
+ </div>`;}
+
 async function addCatalogItem(){const name=document.getElementById('catalogName')?.value.trim(),category=document.getElementById('catalogCategory')?.value.trim()||'General';
  const raw=document.getElementById('catalogPrice')?.value,price=Number(raw),prep=Number(document.getElementById('catalogPrep')?.value);
  if(!name||raw===''||!Number.isFinite(price)||price<0||!Number.isInteger(prep)||prep<0||prep>240)return show('Enter an item name, price and valid preparation time.','error');
@@ -246,6 +242,11 @@ async function saveAccountingLink(){const enabled=document.getElementById('linke
  if(enabled&&!income)return show('Choose the company Income account first.','error');
  await action('pos_admin_catalog',arg({p_action:'set_accounting_mapping',p_data:{enabled,income_account_id:income}}),'Accounting menu mapping updated.',loadAdmin);
 }
+function adminAccountingSection(){const activeMapping=!!S.menuMapping?.configured;return `<div class="card"><div class="admin-header"><h3>Accounting Menu Linking</h3><span class="pill">${activeMapping?'On':'Off'}</span></div><div>
+ 
+ <div class="two"><div class="field"><label>Income Account</label><select id="linkedIncomeAccount"><option value="">Do not link</option>${S.incomeAccounts.map(a=>`<option value="${esc(a.id)}" ${S.menuMapping?.income_account_id===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>
+ <div class="field"><label>Automatic Accounting Linking</label><select id="linkedAccountingEnabled"><option value="false" ${!activeMapping?'selected':''}>Off</option><option value="true" ${activeMapping?'selected':''}>On</option></select></div></div>
+ ${b('Save Mapping','saveAccountingLink()')}</div>${adminFold('linking','Linked Menu Items',S.menu.filter(m=>m.source==='Accounting').length)}${S.adminOpen.linking?`<div class="list" style="margin-top:12px">${S.menu.filter(m=>m.source==='Accounting').map(m=>`<div class="line">${esc(m.name)}</div>`).join('')||'<div class="muted">No linked items</div>'}</div>`:''}</div>`;}
 function adminPaymentTypesSection(){return `<div class="card"><div class="admin-header"><h3>Payment Types</h3></div><div class="row"><div class="field" style="flex:1"><label>New Payment Type</label><input id="newPaymentName" maxlength="80" placeholder="e.g. Card, M-Pesa, Cash"></div><div style="align-self:end">${b('Add Payment Type','addPaymentType()','primary')}</div></div>
  ${adminFold("payments","Payment Types",S.adminPaymentTypes.length)}
  ${S.adminOpen.payments?`<div class="list">${S.adminPaymentTypes.map(m=>`<div class="line"><strong>${esc(m.name)}</strong><div class="actions"><span class="hint">${m.active?'Active':'Disabled'}</span>${b(m.active?'Disable':'Activate',`changePaymentType('${esc(m.id)}',${!m.active})`,'small')}</div></div>`).join('')||'<div class="muted">No payment types</div>'}</div>`:''}</div>`;}
