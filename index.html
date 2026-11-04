@@ -5745,44 +5745,52 @@ function dates(f,t){const now=new Date(),end=t||now.toISOString().slice(0,10),st
 function hdr(title,start,end){return typeof reportHeader==='function'?reportHeader(title,start,end):`<div class="report-headline"><h3>${esc(title)}</h3><div>${esc(start)} to ${esc(end)}</div></div>`;}
 async function pnl(start,end){return Promise.all([rpc('get_profit_and_loss',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end}),rpc('get_profit_and_loss_summary',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end})]);}
 function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingError){
-  // Live journal figures are authoritative for profit. Stock figures are a separate calculation.
+  // Periodic inventory is the management food-cost calculation; purchases alone are NOT food cost.
+  // The posted Food Cost account may contain the purchases already booked by supplier bills.
+  // Preserve the ledger figures separately and never silently change financial journal entries.
   const s=first(summary), detail=arr(rows);
-  const isPeriodPosted=String(periodPosting?.status||'').toLowerCase()==='posted';
+  const periodPosted=String(periodPosting?.status||'').toLowerCase()==='posted';
   const rev=n(s,'total_revenue','revenue');
-  // Sales amounts are treated as VAT (16%) + Catering Levy (2%) inclusive.
-  // Both percentages apply to the pre-tax base (18% combined).
   const exclusive=rev/1.18, vat=exclusive*0.16, levy=exclusive*0.02;
   const postedCogs=n(s,'total_cost_of_sales','total_cogs','cost_of_sales');
   const expenses=n(s,'total_expenses','operating_expenses','expenses');
-  // Display-only tax-adjusted operating performance; no journal entries are modified.
-  const gross=exclusive-postedCogs, net=gross-expenses;
+  const hasInventory=inventory && inventory.cost_of_sales != null &&
+      Number.isFinite(Number(inventory.cost_of_sales));
+  const opening=hasInventory?n(inventory,'opening_stock'):null;
+  const purchases=hasInventory?n(inventory,'purchases'):null;
+  const closing=hasInventory?n(inventory,'closing_stock'):null;
+  const calculated=hasInventory?n(inventory,'cost_of_sales'):null;
+  const foodCost=hasInventory?calculated:postedCogs;
+  const gross=exclusive-foodCost, net=gross-expenses;
   const pct=x=>exclusive?(Number(x)/exclusive*100).toFixed(1)+'%':'0.0%';
   const tr=(label,value,cls='',percent=true)=>`<tr${cls?' class="'+cls+'"':''}><td>${esc(label)}</td><td>${value==null?'—':money(value)}</td><td>${value==null||!percent?'—':pct(value)}</td></tr>`;
   const heading=label=>`<tr class="section-heading"><td colspan="3">${esc(label)}</td></tr>`;
   const section=label=>detail.filter(r=>String(v(r,'section','account_type')).trim().toLowerCase()===label.toLowerCase());
   const accountRows=rs=>rs.map(r=>tr(v(r,'account_name','name')||'Unnamed account',n(r,'amount','balance'))).join('');
-  const has=(...keys)=>keys.some(k=>s[k]!==null&&s[k]!==undefined&&s[k]!=='');
-  const optional=(label,keys)=>tr(label,has(...keys)?n(s,...keys):null);
   let body=heading('Revenue')+accountRows(section('Revenue'))+tr('Total Revenue',rev,'subtotal');
   body+=tr('Less: VAT @ 16%',-vat,'',false);
   body+=tr('Less: Catering Levy @ 2%',-levy,'',false);
   body+=tr('Revenue After VAT & Catering Levy',exclusive,'subtotal');
-  body+=heading('Cost of Sales');
-  if(inventory){
-    const opening=n(inventory,'opening_stock'),purchases=n(inventory,'purchases'),closing=n(inventory,'closing_stock'),calc=n(inventory,'cost_of_sales');
-    body+=`<tr><td colspan="3"><strong>${isPeriodPosted?'Inventory calculation — Period posting recorded':(postingError?'Inventory calculation — Posting status unavailable':'Inventory calculation — Not Posted')}</strong></td></tr>`;
-    body+=tr('Opening Stock (Calculated)',opening,'',false);
-    body+=tr('Add: Purchases (Calculated, VAT Exclusive)',purchases,'',false);
-    body+=tr('Goods Available for Sale (Calculated)',opening+purchases,'',false);
-    body+=tr('Less: Closing Stock (Calculated)',-closing,'',false);
-    body+=tr(isPeriodPosted?'Calculated Cost of Sales — Posting recorded':(postingError?'Calculated Cost of Sales — Status unavailable':'Calculated Cost of Sales — Not Posted'),calc,'subtotal',false);
+  body+=heading('Cost of Sales — Inventory Consumption');
+  if(hasInventory){
+    body+=tr('Opening Stock',opening,'',false);
+    body+=tr('Add: VAT-Exclusive Inventory Purchases',purchases,'',false);
+    body+=tr('Goods Available for Sale',opening+purchases,'',false);
+    body+=tr('Less: Closing Stock',-closing,'',false);
+    body+=tr('Food Cost (Opening + Purchases − Closing)',foodCost,'subtotal');
   }else{
-    body+=`<tr><td colspan="3" class="small-note">Inventory calculation unavailable${inventoryError?': '+esc(inventoryError):''}. Posted P&amp;L totals are unaffected.</td></tr>`;
+    body+=`<tr><td colspan="3" class="small-note">Inventory calculation unavailable${inventoryError?': '+esc(inventoryError):''}. Showing posted ledger COGS as fallback.</td></tr>`;
+    body+=tr('Food Cost — Ledger Fallback',foodCost,'subtotal');
   }
-  body+=`<tr><td colspan="3" class="small-note">${isPeriodPosted?'A COGS posting is recorded for this period. The calculated inventory figures may differ from journal balances.':(postingError?'COGS posting status could not be checked.':'Calculated inventory values are shown for reference until COGS is posted.')} VAT and Catering Levy are derived for display from gross sales and not posted again here.</td></tr>`;
-  body+=accountRows(section('Cost of Sales'))+tr('Total Posted Cost of Sales',postedCogs,'subtotal');
-  body+=tr('Gross Profit / (Loss) — After Tax Deductions',gross,'grand');
-  body+=heading('Operating Expenses')+accountRows(section('Expenses'))+tr('Total Expenses',expenses,'subtotal')+tr('Net Profit / (Loss) — After Tax Deductions',net,'grand');
+  body+=tr('Gross Profit / (Loss) — After Tax Deductions'+(!periodPosted&&hasInventory?' (Provisional)':''),gross,'grand');
+  body+=heading('Operating Expenses')+accountRows(section('Expenses'))+tr('Total Expenses',expenses,'subtotal')+tr('Net Profit / (Loss) — After Tax Deductions'+(!periodPosted&&hasInventory?' (Provisional)':''),net,'grand');
+  // Inform, but do not include these journal figures again in the management cost calculation.
+  body+=heading('Posted Cost of Sales — Ledger Reference (Not Added Again)');
+  body+=accountRows(section('Cost of Sales'))+tr('Total Ledger Cost of Sales',postedCogs,'subtotal',false);
+  if(hasInventory){
+    body+=tr('Calculated Food Cost Less Ledger COGS',foodCost-postedCogs,'',false);
+    body+=`<tr><td colspan="3" class="small-note">${periodPosted?'COGS period posting recorded.':'COGS period not posted; management gross and net profit are provisional.'} Ledger Food Cost can include supplier purchases before opening/closing stock adjustments. It is shown for reconciliation only, not deducted a second time.</td></tr>`;
+  }
   return `<table class="live-fin-table pnl-statement"><thead><tr><th>Account</th><th>Amount</th><th>% of Revenue</th></tr></thead><tbody>${body}</tbody></table>`;
 }
 async function postingForPnl(start,end){
@@ -8220,8 +8228,18 @@ function summaryObj(d){return Array.isArray(d)?(d[0]||{}):(d||{})}
 function val(o,...ks){for(const k of ks)if(o&&o[k]!=null&&o[k]!=='')return num(o[k]);return 0}
 async function loadCogsPosting(start,end){const {data,error}=await window.finsightSupabase.from('cogs_period_postings').select('*').eq('company_id',cid()).eq('period_start',start).eq('period_end',end).limit(1);if(error)throw error;return data?.[0]||null}
 function renderCogsRows(){
-  const body=q('#inventoryTable');if(!body)return;const rows=inv.detail||[];
-  body.innerHTML=rows.length?rows.map(r=>{const name=r.item_name||r.stock_item_name||r.name||'Stock Item',oq=val(r,'opening_qty','opening_quantity'),oc=val(r,'opening_unit_cost','opening_cost'),pq=val(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=val(r,'purchases','purchase_value','purchases_value'),wac=val(r,'average_cost','weighted_average_cost','wac'),cq=val(r,'closing_qty','closing_quantity'),cc=val(r,'closing_unit_cost','closing_cost','closing_wac')||wac,cv=val(r,'closing_value','closing_stock_value')||(cq*cc),cogs=val(r,'consumption','cost_of_sales','cogs','consumption_value');return `<tr><td><b>${esc(name)}</b></td><td>${oq.toFixed(3)}</td><td>${money(oc)}</td><td>${pq.toFixed(3)}</td><td>${money(pv)}</td><td>${money(wac)}</td><td>${cq.toFixed(3)}</td><td>${money(cc)}</td><td>${money(cv)}</td><td><b>${money(cogs)}</b></td></tr>`}).join(''):'<tr><td colspan="10"><div class="empty-state">No inventory activity for this period.</div></td></tr>';
+  const body=q('#inventoryTable');if(!body)return;
+  const number=(r,...keys)=>{for(const key of keys)if(r[key]!=null&&r[key]!=='')return Number(r[key])||0;return 0;};
+  const rows=[...(inv.detail||[])].sort((a,b)=>number(b,'cogs_value','consumption_value','cost_of_sales')-number(a,'cogs_value','consumption_value','cost_of_sales'));
+  body.innerHTML=rows.length?rows.map(r=>{
+    const name=r.item_name||r.stock_item_name||r.name||'Stock Item';
+    const oq=number(r,'opening_quantity','opening_qty'),oc=number(r,'opening_unit_cost','opening_cost');
+    const pq=number(r,'purchased_quantity','purchase_qty','purchases_qty'),pv=number(r,'purchase_value','purchases');
+    const wac=number(r,'average_unit_cost','average_cost','wac'),cq=number(r,'closing_quantity','closing_qty');
+    const cc=number(r,'closing_unit_cost','closing_cost');const cv=number(r,'closing_value','closing_stock_value');
+    const consumed=number(r,'consumption_quantity','consumption_qty');const cogs=number(r,'cogs_value','consumption_value','cost_of_sales');
+    return `<tr><td><b>${esc(name)}</b><div class="small-note">Consumed: ${consumed.toLocaleString('en-KE',{maximumFractionDigits:3})} ${esc(r.unit||'')}</div></td><td>${oq.toFixed(3)}</td><td>${money(oc)}</td><td>${pq.toFixed(3)}</td><td>${money(pv)}</td><td>${money(wac)}</td><td>${cq.toFixed(3)}</td><td>${money(cc)}</td><td>${money(cv)}</td><td><b>${money(cogs)}</b></td></tr>`;
+  }).join(''):'<tr><td colspan="10"><div class="empty-state">No inventory activity for this period.</div></td></tr>';
 }
 function renderCogsStatus(){const h=q('#cogsPostingStatus'),b=q('#postCogsPeriodBtn');if(!h)return;const c=val(inv.summary,'cost_of_sales','calculated_cogs','cogs');if(inv.posting){h.className='cogs-status-card posted';h.innerHTML=`<b>Period already posted</b><div class="small-note">${esc(inv.start)} to ${esc(inv.end)} · Current calculated COGS ${money(c)}</div>`;if(b){b.disabled=true;b.textContent='COGS Already Posted'}}else{h.className='cogs-status-card';h.innerHTML=`<b>Period not posted</b><div class="small-note">Review opening stock, purchases and closing stock for ${esc(inv.start)} to ${esc(inv.end)}.</div>`;if(b){b.disabled=false;b.textContent='Post Period COGS'}}}
 async function refreshInventoryV1855(){
@@ -10359,11 +10377,32 @@ document.addEventListener('finsight:cloud-state-loaded',async()=>{stockCategorie
     rpc('get_cogs_period_summary',{p_company_id:cid,p_start_date:from,p_end_date:to})
    ]);
    if(serial!==pending)return;
-   const rows=Array.isArray(raw)?raw:(raw?[raw]:[]),total=Array.isArray(summary)?(summary[0]||{}):(summary||{});
-   const totals={oq:0,opening:0,pq:0,purchases:0,cq:0,closing:0,cogs:0};
-   rows.forEach(r=>{const oq=choose(r,'opening_qty','opening_quantity'),oc=choose(r,'opening_unit_cost','opening_cost'),pq=choose(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=choose(r,'purchases','purchase_value','purchases_value'),cq=choose(r,'closing_qty','closing_quantity'),cc=choose(r,'closing_unit_cost','closing_cost','closing_wac');totals.oq+=oq;totals.opening+=oq*oc;totals.pq+=pq;totals.purchases+=pv;totals.cq+=cq;totals.closing+=choose(r,'closing_value','closing_stock_value')||(cq*cc);totals.cogs+=choose(r,'consumption','cost_of_sales','cogs','consumption_value')});
-   const out=rows.map(r=>{const oq=choose(r,'opening_qty','opening_quantity'),oc=choose(r,'opening_unit_cost','opening_cost'),pq=choose(r,'purchase_qty','purchases_qty','purchase_quantity'),pv=choose(r,'purchases','purchase_value','purchases_value'),cq=choose(r,'closing_qty','closing_quantity'),cc=choose(r,'closing_unit_cost','closing_cost','closing_wac'),cv=choose(r,'closing_value','closing_stock_value')||(cq*cc),cos=choose(r,'consumption','cost_of_sales','cogs','consumption_value');return `<tr><td>${safe(r.item_name||r.stock_item_name||r.name||'Stock Item')}</td><td>${oq.toFixed(3)}</td><td>${cash(oc)}</td><td>${cash(oq*oc)}</td><td>${pq.toFixed(3)}</td><td>${cash(pv)}</td><td>${cq.toFixed(3)}</td><td>${cash(cc)}</td><td>${cash(cv)}</td><td>${cash(cos)}</td></tr>`}).join('');
-   const html=`<div class="report-card" data-live-cogs-report="1"><h3>COST OF SALES REPORT</h3><p>${safe(from)} to ${safe(to)}</p><div style="overflow-x:auto"><table class="cogs-report-table"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Unit Cost</th><th>Opening Value</th><th>Purchased Units</th><th>Purchases Value</th><th>Closing Units</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Cost of Sales</th></tr></thead><tbody>${out||'<tr><td colspan="10">No inventory activity for this period.</td></tr>'}</tbody><tfoot><tr><th>Total</th><th>${totals.oq.toFixed(3)}</th><th>—</th><th>${cash(totals.opening)}</th><th>${totals.pq.toFixed(3)}</th><th>${cash(totals.purchases)}</th><th>${totals.cq.toFixed(3)}</th><th>—</th><th>${cash(totals.closing)}</th><th>${cash(totals.cogs)}</th></tr></tfoot></table></div></div>`;
+   const rows=(Array.isArray(raw)?raw:(raw?[raw]:[])).slice(),total=Array.isArray(summary)?(summary[0]||{}):(summary||{});
+   const value=(r,...keys)=>{for(const k of keys)if(r[k]!=null&&r[k]!=='')return num(r[k]);return 0;};
+   rows.sort((a,b)=>value(b,'cogs_value','consumption_value','cost_of_sales')-value(a,'cogs_value','consumption_value','cost_of_sales'));
+   const totals={oq:0,opening:0,pq:0,purchases:0,cq:0,closing:0,consumed:0,cogs:0};
+   rows.forEach(r=>{
+     totals.oq+=value(r,'opening_quantity','opening_qty');
+     totals.opening+=value(r,'opening_value','opening_stock_value');
+     totals.pq+=value(r,'purchased_quantity','purchase_qty','purchases_qty');
+     totals.purchases+=value(r,'purchase_value','purchases');
+     totals.cq+=value(r,'closing_quantity','closing_qty');
+     totals.closing+=value(r,'closing_value','closing_stock_value');
+     totals.consumed+=value(r,'consumption_quantity','consumption_qty');
+     totals.cogs+=value(r,'cogs_value','consumption_value','cost_of_sales');
+   });
+   const out=rows.map(r=>{
+     const oq=value(r,'opening_quantity','opening_qty'),oc=value(r,'opening_unit_cost'),ov=value(r,'opening_value');
+     const pq=value(r,'purchased_quantity','purchase_qty'),pv=value(r,'purchase_value');
+     const cq=value(r,'closing_quantity','closing_qty'),cc=value(r,'closing_unit_cost'),cv=value(r,'closing_value');
+     const consumed=value(r,'consumption_quantity','consumption_qty'),cos=value(r,'cogs_value','consumption_value','cost_of_sales');
+     return `<tr><td>${safe(r.item_name||r.stock_item_name||r.name||'Stock Item')}</td><td>${oq.toFixed(3)}</td><td>${cash(oc)}</td><td>${cash(ov)}</td><td>${pq.toFixed(3)}</td><td>${cash(pv)}</td><td>${cq.toFixed(3)}</td><td>${cash(cc)}</td><td>${cash(cv)}</td><td>${consumed.toFixed(3)}</td><td>${cash(cos)}</td></tr>`;
+   }).join('');
+   const summaryOpening=total.opening_stock==null?totals.opening:value(total,'opening_stock');
+   const summaryPurchases=total.purchases==null?totals.purchases:value(total,'purchases');
+   const summaryClosing=total.closing_stock==null?totals.closing:value(total,'closing_stock');
+   const summaryCogs=total.cost_of_sales==null?totals.cogs:value(total,'cost_of_sales');
+   const html=`<div class="report-card" data-live-cogs-report="1"><h3>COST OF SALES REPORT</h3><p>${safe(from)} to ${safe(to)}</p><div style="overflow-x:auto"><table class="cogs-report-table"><thead><tr><th>Item</th><th>Opening Units</th><th>Opening Unit Cost</th><th>Opening Value</th><th>Purchased Units</th><th>Purchases Value</th><th>Closing Units</th><th>Closing Unit Cost</th><th>Closing Value</th><th>Consumed Units</th><th>Consumption / Food Cost</th></tr></thead><tbody>${out||'<tr><td colspan="11">No inventory activity for this period.</td></tr>'}</tbody><tfoot><tr><th>Total</th><th>${totals.oq.toFixed(3)}</th><th>—</th><th>${cash(summaryOpening)}</th><th>${totals.pq.toFixed(3)}</th><th>${cash(summaryPurchases)}</th><th>${totals.cq.toFixed(3)}</th><th>—</th><th>${cash(summaryClosing)}</th><th>—</th><th>${cash(summaryCogs)}</th></tr></tfoot></table></div></div>`;
    writing=true;panel.innerHTML=html;panel.dataset.liveKey=key;writing=false;lastKey=key;
   }catch(e){if(serial!==pending)return;writing=true;panel.innerHTML=`<div class="report-card"><h3>COST OF SALES REPORT</h3><div class="empty-state">Unable to load live COGS: ${safe(e.message||e)}</div></div>`;panel.dataset.liveKey='error';writing=false}
  }
