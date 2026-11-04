@@ -5749,11 +5749,14 @@ function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingErro
   const s=first(summary), detail=arr(rows);
   const isPeriodPosted=String(periodPosting?.status||'').toLowerCase()==='posted';
   const rev=n(s,'total_revenue','revenue');
+  // Sales amounts are treated as VAT (16%) + Catering Levy (2%) inclusive.
+  // Both percentages apply to the pre-tax base (18% combined).
+  const exclusive=rev/1.18, vat=exclusive*0.16, levy=exclusive*0.02;
   const postedCogs=n(s,'total_cost_of_sales','total_cogs','cost_of_sales');
-  const gross=n(s,'gross_profit');
   const expenses=n(s,'total_expenses','operating_expenses','expenses');
-  const net=n(s,'net_profit','net_income');
-  const pct=x=>rev?(Number(x)/rev*100).toFixed(1)+'%':'0.0%';
+  // Display-only tax-adjusted operating performance; no journal entries are modified.
+  const gross=exclusive-postedCogs, net=gross-expenses;
+  const pct=x=>exclusive?(Number(x)/exclusive*100).toFixed(1)+'%':'0.0%';
   const tr=(label,value,cls='',percent=true)=>`<tr${cls?' class="'+cls+'"':''}><td>${esc(label)}</td><td>${value==null?'—':money(value)}</td><td>${value==null||!percent?'—':pct(value)}</td></tr>`;
   const heading=label=>`<tr class="section-heading"><td colspan="3">${esc(label)}</td></tr>`;
   const section=label=>detail.filter(r=>String(v(r,'section','account_type')).trim().toLowerCase()===label.toLowerCase());
@@ -5761,9 +5764,9 @@ function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingErro
   const has=(...keys)=>keys.some(k=>s[k]!==null&&s[k]!==undefined&&s[k]!=='');
   const optional=(label,keys)=>tr(label,has(...keys)?n(s,...keys):null);
   let body=heading('Revenue')+accountRows(section('Revenue'))+tr('Total Revenue',rev,'subtotal');
-  body+=optional('Less: VAT @ 16%',['vat','vat_amount','sales_vat']);
-  body+=optional('Less: Catering Levy',['catering_levy','levy_amount']);
-  body+=optional('Revenue After VAT & Catering Levy',['revenue_after_tax','revenue_exclusive','net_revenue']);
+  body+=tr('Less: VAT @ 16%',-vat,'',false);
+  body+=tr('Less: Catering Levy @ 2%',-levy,'',false);
+  body+=tr('Revenue After VAT & Catering Levy',exclusive,'subtotal');
   body+=heading('Cost of Sales');
   if(inventory){
     const opening=n(inventory,'opening_stock'),purchases=n(inventory,'purchases'),closing=n(inventory,'closing_stock'),calc=n(inventory,'cost_of_sales');
@@ -5776,10 +5779,10 @@ function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingErro
   }else{
     body+=`<tr><td colspan="3" class="small-note">Inventory calculation unavailable${inventoryError?': '+esc(inventoryError):''}. Posted P&amp;L totals are unaffected.</td></tr>`;
   }
-  body+=`<tr><td colspan="3" class="small-note">${isPeriodPosted?'A COGS posting is recorded for this exact period. The calculated figures may differ from the stored posting; posted journal amounts determine gross and net profit.':(postingError?'Posting status could not be checked. Calculated amounts do not change journal-based profit.':'Calculated inventory amounts are for review only and have not been posted for this exact period. They do not change posted gross profit or net profit.')}</td></tr>`;
+  body+=`<tr><td colspan="3" class="small-note">${isPeriodPosted?'A COGS posting is recorded for this period. The calculated inventory figures may differ from journal balances.':(postingError?'COGS posting status could not be checked.':'Calculated inventory values are shown for reference until COGS is posted.')} VAT and Catering Levy are derived for display from gross sales and not posted again here.</td></tr>`;
   body+=accountRows(section('Cost of Sales'))+tr('Total Posted Cost of Sales',postedCogs,'subtotal');
-  body+=tr('Gross Profit / (Loss) — Posted',gross,'grand');
-  body+=heading('Operating Expenses')+accountRows(section('Expenses'))+tr('Total Expenses',expenses,'subtotal')+tr('Net Profit / (Loss) — Posted',net,'grand');
+  body+=tr('Gross Profit / (Loss) — After Tax Deductions',gross,'grand');
+  body+=heading('Operating Expenses')+accountRows(section('Expenses'))+tr('Total Expenses',expenses,'subtotal')+tr('Net Profit / (Loss) — After Tax Deductions',net,'grand');
   return `<table class="live-fin-table pnl-statement"><thead><tr><th>Account</th><th>Amount</th><th>% of Revenue</th></tr></thead><tbody>${body}</tbody></table>`;
 }
 async function postingForPnl(start,end){
@@ -5839,18 +5842,36 @@ async function renderAccountingLive(){
  }catch(e){console.error('[FinSight Accounting P&L]',e);const h=`<div class="live-fin-error">${esc(e.message||String(e))}</div>`;pbox.innerHTML=h;cbox.innerHTML=h;}
 }
 function ensureTrialTab(){if(!q('.report-tab[data-report="trial"]')){const tabs=q('.report-tabs');if(tabs)tabs.insertAdjacentHTML('beforeend','<button class="report-tab" data-report="trial">Trial Balance</button>');const reports=q('#reports');if(reports&&!q('#reportTrial'))reports.insertAdjacentHTML('beforeend','<div class="report-panel hidden" id="reportTrial"></div>');}q('.report-tab[data-report="trial"]')?.addEventListener('click',()=>{document.querySelectorAll('.report-tab').forEach(x=>x.classList.remove('active'));q('.report-tab[data-report="trial"]').classList.add('active');document.querySelectorAll('.report-panel').forEach(x=>{x.classList.add('hidden');x.classList.remove('active')});q('#reportTrial')?.classList.remove('hidden');q('#reportTrial')?.classList.add('active');});}
+let financialRenderId=0;
 async function renderFinancialReportsLive(){
+ const currentRender=++financialRenderId;
  ensureTrialTab();const d=dates(q('#reportFrom')?.value,q('#reportTo')?.value);
  for(const id of ['reportPl','reportCashFlow','reportBalance','reportTrial']){const x=q('#'+id);if(x)x.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading live financial report…</div></div>';}
  try{
   const [pr,cr,br,tr,inv,posting]=await Promise.all([pnl(d.start,d.end),cash(d.start,d.end),balance(d.end),trial(d.start,d.end),inventoryForPnl(d.start,d.end),postingForPnl(d.start,d.end)]);
+  if(currentRender!==financialRenderId)return;
   q('#reportPl').innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error)}</div>`;
   q('#reportCashFlow').innerHTML=`<div class="report-card">${hdr('CASH FLOW',d.start,d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${cashHTML(cr[0],cr[1])}</div>`;
   q('#reportBalance').innerHTML=`<div class="report-card">${hdr('BALANCE SHEET','As at',d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${balanceHTML(br[0],br[1])}</div>`;
   q('#reportTrial').innerHTML=`<div class="report-card">${hdr('TRIAL BALANCE',d.start,d.end)}<div class="live-fin-note">Live from posted accounting journals.</div>${trialHTML(tr)}</div>`;
- }catch(e){console.error('[FinSight Reports]',e);const h=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;['reportPl','reportCashFlow','reportBalance','reportTrial'].forEach(id=>{if(q('#'+id))q('#'+id).innerHTML=h;});}
+ }catch(e){if(currentRender!==financialRenderId)return;console.error('[FinSight Reports]',e);const h=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;['reportPl','reportCashFlow','reportBalance','reportTrial'].forEach(id=>{if(q('#'+id))q('#'+id).innerHTML=h;});}
 }
 function bind(){ensureTrialTab();const ap=q('#applyPlFilter'),ac=q('#applyCfFilter'),rr=q('#refreshReportsBtn');if(ap)ap.onclick=()=>{filters.plFrom=q('#plFrom').value;filters.plTo=q('#plTo').value;renderAccountingLive();};if(ac)ac.onclick=()=>{filters.cfFrom=q('#cfFrom').value;filters.cfTo=q('#cfTo').value;renderAccountingLive();};if(rr){const old=rr.onclick;rr.onclick=()=>{filters.reportFrom=q('#reportFrom').value;filters.reportTo=q('#reportTo').value;if(typeof window.renderReports==='function')window.renderReports();setTimeout(renderFinancialReportsLive,0);if(typeof toast==='function')toast('Live reports refreshed');};}document.addEventListener('click',e=>{const nav=e.target.closest('[data-page]');if(!nav)return;if(nav.dataset.page==='accounting')setTimeout(renderAccountingLive,20);if(nav.dataset.page==='reports')setTimeout(renderFinancialReportsLive,30);});}
+// Update the live P&L when its Reports tab is selected or its period changes.
+let livePnlOnlySequence=0;
+async function renderLiveReportPnlOnly(){
+ const token=++livePnlOnlySequence;
+ const box=q('#reportPl');if(!box||!window.finsightOnline?.companyId)return;
+ const d=dates(q('#reportFrom')?.value,q('#reportTo')?.value);
+ try{
+  const [pr,inv,posting]=await Promise.all([pnl(d.start,d.end),inventoryForPnl(d.start,d.end),postingForPnl(d.start,d.end)]);
+  if(token!==livePnlOnlySequence)return;
+  box.innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error)}</div>`;
+ }catch(e){if(token===livePnlOnlySequence)box.innerHTML=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;}
+}
+document.addEventListener('click',e=>{if(e.target.closest('.report-tab[data-report="pl"]'))setTimeout(renderLiveReportPnlOnly,40)});
+['reportFrom','reportTo'].forEach(id=>q('#'+id)?.addEventListener('change',()=>{if(q('.report-tab[data-report="pl"]')?.classList.contains('active'))renderLiveReportPnlOnly()}));
+window.finsightRenderLiveReportPnl=renderLiveReportPnlOnly;
 window.finsightRenderLiveAccounting=renderAccountingLive;window.finsightRenderLiveFinancialReports=renderFinancialReportsLive;
 document.addEventListener('finsight:cloud-state-loaded',()=>{if(q('#accounting')?.classList.contains('active'))renderAccountingLive();if(q('#reports')?.classList.contains('active'))renderFinancialReportsLive();});
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bind);else bind();setTimeout(bind,800);
@@ -10139,6 +10160,7 @@ async function stockTemplatePrint(){
     draftId=null;
     const date=$('#stock12date');if(date&&!date.value)date.value=new Date().toLocaleDateString('en-CA');
     renderLines(data);
+    const preview=$('#stock12msg');if(preview)preview.textContent=`${data.length} stock quantities imported from ${file.name}. Please review before saving or submitting.`;
     form.style.display='';const newBar=$('#stock12newbar');if(newBar)newBar.style.display='none';
     showCategoryTools();applyCategoryFilter();
     form.scrollIntoView({behavior:'smooth',block:'start'});
@@ -10146,7 +10168,7 @@ async function stockTemplatePrint(){
    }catch(e){notify('Stock Take CSV: '+(e.message||String(e)))}
   },{once:true});
   inp.click();
-  window.addEventListener('focus',()=>{setTimeout(()=>{if(inp.isConnected)inp.remove()},3000)},{once:true});
+  // Do not remove the file input on window focus: some browsers refocus before the chooser completes.
  }
  // Called from Data & Imports as well as the Stock Take page.
  window.finsightStartStockTakeUpload=()=>{
@@ -10175,11 +10197,18 @@ async function editApprovedTake(record){
    if(!confirm('Save changes to this APPROVED reconciliation? Official closing stock will be recalculated and an audit record created.'))return;
    save.disabled=true;errorEl.textContent='Saving corrected reconciliation…';
    try{
-     await rpc('edit_approved_stock_reconciliation',{p_company:company(),p_submission_id:record.id,p_lines:rows.map(r=>({...r,quantity:Number(r.quantity)})),p_notes:document.getElementById('stockApprovedNotes').value,p_reason:reason});
-     document.getElementById('closeModalBtn')?.click();
+     await rpc('edit_approved_stock_reconciliation',{p_company:company(),p_submission_id:record.id,p_lines:rows.map(r=>({...r,quantity:Number(r.quantity)})),p_notes:document.getElementById('stockApprovedNotes').value,p_reason:reason,p_stock_date:stockDate});
+     // Verify the committed date and quantities before announcing success.
+     const saved=await rpc('stock_take_list',{p_company:company()});
+     const confirmed=Array.isArray(saved)?saved.find(r=>r.id===record.id):null;
+     if(!confirmed||confirmed.stock_date!==stockDate || rows.some(r=>!confirmed.reviewed_lines?.some(l=>String(l.stock_item_id)===String(r.stock_item_id)&&Number(l.quantity)===Number(r.quantity)))){
+       throw Error('The save returned but the updated reconciliation could not be verified. Refresh Stock Take History before trying again.');
+     }
+     // Closing via click triggers the global unsaved-form guard; close directly after verified save.
+     document.getElementById('modalBackdrop')?.classList.remove('show');
      await showHistory();
-     await review();
-     notify('Approved reconciliation corrected. Stock date, official stock and audit history updated.');
+     try{await review()}catch(e){console.warn('Stock approval list refresh:',e)}
+     notify('Approved reconciliation corrected and verified. Stock date, official stock and audit history updated.');
    }catch(e){errorEl.textContent=e.message||String(e)}finally{save.disabled=false}
  };
 }
