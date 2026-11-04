@@ -113,14 +113,38 @@ function memberPanel(c){
 }
 function toggleUsers(id){if(expanded.has(id))expanded.delete(id);else expanded.add(id);filterCompanies()}
 function modal(title,fields,submitLabel,callback){
- el('modal').innerHTML='<div class="overlay" onclick="if(event.target===this)closeDialog()"><div class="dialog" role="dialog" aria-modal="true"><h2>'+esc(title)+'</h2>'+
- '<form id="editForm"><div>'+fields+'</div><div class="actions"><button type="button" onclick="closeDialog()">Cancel</button><button id="submitForm" type="submit" class="primary">'+esc(submitLabel)+'</button></div></form></div></div>';
- el('editForm').addEventListener('submit',async e=>{
-  e.preventDefault();if(busy)return;busy=true;dismiss();
-  const b=el('submitForm');b.disabled=true;
-  try{const data=Object.fromEntries(new FormData(e.target));await callback(data);closeDialog();await load();notify('Company administration saved.')}
-  catch(err){notify(err.message,true)}
-  finally{busy=false;if(b&&b.isConnected)b.disabled=false}
+ el('modal').innerHTML='<div class="overlay" onclick="if(event.target===this)closeDialog()"><div class="dialog" role="dialog" aria-modal="true" aria-label="'+esc(title)+'"><h2>'+esc(title)+'</h2>'+
+ '<form id="editForm"><div>'+fields+'</div><div id="formFeedback" role="alert" class="notice error hidden" style="margin:14px 0"></div><div class="actions"><button type="button" onclick="closeDialog()">Cancel</button><button id="submitForm" type="submit" class="primary">'+esc(submitLabel)+'</button></div></form></div></div>';
+ const form=el('editForm');
+ form.addEventListener('submit',async e=>{
+  e.preventDefault();
+  const feedback=el('formFeedback'),button=el('submitForm');
+  if(form.dataset.saving==='true')return;
+  if(!form.reportValidity())return;
+  const payload=Object.fromEntries(new FormData(form));
+  payload.accounting_enabled=Boolean(form.querySelector('[name=accounting_enabled]')?.checked);
+  payload.pos_enabled=Boolean(form.querySelector('[name=pos_enabled]')?.checked);
+  form.dataset.saving='true';
+  button.disabled=true;
+  const original=button.textContent;
+  button.textContent='Saving...';
+  feedback.classList.add('hidden');
+  try{
+   const result=await callback(payload);
+   if(!result||typeof result!=='object')throw Error('No confirmation received from FinSight.');
+   if(result.success!==true && !result.company_id)throw Error('FinSight did not confirm the change.');
+   const refreshed=await api('list');
+   if(!Array.isArray(refreshed))throw Error('Changes saved, but refreshing companies failed. Refresh the page.');
+   companies=refreshed;
+   closeDialog();render();notify('Company administration saved successfully.');
+  }catch(err){
+   const message=(err&&err.message)||String(err);
+   feedback.textContent=message;feedback.classList.remove('hidden');
+   feedback.scrollIntoView({block:'nearest'});
+  }finally{
+   form.dataset.saving='false';
+   if(button.isConnected){button.disabled=false;button.textContent=original}
+  }
  });
 }
 function closeDialog(){el('modal').innerHTML=''}
@@ -134,11 +158,10 @@ function newCompany(){
  '<div class="checkrow"><label><input name="accounting_enabled" type="checkbox" checked>FinSight Accounting</label>',
  '<label><input name="pos_enabled" type="checkbox">FinSight POS</label></div>'
  ].join('');
- modal('Add Company',fields,'Create Company',async d=>{
-  await api('create',null,{name:d.name,country:d.country,currency:d.currency,owner_email:d.owner_email||null,
-    accounting_enabled:!!el('editForm').querySelector('[name=accounting_enabled]').checked,
-    pos_enabled:!!el('editForm').querySelector('[name=pos_enabled]').checked});
- });
+ modal('Add Company',fields,'Create Company',d=>api('create',null,{
+  name:d.name,country:d.country,currency:d.currency,owner_email:d.owner_email||null,
+  accounting_enabled:d.accounting_enabled,pos_enabled:d.pos_enabled
+ }));
 }
 function editCompany(id){
  const c=companies.find(c=>c.id===id);if(!c)return;
