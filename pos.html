@@ -51,7 +51,7 @@ const when=x=>x?new Date(x).toLocaleString('en-KE',{dateStyle:'medium',timeStyle
 const localDay=x=>x?new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Nairobi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(x)):'';
 function newUuid(){if(globalThis.crypto?.randomUUID)return crypto.randomUUID();if(!globalThis.crypto?.getRandomValues)throw Error('Secure random identifiers are unavailable. Open through a local server.');const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const hex=[...bytes].map(v=>v.toString(16).padStart(2,'0')).join('');return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-')}
 const b=(name,call,cls='')=>`<button class="btn ${cls}" type="button" onclick="${call}">${name}</button>`;
-const S={db:null,user:null,ws:null,selection:'',role:'',employee:null,token:null,choices:[],page:'',setup:null,employees:[],menu:[],orders:[],tables:[],reports:[],reportLines:[],selectedShift:null,reportDate:'',historyDate:'',cart:[],category:'All',orderNotes:'',checkoutDialog:false,checkoutRequest:null,paymentRows:[],pricingOptions:[],selectedRules:[],modifierGroups:[],adminPricing:[],adminModifiers:{groups:[],options:[],links:[]},adminPaymentTypes:[],incomeAccounts:[],menuMapping:null,preferences:null,tillSummary:null,reconInfo:null,liveChannel:null,paymentOrder:null,paymentBalance:null,paymentMethods:[],paymentRequest:null,orderType:'Dine In',tableId:'',requestId:null,busy:false,notice:'',noticeType:'ok',showEmployees:false,adminOpen:{tables:false,pricing:false,modifiers:false,payments:false,linking:false},appearanceOpen:false,adminMenuCategory:'',adminAddMenu:false,resetId:null,prepFilter:'active',timer:null,uploading:'',hasAdmin:false,discardOpen:false,menuEditId:null,shiftDetail:null,receipt:null,receiptLogoUploading:false,integrationData:null};
+const S={db:null,user:null,ws:null,selection:'',role:'',employee:null,token:null,choices:[],page:'',setup:null,employees:[],menu:[],orders:[],tables:[],reports:[],reportLines:[],selectedShift:null,reportDate:'',historyDate:'',cart:[],category:'All',orderNotes:'',checkoutDialog:false,checkoutRequest:null,paymentRows:[],pricingOptions:[],selectedRules:[],modifierGroups:[],adminPricing:[],adminModifiers:{groups:[],options:[],links:[]},adminPaymentTypes:[],incomeAccounts:[],menuMapping:null,preferences:null,tillSummary:null,reconInfo:null,liveChannel:null,paymentOrder:null,paymentBalance:null,paymentMethods:[],paymentRequest:null,mpesaIntentId:null,mpesaOrder:null,mpesaMessage:'',mpesaRequestId:null,mpesaTimer:null,mpesaChecks:0,orderType:'Dine In',tableId:'',requestId:null,busy:false,notice:'',noticeType:'ok',showEmployees:false,adminOpen:{tables:false,pricing:false,modifiers:false,payments:false,linking:false},appearanceOpen:false,adminMenuCategory:'',adminAddMenu:false,resetId:null,prepFilter:'active',timer:null,uploading:'',hasAdmin:false,discardOpen:false,menuEditId:null,shiftDetail:null,receipt:null,receiptLogoUploading:false,integrationData:null};
 const CACHE={times:Object.create(null),inflight:new Map(),epoch:0};
 const TTL={management:45000,reports:30000,receipt:60000,integrations:60000,checkout:90000,history:20000,tables:15000,shift:15000,kitchen:25000};
 const validCache=(name)=>Date.now()-(CACHE.times[name]||0)<(TTL[name]||30000);
@@ -63,7 +63,7 @@ function notice(){return S.notice?`<div class="notice ${S.noticeType==='error'?'
 async function rpc(name,payload={}){const {data,error}=await S.db.rpc(name,payload);if(error)throw new Error(error.message);return data}
 function buttonBusy(){return S.busy?' disabled':''}
 async function emailLogin(){if(S.busy)return;const email=document.getElementById('email')?.value.trim(),password=document.getElementById('password')?.value;if(!email||!password)return show('Enter email and password.','error');S.busy=true;try{const {data,error}=await S.db.auth.signInWithPassword({email,password});if(error)throw error;await connectCompany(data?.session)}catch(e){show(e.message,'error')}finally{S.busy=false}}
-async function logout(){clearCache();if(S.liveChannel){await S.db.removeChannel(S.liveChannel);S.liveChannel=null;}clearInterval(S.timer);S.timer=null;S.selection='';S.role='';S.employee=null;S.token=null;S.ws=null;S.user=null;S.cart=[];await S.db.auth.signOut();S.notice='';render()}
+async function logout(){clearTimeout(S.mpesaTimer);S.mpesaTimer=null;clearCache();if(S.liveChannel){await S.db.removeChannel(S.liveChannel);S.liveChannel=null;}clearInterval(S.timer);S.timer=null;S.selection='';S.role='';S.employee=null;S.token=null;S.ws=null;S.user=null;S.cart=[];await S.db.auth.signOut();S.notice='';render()}
 function loginPage(){root.innerHTML=`<div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div><h2>Company Sign In</h2>${notice()}<div class="field"><label>Email</label><input type="email" id="email" autocomplete="username"></div><div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')emailLogin()"></div>${b('Sign In','emailLogin()','primary wide')}</div></div>`}
 async function connectCompany(session=null){
  const current=session|| (await S.db.auth.getSession()).data?.session;
@@ -88,7 +88,7 @@ function applyPreferences(){
 }
 async function loadChoices(){if(!S.ws)return;S.choices=await rpc('pos_employee_list',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_role:null})||[];S.hasAdmin=S.choices.some(e=>e.role==='Admin')}
 function noAccess(){root.innerHTML=`<div class="modalwrap"><div class="authpanel"><h2>POS Access</h2>${notice()}<p>Your shared FinSight login does not have an active POS workspace.</p>${b('Sign Out','logout()')}</div></div>`}
-function chooseRole(){clearCache();if(S.liveChannel){S.db.removeChannel(S.liveChannel);S.liveChannel=null;}clearInterval(S.timer);S.selection='';S.notice='';S.token=null;S.employee=null;S.role='';S.page='';S.cart=[];S.orders=[];S.menu=[];S.setup=null;S.employees=[];S.tillSummary=null;S.shiftDetail=null;S.reconInfo=null;S.integrationData=null;S.paymentBalance=null;S.paymentMethods=[];render()}
+function chooseRole(){clearTimeout(S.mpesaTimer);S.mpesaTimer=null;S.mpesaIntentId=null;S.mpesaOrder=null;clearCache();if(S.liveChannel){S.db.removeChannel(S.liveChannel);S.liveChannel=null;}clearInterval(S.timer);S.selection='';S.notice='';S.token=null;S.employee=null;S.role='';S.page='';S.cart=[];S.orders=[];S.menu=[];S.setup=null;S.employees=[];S.tillSummary=null;S.shiftDetail=null;S.reconInfo=null;S.integrationData=null;S.paymentBalance=null;S.paymentMethods=[];render()}
 function selectRole(role){S.selection=role;S.notice='';render()}
 function choicePage(){const names=S.choices.filter(e=>e.role===S.selection);root.innerHTML=`<div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div>${notice()}${!S.selection?`<h2>Choose Workspace</h2><p class="muted">${esc(S.ws.company_name)} · ${esc(S.ws.outlet_name)}</p><div class="rolegrid"><button class="role" onclick="selectRole('Cashier')"><span>▣</span>Cashier</button><button class="role" onclick="selectRole('Kitchen')"><span>♨</span>Kitchen</button><button class="role" onclick="selectRole('Admin')"><span>⚙</span>Admin</button></div>`:`<h2>${esc(S.selection)} Sign In</h2>${S.selection==='Admin'&&!S.hasAdmin&&S.ws.role==='admin'?`<div class="field"><label>First Admin Name</label><input id="bootstrapName" maxlength="100"></div><div class="field"><label>Admin PIN</label><input id="bootstrapPin" type="password" inputmode="numeric" maxlength="8"></div>${b('Create First Admin','bootstrapAdmin()','primary wide')}`:`<div class="field"><label>Employee</label><select id="chosenEmployee">${names.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select></div><div class="field"><label>PIN</label><input id="employeePin" type="password" maxlength="8" inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter')enterEmployee()"></div>${b('Sign In','enterEmployee()','primary wide')}${names.length?'':'<p class="hint">No active employees for this role. Admin can add them in Employees.</p>'}`}<div style="margin-top:14px">${b('Back','chooseRole()')} ${b('Sign Out','logout()')}</div>`}</div></div>`}
 async function bootstrapAdmin(){const name=document.getElementById('bootstrapName')?.value.trim(),pin=document.getElementById('bootstrapPin')?.value;if(!name||!/^[0-9]{4,8}$/.test(pin||''))return show('Enter Admin name and a 4–8 digit PIN.','error');if(S.busy)return;S.busy=true;try{await rpc('pos_bootstrap_admin',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_name:name,p_pin:pin});await loadChoices();S.notice='Admin created. Select the Admin name and enter the PIN.';S.noticeType='ok';render()}catch(e){show('Could not create Admin: '+e.message,'error')}finally{S.busy=false}}
@@ -549,8 +549,70 @@ async function openPayment(id){
    rpc('pos_cashier_order_balance',arg({p_order:id})),
    rpc('pos_cashier_payment_types',arg())
   ]);
-  S.paymentBalance=balance;S.paymentMethods=methods||[];S.paymentRequest=null;render();
+  S.paymentBalance=balance;S.paymentMethods=methods||[];S.paymentRequest=null;S.mpesaIntentId=null;S.mpesaOrder=id;S.mpesaMessage='';S.mpesaRequestId=null;clearTimeout(S.mpesaTimer);render();
  }catch(e){S.paymentOrder=null;show('Cannot load payment: '+e.message,'error')}
+}
+function mpesaPaymentMethod(){return S.paymentMethods.find(m=>['mpesa','m pesa'].includes(String(m.name||'').toLowerCase().replaceAll('-','')))||null}
+function mpesaPanel(remaining){
+ const mpesa=mpesaPaymentMethod();if(!mpesa||remaining<=0)return '';
+ return `<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:14px">
+ <div class="row"><strong>M-Pesa STK Push</strong><span class="pill">Sandbox</span></div>
+ <div class="field" style="margin-top:10px"><label>Customer phone</label><input id="mpesaPhone" type="tel" inputmode="tel" autocomplete="off" placeholder="07XX XXX XXX"></div>
+ <div class="actions">${b('Send STK Push','sendMpesaStk()','primary')}${S.mpesaIntentId?b('Check Status','checkMpesaStatus(true)'):''}</div>
+ ${S.mpesaMessage?`<div class="notice" role="status">${esc(S.mpesaMessage)}</div>`:''}</div>`;
+}
+async function sendMpesaStk(){
+ if(S.busy||!S.paymentOrder||S.mpesaIntentId)return;
+ const method=mpesaPaymentMethod(),phone=document.getElementById('mpesaPhone')?.value.trim(),
+ amount=Number(document.getElementById('payAmount')?.value),
+ remaining=Number(S.paymentBalance?.total||0)-Number(S.paymentBalance?.confirmed||0);
+ if(!method||!/^((0[17]\d{8})|(254[17]\d{8}))$/.test(String(phone||'').replace(/[\s()+-]/g,'')))
+  return show('Enter a valid Kenyan M-Pesa phone number.','error');
+ if(!Number.isSafeInteger(amount)||amount<=0||amount>remaining)
+  return show('STK amount must be a whole number of shillings within the unpaid balance.','error');
+ S.busy=true;S.mpesaRequestId=S.mpesaRequestId||newUuid();const order=S.paymentOrder;
+ try{
+  const {data,error}=await S.db.functions.invoke('finsight-mpesa-stk',{body:{
+   company_id:S.ws.company_id,outlet_id:S.ws.outlet_id,employee_token:S.token,
+   order_id:order,payment_type_id:method.id,amount,phone,request_id:S.mpesaRequestId}});
+  if(error||data?.error)throw Error(data?.error||error?.message||'M-Pesa request unavailable');
+  if(!data?.intent_id)throw Error('No M-Pesa tracking reference received');
+  S.mpesaIntentId=data.intent_id;S.mpesaOrder=order;
+  S.mpesaMessage=data.message||'Waiting for M-Pesa confirmation';
+  S.mpesaChecks=0;render();scheduleMpesaCheck();
+ }catch(e){show(e.message,'error')}finally{S.busy=false}
+}
+function scheduleMpesaCheck(){
+ clearTimeout(S.mpesaTimer);
+ if(!S.mpesaIntentId||S.mpesaChecks>=12)return;
+ S.mpesaTimer=setTimeout(()=>{if(S.role==='Cashier'&&S.page==='history'&&S.paymentOrder===S.mpesaOrder)void checkMpesaStatus(false)},8000);
+}
+async function checkMpesaStatus(userInitiated=false){
+ if(S.busy||!S.mpesaIntentId||S.mpesaOrder!==S.paymentOrder)return;
+ S.busy=true;S.mpesaChecks++;
+ try{
+  const {data,error}=await S.db.functions.invoke('finsight-mpesa-check',{body:{
+   company_id:S.ws.company_id,outlet_id:S.ws.outlet_id,
+   employee_token:S.token,intent_id:S.mpesaIntentId}});
+  if(error||data?.error)throw Error(data?.error||error?.message||'Status unavailable');
+  if(data.state==='Confirmed'){
+   clearTimeout(S.mpesaTimer);
+   S.mpesaMessage='M-Pesa payment verified'+(data.receipt?' · '+data.receipt:'');
+   S.mpesaIntentId=null;S.mpesaRequestId=null;
+   S.paymentBalance=await rpc('pos_cashier_order_balance',arg({p_order:S.paymentOrder}));
+   await loadHistory();render();return;
+  }
+  if(['Failed','Cancelled','Expired'].includes(data.state)){
+   clearTimeout(S.mpesaTimer);
+   S.mpesaMessage='M-Pesa payment was not completed. The order remains unpaid.';
+   S.mpesaIntentId=null;S.mpesaRequestId=null;render();return;
+  }
+  S.mpesaMessage=data.message||'Waiting for M-Pesa confirmation';
+  render();scheduleMpesaCheck();
+ }catch(e){
+  S.mpesaMessage='Payment verification unavailable. Do not manually record it until confirmed: '+e.message;
+  render();if(!userInitiated)scheduleMpesaCheck();
+ }finally{S.busy=false}
 }
 function paymentPanel(){
  const d=S.paymentBalance||{},remaining=Math.max(0,Number(d.total||0)-Number(d.confirmed||0));
@@ -564,7 +626,7 @@ function paymentPanel(){
  <div class="field"><label>Payment Type</label><select id="payMethod">${S.paymentMethods.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select></div>
  <div class="field"><label>Amount</label><input id="payAmount" type="number" min="0.01" step="0.01" max="${remaining}" value="${remaining.toFixed(2)}"></div></div>
  <div class="field"><label>Payment Reference (required except Cash)</label><input id="payRef" maxlength="150" placeholder="M-Pesa / card transaction reference"></div>
- ${b('Record Payment','recordPayment()','primary')}${b('Pay & Print Receipt','recordPayment(true)')}`:'<p class="pill">Paid in full</p>'}
+ ${b('Record Payment','recordPayment()','primary')}${b('Pay & Print Receipt','recordPayment(true)')}${mpesaPanel(remaining)}`:'<p class="pill">Paid in full</p>'}
  <p class="hint">For split payments, record each payment separately until the balance reaches zero. This records collections in POS only.</p>
  </div>`
 }
