@@ -51,8 +51,16 @@ async function signIn(){
 }
 async function signOut(){if(client)await client.auth.signOut();companies=[];user=null;closeDialog();dismiss();login()}
 async function api(action,company=null,data={}){
+ const {data:identity,error:identityError}=await client.auth.getUser();
+ if(identityError||!identity.user)throw Error('Super Admin session expired. Please sign in again.');
  const {data:result,error}=await client.rpc('finsight_platform_company_admin',{p_action:action,p_company:company,p_data:data});
- if(error)throw error;return result;
+ if(error){
+   if(error.code==='42501'||/platform administrator permission required/i.test(error.message||'')){
+     throw Error('Signed in as '+(identity.user.email||'Unknown account')+'. This Supabase session is not authorized for FinSight Super Admin. Use Switch account to sign in to the registered administrator.');
+   }
+   throw error;
+ }
+ return result;
 }
 async function load(){
  const {data:{user:logged},error}=await client.auth.getUser();
@@ -189,7 +197,7 @@ async function boot(){
    try{await script('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js')}
    catch{await script('https://unpkg.com/@supabase/supabase-js@2.58.0/dist/umd/supabase.min.js')}
   }
-  client=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}});
+  client=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,storageKey:'finsight-super-admin-auth-v1',autoRefreshToken:true,detectSessionInUrl:false}});
   await load();
  }catch(e){el('content').textContent='Connection error: '+e.message}
 }
