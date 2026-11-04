@@ -561,6 +561,15 @@ function mpesaPanel(remaining){
  <div class="actions">${b('Send STK Push','sendMpesaStk()','primary')}${S.mpesaIntentId?b('Check Status','checkMpesaStatus(true)'):''}</div>
  ${S.mpesaMessage?`<div class="notice" role="status">${esc(S.mpesaMessage)}</div>`:''}</div>`;
 }
+async function invokeMpesaFunction(name,body){
+ const {data,error}=await S.db.functions.invoke(name,{body});
+ if(error){
+  let detail=null;try{detail=await error.context?.json()}catch(_){}
+  throw new Error(detail?.error||error.message||'M-Pesa service unavailable');
+ }
+ if(data?.error)throw new Error(data.error);
+ return data;
+}
 async function sendMpesaStk(){
  if(S.busy||!S.paymentOrder||S.mpesaIntentId)return;
  const method=mpesaPaymentMethod(),phone=document.getElementById('mpesaPhone')?.value.trim(),
@@ -572,10 +581,9 @@ async function sendMpesaStk(){
   return show('STK amount must be a whole number of shillings within the unpaid balance.','error');
  S.busy=true;S.mpesaRequestId=S.mpesaRequestId||newUuid();const order=S.paymentOrder;
  try{
-  const {data,error}=await S.db.functions.invoke('finsight-mpesa-stk',{body:{
+  const data=await invokeMpesaFunction('finsight-mpesa-stk',{
    company_id:S.ws.company_id,outlet_id:S.ws.outlet_id,employee_token:S.token,
-   order_id:order,payment_type_id:method.id,amount,phone,request_id:S.mpesaRequestId}});
-  if(error||data?.error)throw Error(data?.error||error?.message||'M-Pesa request unavailable');
+   order_id:order,payment_type_id:method.id,amount,phone,request_id:S.mpesaRequestId});
   if(!data?.intent_id)throw Error('No M-Pesa tracking reference received');
   S.mpesaIntentId=data.intent_id;S.mpesaOrder=order;
   S.mpesaMessage=data.message||'Waiting for M-Pesa confirmation';
@@ -591,10 +599,9 @@ async function checkMpesaStatus(userInitiated=false){
  if(S.busy||!S.mpesaIntentId||S.mpesaOrder!==S.paymentOrder)return;
  S.busy=true;S.mpesaChecks++;
  try{
-  const {data,error}=await S.db.functions.invoke('finsight-mpesa-check',{body:{
+  const data=await invokeMpesaFunction('finsight-mpesa-check',{
    company_id:S.ws.company_id,outlet_id:S.ws.outlet_id,
-   employee_token:S.token,intent_id:S.mpesaIntentId}});
-  if(error||data?.error)throw Error(data?.error||error?.message||'Status unavailable');
+   employee_token:S.token,intent_id:S.mpesaIntentId});
   if(data.state==='Confirmed'){
    clearTimeout(S.mpesaTimer);
    S.mpesaMessage='M-Pesa payment verified'+(data.receipt?' · '+data.receipt:'');
