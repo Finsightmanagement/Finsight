@@ -51,9 +51,9 @@ const when=x=>x?new Date(x).toLocaleString('en-KE',{dateStyle:'medium',timeStyle
 const localDay=x=>x?new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Nairobi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(x)):'';
 function newUuid(){if(globalThis.crypto?.randomUUID)return crypto.randomUUID();if(!globalThis.crypto?.getRandomValues)throw Error('Secure random identifiers are unavailable. Open through a local server.');const bytes=new Uint8Array(16);crypto.getRandomValues(bytes);bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;const hex=[...bytes].map(v=>v.toString(16).padStart(2,'0')).join('');return [hex.slice(0,8),hex.slice(8,12),hex.slice(12,16),hex.slice(16,20),hex.slice(20)].join('-')}
 const b=(name,call,cls='')=>`<button class="btn ${cls}" type="button" onclick="${call}">${name}</button>`;
-const S={db:null,user:null,ws:null,selection:'',role:'',employee:null,token:null,choices:[],page:'',setup:null,employees:[],menu:[],orders:[],tables:[],reports:[],reportLines:[],selectedShift:null,reportDate:'',historyDate:'',cart:[],category:'All',orderNotes:'',checkoutDialog:false,checkoutRequest:null,paymentRows:[],pricingOptions:[],selectedRules:[],modifierGroups:[],adminPricing:[],adminModifiers:{groups:[],options:[],links:[]},adminPaymentTypes:[],incomeAccounts:[],menuMapping:null,preferences:null,tillSummary:null,reconInfo:null,liveChannel:null,paymentOrder:null,paymentBalance:null,paymentMethods:[],paymentRequest:null,orderType:'Dine In',tableId:'',requestId:null,busy:false,notice:'',noticeType:'ok',showEmployees:false,adminOpen:{tables:false,pricing:false,modifiers:false,payments:false,linking:false},appearanceOpen:false,adminMenuCategory:'',adminAddMenu:false,resetId:null,prepFilter:'active',timer:null,uploading:'',hasAdmin:false,discardOpen:false,menuEditId:null,shiftDetail:null,receipt:null,receiptLogoUploading:false};
+const S={db:null,user:null,ws:null,selection:'',role:'',employee:null,token:null,choices:[],page:'',setup:null,employees:[],menu:[],orders:[],tables:[],reports:[],reportLines:[],selectedShift:null,reportDate:'',historyDate:'',cart:[],category:'All',orderNotes:'',checkoutDialog:false,checkoutRequest:null,paymentRows:[],pricingOptions:[],selectedRules:[],modifierGroups:[],adminPricing:[],adminModifiers:{groups:[],options:[],links:[]},adminPaymentTypes:[],incomeAccounts:[],menuMapping:null,preferences:null,tillSummary:null,reconInfo:null,liveChannel:null,paymentOrder:null,paymentBalance:null,paymentMethods:[],paymentRequest:null,orderType:'Dine In',tableId:'',requestId:null,busy:false,notice:'',noticeType:'ok',showEmployees:false,adminOpen:{tables:false,pricing:false,modifiers:false,payments:false,linking:false},appearanceOpen:false,adminMenuCategory:'',adminAddMenu:false,resetId:null,prepFilter:'active',timer:null,uploading:'',hasAdmin:false,discardOpen:false,menuEditId:null,shiftDetail:null,receipt:null,receiptLogoUploading:false,integrationData:null};
 const CACHE={times:Object.create(null),inflight:new Map(),epoch:0};
-const TTL={management:45000,reports:30000,receipt:60000,checkout:90000,history:20000,tables:15000,shift:15000,kitchen:25000};
+const TTL={management:45000,reports:30000,receipt:60000,integrations:60000,checkout:90000,history:20000,tables:15000,shift:15000,kitchen:25000};
 const validCache=(name)=>Date.now()-(CACHE.times[name]||0)<(TTL[name]||30000);
 const stamp=(name)=>{CACHE.times[name]=Date.now()};
 const clearCache=()=>{CACHE.times=Object.create(null);CACHE.inflight.clear();CACHE.epoch++};
@@ -88,7 +88,7 @@ function applyPreferences(){
 }
 async function loadChoices(){if(!S.ws)return;S.choices=await rpc('pos_employee_list',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_role:null})||[];S.hasAdmin=S.choices.some(e=>e.role==='Admin')}
 function noAccess(){root.innerHTML=`<div class="modalwrap"><div class="authpanel"><h2>POS Access</h2>${notice()}<p>Your shared FinSight login does not have an active POS workspace.</p>${b('Sign Out','logout()')}</div></div>`}
-function chooseRole(){clearCache();if(S.liveChannel){S.db.removeChannel(S.liveChannel);S.liveChannel=null;}clearInterval(S.timer);S.selection='';S.notice='';S.token=null;S.employee=null;S.role='';S.page='';S.cart=[];S.orders=[];S.menu=[];S.setup=null;S.employees=[];S.tillSummary=null;S.shiftDetail=null;S.reconInfo=null;S.paymentBalance=null;S.paymentMethods=[];render()}
+function chooseRole(){clearCache();if(S.liveChannel){S.db.removeChannel(S.liveChannel);S.liveChannel=null;}clearInterval(S.timer);S.selection='';S.notice='';S.token=null;S.employee=null;S.role='';S.page='';S.cart=[];S.orders=[];S.menu=[];S.setup=null;S.employees=[];S.tillSummary=null;S.shiftDetail=null;S.reconInfo=null;S.integrationData=null;S.paymentBalance=null;S.paymentMethods=[];render()}
 function selectRole(role){S.selection=role;S.notice='';render()}
 function choicePage(){const names=S.choices.filter(e=>e.role===S.selection);root.innerHTML=`<div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div>${notice()}${!S.selection?`<h2>Choose Workspace</h2><p class="muted">${esc(S.ws.company_name)} · ${esc(S.ws.outlet_name)}</p><div class="rolegrid"><button class="role" onclick="selectRole('Cashier')"><span>▣</span>Cashier</button><button class="role" onclick="selectRole('Kitchen')"><span>♨</span>Kitchen</button><button class="role" onclick="selectRole('Admin')"><span>⚙</span>Admin</button></div>`:`<h2>${esc(S.selection)} Sign In</h2>${S.selection==='Admin'&&!S.hasAdmin&&S.ws.role==='admin'?`<div class="field"><label>First Admin Name</label><input id="bootstrapName" maxlength="100"></div><div class="field"><label>Admin PIN</label><input id="bootstrapPin" type="password" inputmode="numeric" maxlength="8"></div>${b('Create First Admin','bootstrapAdmin()','primary wide')}`:`<div class="field"><label>Employee</label><select id="chosenEmployee">${names.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select></div><div class="field"><label>PIN</label><input id="employeePin" type="password" maxlength="8" inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter')enterEmployee()"></div>${b('Sign In','enterEmployee()','primary wide')}${names.length?'':'<p class="hint">No active employees for this role. Admin can add them in Employees.</p>'}`}<div style="margin-top:14px">${b('Back','chooseRole()')} ${b('Sign Out','logout()')}</div>`}</div></div>`}
 async function bootstrapAdmin(){const name=document.getElementById('bootstrapName')?.value.trim(),pin=document.getElementById('bootstrapPin')?.value;if(!name||!/^[0-9]{4,8}$/.test(pin||''))return show('Enter Admin name and a 4–8 digit PIN.','error');if(S.busy)return;S.busy=true;try{await rpc('pos_bootstrap_admin',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_name:name,p_pin:pin});await loadChoices();S.notice='Admin created. Select the Admin name and enter the PIN.';S.noticeType='ok';render()}catch(e){show('Could not create Admin: '+e.message,'error')}finally{S.busy=false}}
@@ -131,8 +131,8 @@ function setRefresh(){
   .subscribe(status=>{if(status==='CHANNEL_ERROR')console.warn('Kitchen Realtime disconnected; fallback remains active')});
  S.timer=setInterval(refresh,15000);
 }
-function shell(){const groups=S.role==='Admin'?[['management','Back Office','⚙'],['reports','Shift Reports','▤'],['receipt','Receipt Templates','▧']]:S.role==='Kitchen'?[['kitchen','Kitchen Orders','♨']]:[['checkout','Checkout','▣'],['history','Order History','▤'],['tables','Tables','▦'],['shift','Till Shift','◷']];return `<div class="app"><aside class="sidebar"><div class="brand"><span class="mark">F</span> FinSight POS</div>${groups.map(([id,label,ico])=>`<button class="nav ${S.page===id?'active':''}" onclick="go('${id}')">${ico} &nbsp; ${label}</button>`).join('')}<div class="sidebottom">${esc(S.ws.company_name)} · ${esc(S.role)}</div></aside><main class="main"><div class="topbar"><div><div class="sub">${esc(S.ws.company_name)} · ${esc(S.ws.outlet_name)}</div><h1 style="margin:2px 0 0">${esc(Object.fromEntries(groups.map(([id,label])=>[id,label]))[S.page]||'FinSight POS')}</h1></div><div class="actions"><span class="pill">${esc(S.employee?.name)}</span>${b('Switch Workspace','chooseRole()')}${b('Sign Out','logout()')}</div></div>${notice()}${screen()}</main></div>`}
-function screen(){switch(S.page){case 'management':return management();case 'reports':return reports();case 'receipt':return receiptPage();case 'checkout':return checkout();case 'history':return history();case 'tables':return tables();case 'shift':return shift();case 'kitchen':return kitchen();default:return ''}}
+function shell(){const groups=S.role==='Admin'?[['management','Back Office','⚙'],['reports','Shift Reports','▤'],['receipt','Receipt Templates','▧'],['integrations','Integrations','⇄']]:S.role==='Kitchen'?[['kitchen','Kitchen Orders','♨']]:[['checkout','Checkout','▣'],['history','Order History','▤'],['tables','Tables','▦'],['shift','Till Shift','◷']];return `<div class="app"><aside class="sidebar"><div class="brand"><span class="mark">F</span> FinSight POS</div>${groups.map(([id,label,ico])=>`<button class="nav ${S.page===id?'active':''}" onclick="go('${id}')">${ico} &nbsp; ${label}</button>`).join('')}<div class="sidebottom">${esc(S.ws.company_name)} · ${esc(S.role)}</div></aside><main class="main"><div class="topbar"><div><div class="sub">${esc(S.ws.company_name)} · ${esc(S.ws.outlet_name)}</div><h1 style="margin:2px 0 0">${esc(Object.fromEntries(groups.map(([id,label])=>[id,label]))[S.page]||'FinSight POS')}</h1></div><div class="actions"><span class="pill">${esc(S.employee?.name)}</span>${b('Switch Workspace','chooseRole()')}${b('Sign Out','logout()')}</div></div>${notice()}${screen()}</main></div>`}
+function screen(){switch(S.page){case 'management':return management();case 'reports':return reports();case 'receipt':return receiptPage();case 'integrations':return integrationsPage();case 'checkout':return checkout();case 'history':return history();case 'tables':return tables();case 'shift':return shift();case 'kitchen':return kitchen();default:return ''}}
 
 // Each POS employee workspace has its own browser-tab icon.
 // Icons are embedded as SVG, so no remote asset or extra loading request is required.
@@ -156,7 +156,7 @@ function setPosTabIdentity(){
 
 function render(){setPosTabIdentity();if(!S.db){root.innerHTML='<div class="card">Connecting to Supabase…</div>';return}if(!S.user)return loginPage();if(!S.ws)return noAccess();if(!S.role||!S.token)return choicePage();root.innerHTML=shell();updateKitchenTimers()}
 async function go(page){
- const allowed=S.role==='Admin'?['management','reports','receipt']:S.role==='Kitchen'?['kitchen']:['checkout','history','tables','shift'];
+ const allowed=S.role==='Admin'?['management','reports','receipt','integrations']:S.role==='Kitchen'?['kitchen']:['checkout','history','tables','shift'];
  if(!allowed.includes(page))return;
  S.page=page;S.notice='';render();
  void loadPage(page,false);
@@ -171,6 +171,7 @@ async function loadPage(page,force=false){
    if(page==='management')await loadAdmin();
    else if(page==='reports')await loadReports();
    else if(page==='receipt')await loadReceipt();
+   else if(page==='integrations')await loadIntegrations();
    else if(page==='kitchen')await loadKitchen();
    else if(page==='history')await loadHistory();
    else if(page==='tables')await loadTables();
@@ -353,6 +354,44 @@ function closeShiftDetail(){S.selectedShift=null;S.shiftDetail=null;S.reportLine
 function openAdminShift(){action('pos_employee_setup',arg({p_action:'open_shift',p_data:{outlet_id:S.ws.outlet_id}}),'Till shift opened.',async()=>{await loadReports();await refreshWorkspace()})}
 function reviewShift(status){if(!S.selectedShift)return;const note=status==='Discarded'?(document.getElementById('discardReason')?.value.trim()||''):'';if(status==='Discarded'&&note.length<5)return show('Enter a reason for discarding the shift.','error');action('pos_employee_review_shift',arg({p_shift:S.selectedShift,p_status:status,p_note:note}),'Shift review: '+status,async()=>{await loadReports();S.shiftDetail=await rpc('pos_employee_shift_report',arg({p_shift:S.selectedShift}))})}
 
+async function loadIntegrations(){S.integrationData=await rpc('pos_admin_integrations',arg({p_action:'list',p_integration:null,p_data:{}}))}
+function integrationChoice(type){return (S.integrationData?.integrations||[]).find(x=>x.integration===type)||null}
+function integrationCard(type,label,providers){
+ const value=integrationChoice(type);
+ const id=type==='eTIMS'?'etims':type==='M-Pesa'?'mpesa':'pdq';
+ const providerOptions=providers.map(v=>`<option value="${esc(v)}" ${value?.provider===v?'selected':''}>${esc(v)}</option>`).join('');
+ return `<div class="card"><div class="row"><h3 style="margin:0">${esc(label)}</h3><span class="tag">${esc(value?.status||'Not Connected')}</span></div>
+ <div class="field" style="margin-top:16px"><label>Provider</label><select id="integrationProvider_${id}">${providerOptions}</select></div>
+ <div class="field"><label>${type==='eTIMS'?'Branch / device reference':type==='M-Pesa'?'Business Shortcode / Till':'Merchant / terminal reference'}</label>
+ <input id="integrationRef_${id}" maxlength="120" autocomplete="off" value="${esc(value?.reference||'')}"></div>
+ <div class="row"><span class="pill">Sandbox preparation</span>${b('Save Settings',`saveIntegration('${id}')`,'primary')}</div></div>`;
+}
+function integrationsPage(){
+ const d=S.integrationData;
+ return `<div class="two">
+ ${integrationCard('eTIMS','KRA eTIMS',['KRA OSCU','Certified Integrator'])}
+ ${integrationCard('M-Pesa','M-Pesa',['Safaricom Daraja'])}
+ ${integrationCard('PDQ','PDQ / Card',['Pesapal Sabi','Bank PDQ'])}
+ </div>
+ <div class="card" style="margin-top:16px"><h3>Integration Status</h3>
+ <div class="row"><strong>Environment</strong><span>Sandbox preparation</span></div>
+ <div class="row" style="margin-top:12px"><strong>Pending provider payments</strong><span>${Number(d?.pending_payments||0)}</span></div>
+ <div class="row" style="margin-top:12px"><strong>Fiscal documents awaiting provider</strong><span>${Number(d?.fiscal_awaiting||0)}</span></div>
+ </div>`;
+}
+async function saveIntegration(id){
+ const options={etims:['eTIMS',['KRA OSCU','Certified Integrator']],mpesa:['M-Pesa',['Safaricom Daraja']],pdq:['PDQ',['Pesapal Sabi','Bank PDQ']]};
+ const config=options[id];if(!config)return;
+ const provider=document.getElementById('integrationProvider_'+id)?.value;
+ const reference=document.getElementById('integrationRef_'+id)?.value.trim()||'';
+ if(!config[1].includes(provider)||reference.length>120)return show('Invalid provider configuration.','error');
+ if(S.busy)return;S.busy=true;
+ try{
+  await rpc('pos_admin_integrations',arg({p_action:'save',p_integration:config[0],p_data:{provider,reference}}));
+  await loadIntegrations();stamp('integrations');
+  show(config[0]+' settings saved. Provider connection is not yet active.');
+ }catch(e){show(e.message,'error')}finally{S.busy=false}
+}
 async function loadReceipt(){S.receipt=await rpc('pos_receipt_settings',arg({p_data:null}))}
 function receiptLogo(){const path=S.receipt?.logo_path;if(!path||!path.startsWith(S.ws.company_id+'/receipt/'))return '';return S.db.storage.from('finsight-pos-menu').getPublicUrl(path).data.publicUrl}
 function receiptPreview(data){const company=esc(S.ws.company_name),logo=data.logo_path?receiptLogo():'';return `<div class="receipt-preview" style="width:${data.paper_mm===58?230:300}px">${logo?`<img src="${esc(logo)}" alt="Company logo">`:''}<div style="font-weight:bold;font-size:16px">${company}</div><div>${esc(S.ws.outlet_name)}</div><div>${esc(data.address_text||'')}</div><div>${esc(data.phone_text||'')}</div><hr><strong>${esc(data.receipt_heading||'RECEIPT')}</strong><div>PREVIEW ONLY · NOT A FISCAL RECEIPT</div>${data.show_order_number?'<div>Order: SAMPLE-001</div>':''}<div>Date: '+esc(when(new Date().toISOString()))+'</div>${data.show_cashier?'<div>Cashier: Sample Cashier</div>':''}<hr><div class="rline"><span>1 × Sample Item</span><span>KES 750.00</span></div><hr><div class="rline"><strong>Total</strong><strong>KES 750.00</strong></div>${data.show_payment_method?'<div>Payment: Sample only</div>':''}<hr><div>${esc(data.footer_text||'')}</div></div>`}
