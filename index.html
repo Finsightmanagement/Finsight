@@ -4380,6 +4380,10 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     const {data:memberships,error:membershipErr}=await sb.from('company_memberships').select('company_id,role,is_active').eq('user_id',user.id).eq('is_active',true); if(membershipErr)throw membershipErr;
     const membership=(memberships||[])[0]; if(!membership)throw new Error('No active FinSight company membership found');
     const cid=membership.company_id;
+    // Central FinSight licensing: deny the Accounting workspace before hydrating any company data.
+    const {data:accountingEnabled,error:licenseError}=await sb.rpc('finsight_accounting_is_enabled',{p_company:cid});
+    if(licenseError)throw new Error('Unable to verify FinSight Accounting access: '+licenseError.message);
+    if(accountingEnabled!==true)throw new Error('FinSight Accounting is disabled for this company. Contact your FinSight administrator to restore access. POS access is managed separately.');
     const {data:company,error:companyErr}=await sb.from('companies').select('id,name').eq('id',cid).single(); if(companyErr||!company)throw companyErr||new Error('FinSight company not found');
     const access={...profile,company_id:cid,role:membership.role,company_name:company.name};
     window.finsightOnline.profile=access;window.finsightOnline.companyId=cid;window.finsightOnline.company=company;window.finsightOnline.role=membership.role;
@@ -4424,6 +4428,25 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     try{document.dispatchEvent(new CustomEvent('finsight:cloud-state-loaded',{detail:{companyId:cid,role:membership.role}}));}catch(_){}
   }
   window.finsightReloadCloudState=loadCloudState;
+  // An existing browser tab must also stop presenting Accounting if its licence is suspended.
+  let lastAccountingAccessCheck=0;
+  async function recheckAccountingAccess(){
+    const cid=window.finsightOnline.companyId;
+    if(!cid||!gate.classList.contains('hidden')||Date.now()-lastAccountingAccessCheck<2500)return;
+    lastAccountingAccessCheck=Date.now();
+    try{
+      const {data:enabled,error}=await sb.rpc('finsight_accounting_is_enabled',{p_company:cid});
+      if(error||enabled!==false)return;
+      window.finsightOnline.companyId=null;window.finsightOnline.company=null;window.finsightOnline.profile=null;
+      state=newState();
+      errEl.textContent='FinSight Accounting access has been disabled for this company. Contact your FinSight administrator. POS access is separate.';
+      gate.classList.remove('hidden');document.body.classList.remove('online-loading');
+      loginBtn.disabled=false;emailEl.disabled=false;passEl.disabled=false;
+      setStatus('Accounting access suspended','bad');
+    }catch(e){console.warn('Unable to refresh Accounting licence:',e.message)}
+  }
+  window.addEventListener('focus',recheckAccountingAccess);
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)recheckAccountingAccess()});
   async function signIn(){errEl.textContent='';loginBtn.disabled=true;loginBtn.textContent='Signing in…';try{const email=emailEl.value.trim(),password=passEl.value;if(!email||!password)throw new Error('Enter your email and password.');const {error}=await sb.auth.signInWithPassword({email,password});if(error)throw error;await loadCloudState()}catch(e){fail(e.message||String(e))}finally{loginBtn.disabled=false;loginBtn.textContent='Sign In'}}
   loginBtn.addEventListener('click',signIn);passEl.addEventListener('keydown',e=>{if(e.key==='Enter')signIn()});signoutBtn.addEventListener('click',async()=>{await sb.auth.signOut();location.reload()});
   if(window.finsightPasswordRecovery)window.finsightPasswordRecovery.attach(sb,gate);
