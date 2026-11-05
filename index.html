@@ -4950,7 +4950,29 @@ async function rpc(name,args){const sb=window.finsightSupabase,cid=window.finsig
 function dates(f,t){const now=new Date(),end=t||now.toISOString().slice(0,10),start=f||new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),1)).toISOString().slice(0,10);return {start,end};}
 function hdr(title,start,end){return typeof reportHeader==='function'?reportHeader(title,start,end):`<div class="report-headline"><h3>${esc(title)}</h3><div>${esc(start)} to ${esc(end)}</div></div>`;}
 async function pnl(start,end){return Promise.all([rpc('get_profit_and_loss',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end}),rpc('get_profit_and_loss_summary',{p_company_id:window.finsightOnline.companyId,p_start_date:start,p_end_date:end})]);}
-function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingError){
+async function paymentTypeRevenue(start,end){
+  const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+  if(!sb||!cid)throw new Error('FinSight cloud connection is not ready.');
+  const {data:types,error:typeError}=await sb.from('payment_types').select('id,name').eq('company_id',cid);
+  if(typeError)throw typeError;
+  const names=new Map((types||[]).map(x=>[String(x.id),String(x.name||'Unspecified')]));
+  const amounts=new Map([...names.values()].map(name=>[name,0]));
+  const pageSize=1000;
+  for(let offset=0;;offset+=pageSize){
+    const {data,error}=await sb.from('sales')
+      .select('id,payment_type_id,total_amount')
+      .eq('company_id',cid).gte('sale_date',start).lte('sale_date',end)
+      .order('id',{ascending:true}).range(offset,offset+pageSize-1);
+    if(error)throw error;
+    for(const sale of data||[]){
+      const name=names.get(String(sale.payment_type_id))||'Unspecified';
+      amounts.set(name,(amounts.get(name)||0)+Number(sale.total_amount||0));
+    }
+    if(!data||data.length<pageSize)break;
+  }
+  return [...amounts].map(([name,amount])=>({name,amount})).sort((a,b)=>b.amount-a.amount||a.name.localeCompare(b.name));
+}
+function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingError,paymentRevenue,paymentRevenueError){
   // Periodic inventory is the management food-cost calculation; purchases alone are NOT food cost.
   // The posted Food Cost account may contain the purchases already booked by supplier bills.
   // Preserve the ledger figures separately and never silently change financial journal entries.
@@ -4973,7 +4995,14 @@ function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingErro
   const heading=label=>`<tr class="section-heading"><td colspan="3">${esc(label)}</td></tr>`;
   const section=label=>detail.filter(r=>String(v(r,'section','account_type')).trim().toLowerCase()===label.toLowerCase());
   const accountRows=rs=>rs.map(r=>tr(v(r,'account_name','name')||'Unnamed account',n(r,'amount','balance'))).join('');
-  let body=heading('Revenue')+accountRows(section('Revenue'))+tr('Total Revenue',rev,'subtotal');
+  const paymentRows=paymentRevenueError
+    ? accountRows(section('Revenue'))
+    : (paymentRevenue||[]).map(x=>tr(x.name,x.amount)).join('');
+  const mappedTotal=(paymentRevenue||[]).reduce((sum,x)=>sum+Number(x.amount||0),0);
+  const adjustment=rev-mappedTotal;
+  const reconciliationRow=!paymentRevenueError&&Math.abs(adjustment)>0.01
+    ?tr('Unallocated Posted Revenue / Reconciliation',adjustment):'';
+  let body=heading('Revenue')+paymentRows+reconciliationRow+tr('Total Revenue',rev,'subtotal');
   body+=tr('Less: VAT @ 16%',-vat,'',false);
   body+=tr('Less: Catering Levy @ 2%',-levy,'',false);
   body+=tr('Revenue After VAT & Catering Levy',exclusive,'subtotal');
@@ -5043,8 +5072,8 @@ async function renderAccountingLive(){
  pbox.innerHTML='<div class="live-fin-loading">Loading live P&amp;L…</div>';
  cbox.innerHTML='<div class="live-fin-loading">Loading live cash flow…</div>';
  try{
-  const [pr,cr,inv,posting]=await Promise.all([pnl(pd.start,pd.end),cash(cd.start,cd.end),inventoryForPnl(pd.start,pd.end),postingForPnl(pd.start,pd.end)]);
-  pbox.innerHTML=pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error);
+  const [pr,cr,inv,posting,ptRevenue]=await Promise.all([pnl(pd.start,pd.end),cash(cd.start,cd.end),inventoryForPnl(pd.start,pd.end),postingForPnl(pd.start,pd.end),paymentTypeRevenue(pd.start,pd.end).then(data=>({data,error:null}),e=>({data:null,error:e.message||String(e)}))]);
+  pbox.innerHTML=pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error,ptRevenue.data,ptRevenue.error);
   cbox.innerHTML='<div class="live-fin-note">Live from posted accounting journals.</div>'+cashHTML(cr[0],cr[1]);
  }catch(e){console.error('[FinSight Accounting P&L]',e);const h=`<div class="live-fin-error">${esc(e.message||String(e))}</div>`;pbox.innerHTML=h;cbox.innerHTML=h;}
 }
@@ -5079,9 +5108,9 @@ async function renderLiveReportPnlOnly(){
  const d=dates(q('#reportFrom')?.value,q('#reportTo')?.value);
   box.innerHTML='<div class="report-card"><div class="live-fin-loading">Loading live P&amp;L…</div></div>';
  try{
-  const [pr,inv,posting]=await Promise.all([pnl(d.start,d.end),inventoryForPnl(d.start,d.end),postingForPnl(d.start,d.end)]);
+  const [pr,inv,posting,ptRevenue]=await Promise.all([pnl(d.start,d.end),inventoryForPnl(d.start,d.end),postingForPnl(d.start,d.end),paymentTypeRevenue(d.start,d.end).then(data=>({data,error:null}),e=>({data:null,error:e.message||String(e)}))]);
   if(token!==livePnlOnlySequence)return;
-  box.innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error)}</div>`;
+  box.innerHTML=`<div class="report-card">${hdr('PROFIT & LOSS',d.start,d.end)}${pnlHTML(pr[0],pr[1],inv.data,inv.error,posting.data,posting.error,ptRevenue.data,ptRevenue.error)}</div>`;
  }catch(e){if(token===livePnlOnlySequence)box.innerHTML=`<div class="report-card"><div class="live-fin-error">${esc(e.message||String(e))}</div></div>`;}
 }
 document.addEventListener('click',e=>{if(e.target.closest('.report-tab[data-report="pl"]'))setTimeout(renderLiveReportPnlOnly,40)});
