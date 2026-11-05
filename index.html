@@ -4970,7 +4970,7 @@ async function paymentTypeRevenue(start,end){
     }
     if(!data||data.length<pageSize)break;
   }
-  return [...amounts].map(([name,amount])=>({name,amount})).sort((a,b)=>b.amount-a.amount||a.name.localeCompare(b.name));
+  return [...amounts].map(([name,amount])=>({name,amount})).filter(row=>Math.abs(row.amount)>0.000001).sort((a,b)=>b.amount-a.amount||a.name.localeCompare(b.name));
 }
 function pnlHTML(rows,summary,inventory,inventoryError,periodPosting,postingError,paymentRevenue,paymentRevenueError){
   // Periodic inventory is the management food-cost calculation; purchases alone are NOT food cost.
