@@ -2018,36 +2018,6 @@ renderAll();
     return {acc,rows,totalIn,totalOut,balance:bal};
   }
 
-  window.openAccountStatement=function(accountId){
-    const d=accountStatementData(accountId); if(!d.acc)return;
-    const body=`<div class="statement-summary">
-      <div class="card"><div class="muted">Total Debit / In</div><b>${money(d.totalIn)}</b></div>
-      <div class="card"><div class="muted">Total Credit / Out</div><b>${money(d.totalOut)}</b></div>
-      <div class="card"><div class="muted">Current Balance</div><b>${money(d.balance)}</b></div>
-    </div>
-    <div style="overflow:auto"><table style="min-width:780px"><thead><tr><th>Date</th><th>Transaction</th><th>Reference</th><th>Memo</th><th>Debit / In</th><th>Credit / Out</th><th>Balance</th></tr></thead><tbody>
-    ${d.rows.length?d.rows.map(r=>`<tr><td>${r.date||""}</td><td>${r.type}</td><td>${r.ref||""}</td><td>${r.memo||""}</td><td>${r.debit?money(r.debit):"—"}</td><td>${r.credit?money(r.credit):"—"}</td><td><b>${money(r.balance)}</b></td></tr>`).join(""):`<tr><td colspan="7"><div class="empty-state">No transactions for this account yet.</div></td></tr>`}
-    </tbody></table></div>`;
-    if(typeof openModal==="function") openModal(`${d.acc.name} — Quick Statement`,`Chart of Accounts statement`,body);
-  };
-
-  function addCoaStatementButtons(){
-    // Attach Statement buttons to existing account table rows using any data-id from Edit/Delete buttons.
-    const tables=$$q("table");
-    tables.forEach(tbl=>{
-      const heads=[...tbl.querySelectorAll("thead th")].map(x=>x.textContent.trim().toLowerCase());
-      if(!heads.some(x=>x.includes("account")))return;
-      tbl.querySelectorAll("tbody tr").forEach(tr=>{
-        if(tr.querySelector(".coa-statement-btn"))return;
-        const btn=tr.querySelector("[data-id]");
-        const id=btn?.dataset?.id;
-        if(!id || !(state.accounts||[]).some(a=>a.id===id))return;
-        const td=tr.lastElementChild;
-        if(td){const b=document.createElement("button");b.className="mini-btn coa-statement-btn";b.textContent="Statement";b.dataset.id=id;b.onclick=()=>openAccountStatement(id);td.prepend(b,document.createTextNode(" "));}
-      });
-    });
-  }
-
   // ---- Petty cash is linked by account name/subtype ----
   function pettyAccount(){
     return (state.accounts||[]).find(a=>a.active && (/^petty cash$/i.test((a.name||"").trim()) || /petty cash/i.test(a.name||""))) ||
@@ -2203,7 +2173,6 @@ renderAll();
   }
 
   function finalRefresh(){
-    addCoaStatementButtons();
     renderPettyCashConsumption();
     patchReportButtons();
   }
@@ -6095,39 +6064,53 @@ async function deactivateAccount(id){
 
 // Bank/Chart of Accounts balances: read posted ledger journals, company-scoped.
 let fsCoaBalanceRun=0;
+let fsDashBankRun=0;
+let fsLedgerCache={companyId:null,stamp:0,totals:null,pending:null};
+async function fsLedgerTotals(cid){
+  const now=Date.now();
+  if(fsLedgerCache.companyId===cid){
+    if(fsLedgerCache.pending)return fsLedgerCache.pending;
+    if(fsLedgerCache.totals && now-fsLedgerCache.stamp<4000)return fsLedgerCache.totals;
+  }else fsLedgerCache={companyId:cid,stamp:0,totals:null,pending:null};
+  const pending=(async()=>{
+    const sb=window.finsightSupabase;
+    const totals=new Map();
+    for(let offset=0;;offset+=750){
+      const {data,error}=await sb.from('journal_lines').select('id,account_id,debit,credit')
+        .eq('company_id',cid).order('id',{ascending:true}).range(offset,offset+749);
+      if(error)throw error;
+      for(const l of data||[]){
+        const id=String(l.account_id);
+        const t=totals.get(id)||{dr:0,cr:0};
+        t.dr+=Number(l.debit||0);t.cr+=Number(l.credit||0);totals.set(id,t);
+      }
+      if(!data||data.length<750)break;
+    }
+    if(fsLedgerCache.companyId===cid){fsLedgerCache.totals=totals;fsLedgerCache.stamp=Date.now();}
+    return totals;
+  })();
+  fsLedgerCache.pending=pending;
+  try{return await pending;}
+  finally{if(fsLedgerCache.companyId===cid&&fsLedgerCache.pending===pending)fsLedgerCache.pending=null;}
+}
 async function fsLoadCoaBalances(){
   const run=++fsCoaBalanceRun;
-  const sb=window.finsightSupabase, cid=window.finsightOnline?.companyId;
-  if(!sb||!cid)return;
+  const cid=window.finsightOnline?.companyId;
+  if(!window.finsightSupabase||!cid)return;
   const cells=[...document.querySelectorAll('#coaTable [data-fs-coa-balance]')];
   if(!cells.length)return;
   cells.forEach(n=>n.textContent='Loading…');
   try{
-    const ids=[];
-    for(let offset=0;;offset+=750){
-      const {data,error}=await sb.from('journal_entries').select('id').eq('company_id',cid).range(offset,offset+749);
-      if(error)throw error;
-      ids.push(...(data||[]).map(x=>x.id));
-      if(!data||data.length<750)break;
-    }
-    const totals=new Map();
-    for(let offset=0;offset<ids.length;offset+=100){
-      const {data,error}=await sb.from('journal_lines').select('account_id,debit,credit').in('journal_entry_id',ids.slice(offset,offset+100));
-      if(error)throw error;
-      for(const l of data||[]){
-        const t=totals.get(l.account_id)||{dr:0,cr:0};
-        t.dr+=Number(l.debit||0);t.cr+=Number(l.credit||0);totals.set(l.account_id,t);
-      }
-    }
+    const totals=await fsLedgerTotals(cid);
     if(run!==fsCoaBalanceRun||window.finsightOnline?.companyId!==cid)return;
-    for(const n of document.querySelectorAll('#coaTable [data-fs-coa-balance]')){
-      const a=(state.accounts||[]).find(x=>String(x.id)===n.dataset.fsCoaBalance);
+    const accountMap=new Map((state.accounts||[]).map(a=>[String(a.id),a]));
+    for(const node of document.querySelectorAll('#coaTable [data-fs-coa-balance]')){
+      const id=String(node.dataset.fsCoaBalance),a=accountMap.get(id);
       if(!a)continue;
-      const t=totals.get(a.id)||{dr:0,cr:0};
-      const creditNormal=['Liability','Equity','Income'].includes(a.type);
-      const balance=creditNormal?t.cr-t.dr:t.dr-t.cr;
-      n.textContent=balance.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
-      n.title='Ledger balance from posted journal lines: debit '+t.dr.toFixed(2)+' / credit '+t.cr.toFixed(2);
+      const t=totals.get(id)||{dr:0,cr:0};
+      const balance=['Liability','Equity','Income'].includes(a.type)?t.cr-t.dr:t.dr-t.cr;
+      node.textContent=balance.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+      node.title='Ledger balance from posted journal lines: debit '+t.dr.toFixed(2)+' / credit '+t.cr.toFixed(2);
     }
   }catch(error){
     if(run!==fsCoaBalanceRun)return;
@@ -6135,37 +6118,22 @@ async function fsLoadCoaBalances(){
     console.error('[FinSight COA balances]',error);
   }
 }
-// Dashboard bank cards: always show posted GL balances, never stale local receipts/cheques.
-let fsDashBankRun=0;
 window.fsRefreshDashboardBankGL=async function(){
- const run=++fsDashBankRun;
- const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
- const nodes=[...document.querySelectorAll('#bankCards [data-fs-bank-ledger]')];
- if(!sb||!cid||!nodes.length)return;
- try{
-  const ids=[];
-  for(let offset=0;;offset+=750){
-   const {data,error}=await sb.from('journal_entries').select('id').eq('company_id',cid).range(offset,offset+749);
-   if(error)throw error;
-   ids.push(...(data||[]).map(j=>j.id));
-   if((data||[]).length<750)break;
+  const run=++fsDashBankRun,cid=window.finsightOnline?.companyId;
+  const nodes=[...document.querySelectorAll('#bankCards [data-fs-bank-ledger]')];
+  if(!window.finsightSupabase||!cid||!nodes.length)return;
+  try{
+    const totals=await fsLedgerTotals(cid);
+    if(run!==fsDashBankRun||window.finsightOnline?.companyId!==cid)return;
+    for(const node of document.querySelectorAll('#bankCards [data-fs-bank-ledger]')){
+      const t=totals.get(String(node.dataset.fsBankLedger))||{dr:0,cr:0};
+      node.textContent='KSh '+(t.dr-t.cr).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+    }
+  }catch(err){
+    if(run!==fsDashBankRun)return;
+    for(const node of document.querySelectorAll('#bankCards [data-fs-bank-ledger]'))node.textContent='Unavailable';
+    console.error('[FinSight Dashboard bank GL]',err);
   }
-  const totals=new Map();
-  for(let start=0;start<ids.length;start+=100){
-   const {data,error}=await sb.from('journal_lines').select('account_id,debit,credit').in('journal_entry_id',ids.slice(start,start+100));
-   if(error)throw error;
-   for(const r of data||[])totals.set(String(r.account_id),(totals.get(String(r.account_id))||0)+Number(r.debit||0)-Number(r.credit||0));
-  }
-  if(run!==fsDashBankRun||window.finsightOnline?.companyId!==cid)return;
-  for(const node of document.querySelectorAll('#bankCards [data-fs-bank-ledger]')){
-   const value=totals.get(node.dataset.fsBankLedger)||0;
-   node.textContent='KSh '+value.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
-  }
- }catch(err){
-  if(run!==fsDashBankRun)return;
-  for(const node of document.querySelectorAll('#bankCards [data-fs-bank-ledger]'))node.textContent='Unavailable';
-  console.error('[FinSight Dashboard bank GL]',err);
- }
 };
 // Account statement is a read-only view of the same company-scoped posted journals.
 let fsCoaStatementData=[];
@@ -6177,8 +6145,8 @@ function fsCoaStatementModal(){
   let overlay=document.getElementById('fsCoaStatementOverlay');
   if(overlay)return overlay;
   overlay=document.createElement('div');overlay.id='fsCoaStatementOverlay';
-  overlay.style.cssText='position:fixed;inset:0;z-index:12000;background:rgba(15,23,42,.63);display:flex;align-items:center;justify-content:center;padding:18px';
-  overlay.innerHTML=`<section role="dialog" aria-modal="true" aria-label="Account Statement" style="background:var(--card,#fff);color:var(--text,#172033);border-radius:16px;max-width:1130px;width:100%;max-height:92vh;overflow:auto;padding:22px;box-shadow:0 24px 70px #0003">
+  overlay.style.cssText='position:fixed;inset:0;z-index:12000;background:rgba(15,23,42,.63);display:flex;align-items:center;justify-content:center;padding:12px';
+  overlay.innerHTML=`<section role="dialog" aria-modal="true" aria-label="Account Statement" style="background:var(--card,#fff);color:var(--text,#172033);border-radius:18px;max-width:1550px;width:100%;max-height:94vh;overflow:auto;padding:24px;box-shadow:0 24px 70px #0003">
    <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap"><h2 id="fsCoaStatementHeading" style="margin:0">Account Statement</h2><button type="button" id="fsCoaStatementClose" class="mini-btn">Close</button></div>
    <div style="display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin:16px 0"><label>From <input id="fsCoaStatementFrom" type="date" style="display:block;margin-top:5px"></label><label>To <input id="fsCoaStatementTo" type="date" style="display:block;margin-top:5px"></label><button id="fsCoaStatementRefresh" class="mini-btn" type="button">Apply</button><button id="fsCoaStatementExport" class="mini-btn" type="button">Export CSV</button></div>
    <div id="fsCoaStatementResult" aria-live="polite">Loading…</div>
@@ -6218,25 +6186,30 @@ async function fsCoaLoadStatement(accountId){
   if(!sb||!cid||!a){out.textContent='Select a company and try again.';return;}
   out.textContent='Loading posted journal transactions…';fsCoaStatementData=[];
   try{
-    const entries=[];
-    for(let offset=0;;offset+=750){
-      let qy=sb.from('journal_entries').select('*').eq('company_id',cid).order('entry_date',{ascending:true}).order('created_at',{ascending:true}).range(offset,offset+749);
-      if(to)qy=qy.lte('entry_date',to);
-      const {data,error}=await qy;if(error)throw error;
-      entries.push(...(data||[]));if(!data||data.length<750)break;
-    }
-    const entryMap=new Map(entries.map(e=>[String(e.id),e]));
+    // Load only the selected account's journal lines, never the entire company's journals.
     const movements=[];
-    const ids=entries.map(e=>e.id);
-    for(let offset=0;offset<ids.length;offset+=100){
-      const {data,error}=await sb.from('journal_lines').select('*').eq('account_id',accountId).in('journal_entry_id',ids.slice(offset,offset+100));
+    for(let offset=0;;offset+=750){
+      const {data,error}=await sb.from('journal_lines')
+        .select('id,journal_entry_id,account_id,debit,credit,description')
+        .eq('company_id',cid).eq('account_id',accountId)
+        .order('id',{ascending:true}).range(offset,offset+749);
       if(error)throw error;
       movements.push(...(data||[]));
+      if(!data||data.length<750)break;
     }
+    const movementIds=[...new Set(movements.map(l=>String(l.journal_entry_id)))];
+    const entries=[];
+    for(let offset=0;offset<movementIds.length;offset+=100){
+      const {data,error}=await sb.from('journal_entries')
+        .select('id,entry_date,created_at,reference,memo,source_type,status')
+        .eq('company_id',cid).in('id',movementIds.slice(offset,offset+100));
+      if(error)throw error;
+      entries.push(...(data||[]));
+    }
+    const entryMap=new Map(entries.map(e=>[String(e.id),e]));
     // Fetch the other journal lines for the same entries to show the actual double-entry account(s).
     // Batch by journal ID and company, so an account statement never reads another company's entries.
     const relatedByJournal=new Map();
-    const movementIds=[...new Set(movements.map(l=>String(l.journal_entry_id)))];
     for(let offset=0;offset<movementIds.length;offset+=100){
       const {data,error}=await sb.from('journal_lines').select('journal_entry_id,account_id,debit,credit')
         .eq('company_id',cid).in('journal_entry_id',movementIds.slice(offset,offset+100));
@@ -6277,8 +6250,13 @@ async function fsCoaLoadStatement(accountId){
       rows+=`<tr><td>${esc(e.entry_date||'')}</td><td>${esc(ref)}</td><td>${esc(desc)}</td><td>${esc(counterpart)}</td><td style="text-align:right">${fsCoaAmount(d)}</td><td style="text-align:right">${fsCoaAmount(c)}</td><td style="text-align:right">${fsCoaAmount(balance)}</td></tr>`;
     }
     fsCoaStatementData.push(['','Period Totals','','',deb.toFixed(2),cred.toFixed(2),balance.toFixed(2)]);
-    const tableStyle='width:100%;border-collapse:collapse;min-width:870px';
-    out.innerHTML=`<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px"><b>Opening: KSh ${fsCoaAmount(opening)}</b><b>Debits: KSh ${fsCoaAmount(deb)}</b><b>Credits: KSh ${fsCoaAmount(cred)}</b><b>Closing: KSh ${fsCoaAmount(balance)}</b></div>
+    const tableStyle='width:100%;border-collapse:collapse;min-width:870px;font-variant-numeric:tabular-nums';
+    out.innerHTML=`<div class="statement-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:18px">
+      <div class="card" style="padding:15px"><div class="muted">Opening Balance</div><b>KSh ${fsCoaAmount(opening)}</b></div>
+      <div class="card" style="padding:15px"><div class="muted">Total Debit / In</div><b>KSh ${fsCoaAmount(deb)}</b></div>
+      <div class="card" style="padding:15px"><div class="muted">Total Credit / Out</div><b>KSh ${fsCoaAmount(cred)}</b></div>
+      <div class="card" style="padding:15px"><div class="muted">Closing Balance</div><b>KSh ${fsCoaAmount(balance)}</b></div>
+    </div>
        <div style="overflow-x:auto"><table style="${tableStyle}"><thead><tr><th>Date</th><th>Reference</th><th>Description</th><th>Corresponding Account</th><th>Debit</th><th>Credit</th><th>Running Balance</th></tr></thead><tbody><tr><td></td><td><b>Opening Balance</b></td><td></td><td></td><td></td><td></td><td style="text-align:right"><b>${fsCoaAmount(opening)}</b></td></tr>${rows||'<tr><td colspan="7">No posted transactions in selected period.</td></tr>'}<tr><td colspan="4"><b>Period Totals / Closing Balance</b></td><td style="text-align:right"><b>${fsCoaAmount(deb)}</b></td><td style="text-align:right"><b>${fsCoaAmount(cred)}</b></td><td style="text-align:right"><b>${fsCoaAmount(balance)}</b></td></tr></tbody></table></div>`;
   }catch(error){if(request!==fsCoaStatementRequest)return;out.textContent='Unable to load account statement: '+(error.message||String(error));console.error('[FinSight account statement]',error);}
 }
@@ -6294,7 +6272,7 @@ function renderCloudCoaActions(){
       <td style="text-align:right;font-variant-numeric:tabular-nums"><span data-fs-coa-balance="${esc(a.id)}">Loading…</span></td>
       <td><span class="badge ${a.active===false?'amber':'green'}">${a.active===false?'Inactive':'Active'}</span></td>
       <td><div class="account-actions">
-        <button class="mini-btn fsCoaViewStatement" data-id="${esc(a.id)}" type="button">View Statement</button>
+        <button class="mini-btn fsCoaViewStatement" data-id="${esc(a.id)}" type="button">Statement</button>
         <button class="mini-btn cloudEditAccount" data-id="${esc(a.id)}" type="button">Edit</button>
         ${a.active===false?'':`<button class="mini-btn danger cloudDeactivateAccount" data-id="${esc(a.id)}" type="button">Deactivate</button>`}
       </div></td>
