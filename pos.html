@@ -504,22 +504,52 @@ async function submitCheckout(mode,payments){if(S.busy)return; if(!S.ws.shift_id
   const sum=payments.reduce((acc,p)=>acc+Math.round(Number(p.amount)*100),0);
   if(payments.some(p=>!p.payment_type_id||!Number.isFinite(p.amount)||p.amount<=0)||sum!==Math.round(due*100))return show('Payment amounts must add up exactly to the amount due.','error');
  }
- // Reserve print window synchronously on the user's click, before awaiting network I/O.
- const printTab=window.open('','_blank');if(printTab)printTab.document.write('<p>FinSight POS — preparing your document...</p>');
  S.busy=true;S.checkoutRequest=S.checkoutRequest||newUuid();
  try{
   const completed=await rpc('pos_checkout_atomic',checkoutPayload(mode,payments));
   S.checkoutDialog=false;S.paymentRows=[];S.checkoutRequest=null;S.cart=[];S.orderNotes='';S.selectedRules=[];
   S.paymentOrder=null;
-  try{await printCheckoutDocument(completed.order_id,printTab)}catch(printError){if(printTab)printTab.close();show('Checkout saved. Printing failed: '+printError.message,'error');return}
+  try{await printCheckoutDocument(completed.order_id)}catch(printError){show('Checkout saved. Printing failed: '+printError.message,'error');return}
   show(mode==='Paid'?'Paid order sent to Kitchen.':'Guest Bill sent to Kitchen — unpaid.');
   void loadHistory().catch(e=>console.warn('History refresh:',e.message));
- }catch(e){if(printTab)printTab.close();show('Order not saved: '+e.message,'error')}
+ }catch(e){show('Order not saved: '+e.message,'error')}
  finally{S.busy=false;}
 }
 function payAndPrint(){if(!S.checkoutDialog)return;const payments=readCheckoutPayments();if(payments.some(p=>isCheckoutMpesa(p.payment_type_id))){return checkoutMpesaFeedback('M-Pesa requires verified STK payment before an order can be sent to Kitchen. No payment has been collected.')}submitCheckout('Paid',payments)}
 function checkoutGuestBill(){submitCheckout('Guest Bill',[])}
-async function printCheckoutDocument(id,existingTab=null){
+
+async function printReceiptInPage(title,receiptHtml,style,paper){
+ // Use a temporary same-page print frame: no receipt tab and no navigation.
+ // Browser print confirmation is managed by the browser or configured kiosk policy.
+ const frame=document.createElement('iframe');
+ frame.setAttribute('title','FinSight receipt printer');
+ frame.setAttribute('aria-hidden','true');
+ frame.style.cssText='position:fixed;left:-10000px;top:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
+ const cleanup=()=>{if(frame.isConnected)frame.remove()};
+ const timeout=setTimeout(cleanup,120000);
+ try{
+  await new Promise((resolve,reject)=>{
+   frame.onload=()=>resolve();
+   frame.onerror=()=>reject(Error('Receipt print frame could not load'));
+   document.body.appendChild(frame);
+   frame.srcdoc='<!doctype html><html><head><meta charset="utf-8"><title>'+title+'</title>'+style+'</head><body>'+receiptHtml+'</body></html>';
+  });
+  const win=frame.contentWindow,doc=frame.contentDocument;
+  if(!win||!doc)throw Error('Browser blocked receipt printing');
+  try{await Promise.race([doc.fonts.ready,new Promise(r=>setTimeout(r,1600))]);}catch(_){}
+  await Promise.all(Array.from(doc.images).map(im=>im.complete?Promise.resolve():new Promise(resolve=>{
+   im.onload=resolve;im.onerror=resolve;setTimeout(resolve,1600);
+  })));
+  const receipt=doc.querySelector('.receipt-preview');
+  const px=Math.max(receipt?.scrollHeight||0,doc.body.scrollHeight||0);
+  const heightMm=Math.max(45,Math.min(1500,Math.ceil(px*25.4/96+9)));
+  doc.getElementById('receipt-page-rule').textContent='@page{size:'+paper+' '+heightMm+'mm;margin:0}';
+  win.addEventListener('afterprint',()=>{clearTimeout(timeout);setTimeout(cleanup,350)},{once:true});
+  win.print();
+ }catch(error){clearTimeout(timeout);cleanup();throw error}
+}
+
+async function printCheckoutDocument(id){
  const d=await rpc('pos_cashier_print_document',arg({p_order:id}));
  const t=d.template||{},paid=d.status==='Paid',paperMm=Number(t.paper_mm)===58?58:80;
  const header=paid?esc(t.receipt_heading||'RECEIPT'):'GUEST BILL — UNPAID';
@@ -530,8 +560,6 @@ async function printCheckoutDocument(id,existingTab=null){
  <hr><div class="rline"><span>Before adjustments</span><span>${money(d.gross)}</span></div>${Number(d.discount)?`<div class="rline"><span>Discount</span><span>−${money(d.discount)}</span></div>`:''}${Number(d.surcharge)?`<div class="rline"><span>Surcharge</span><span>+${money(d.surcharge)}</span></div>`:''}
  <div class="rline"><strong>Total</strong><strong>${money(d.total)}</strong></div>${(d.payments||[]).map(x=>`<div class="rline"><span>${esc(x.method)}</span><span>${money(x.amount)}</span></div>`).join('')}
  ${!paid?`<div><strong>AMOUNT DUE: ${money(balance)}</strong></div>`:''}<hr><div>${esc(t.footer_text||'Thank you!')}</div><div class="hint">POS document • Fiscal invoice issued separately where required.</div></div>`;
- const tab=existingTab||window.open('','_blank');
- if(!tab){show('Allow pop-ups for this site, then use Order History to reprint.','error');return}
  const paper=paperMm+'mm',printable=(paperMm-6)+'mm';
  // @page size: 80mm auto is INVALID. A two-length declaration is valid, with the height measured below.
  const style=`<style id="receipt-page-rule">@page{size:${paper} 180mm;margin:0}</style><style>
@@ -544,17 +572,11 @@ async function printCheckoutDocument(id,existingTab=null){
  .hint{font-size:9px;color:#444}hr{border:0;border-top:1px dashed #888;margin:2mm 0}
  @media print{html,body{margin:0!important;box-shadow:none!important}body{padding:3mm}}
  </style>`;
- const printScript=`<script>(async()=>{
-  try{await document.fonts.ready;await Promise.all(Array.from(document.images).map(im=>im.complete?Promise.resolve():new Promise(resolve=>{im.onload=resolve;im.onerror=resolve;setTimeout(resolve,1400)})));}catch(e){}
-  const receipt=document.querySelector('.receipt-preview');
-  const contentPx=Math.max(receipt?.scrollHeight||0,document.body.scrollHeight||0);
-  const heightMm=Math.max(45,Math.min(1500,Math.ceil(contentPx*25.4/96+9)));
-  document.getElementById('receipt-page-rule').textContent='@page{size:${paper} '+heightMm+'mm;margin:0}';
-  requestAnimationFrame(()=>setTimeout(()=>{window.focus();window.print()},100));
- })();<\/script>`;
- tab.document.open();tab.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+header+'</title>'+style+'</head><body>'+html+printScript+'</body></html>');tab.document.close();
+ await printReceiptInPage(header,html,style,paper);
 }
-function reprintOrder(id){const tab=window.open('','_blank');if(tab)tab.document.write('<p>Preparing document...</p>');printCheckoutDocument(id,tab).catch(e=>{if(tab)tab.close();show('Printing failed: '+e.message,'error')})}
+function reprintOrder(id){
+ printCheckoutDocument(id).catch(e=>show('Printing failed: '+e.message,'error'));
+}
 function history(){
  return `<div class="filters"><div class="field"><label>Order Date</label><input type="date" value="${esc(S.historyDate)}" onchange="historyDateChanged(this.value)"></div>${b('All Dates',"historyDateChanged('')")}${b('Refresh',"go('history')")}</div>
  ${S.paymentOrder?paymentPanel():''}<div class="order-grid">${S.orders.map(o=>`<div class="order-card"><div class="row"><strong>Order ${esc(o.id.slice(0,8))}</strong><span class="tag ${esc(o.kitchen_status)}">${esc(o.kitchen_status)}</span></div><div class="hint">${esc(when(o.created_at))} · ${esc(o.order_type)}</div><div class="payment-status ${o.payment_status==='Paid'?'paid':'unpaid'}">${o.payment_status==='Paid'?'Paid':o.checkout_kind==='Guest Bill'?'Guest Bill — Unpaid':'Unpaid'}</div><div style="margin:12px 0">${(o.pos_order_lines||[]).map(l=>`<div>${Number(l.quantity)} × ${esc(l.name_snapshot)}</div>`).join('')}</div><div class="row"><strong>${money(o.total)}</strong><div class="actions">${o.payment_status!=='Paid'&&o.checkout_kind==='Guest Bill'?b('Take Payment',`openPayment('${esc(o.id)}')`,'primary small'):''}${b(o.payment_status==='Paid'?'Reprint Receipt':'Print Guest Bill',`reprintOrder('${esc(o.id)}')`,'small')}</div></div></div>`).join('')||'<div class="card">No orders found.</div>'}</div>`
@@ -595,14 +617,12 @@ async function recordPayment(printAfter=false){
  if(!method||!Number.isFinite(amount)||amount<=0||Math.round(amount*100)>Math.round(remaining*100)||Math.abs(Math.round(amount*100)-amount*100)>0.001)
  return show('Enter an amount not exceeding the balance.','error');
  if(printAfter&&Math.round(amount*100)!==Math.round(remaining*100))return show('Pay the full remaining balance to print a final receipt. Record partial payments separately.','error');
- const tab=printAfter?window.open('','_blank'):null;
- if(tab)tab.document.write('<p>Preparing receipt...</p>');
  S.busy=true;S.paymentRequest=S.paymentRequest||newUuid();
  try{await rpc('pos_cashier_record_payment',arg({p_order:orderId,p_method:method,p_amount:amount,p_request:S.paymentRequest,p_reference:ref}));
  S.paymentRequest=null;S.paymentBalance=await rpc('pos_cashier_order_balance',arg({p_order:orderId}));await loadHistory();
- if(printAfter){try{await printCheckoutDocument(orderId,tab)}catch(e){if(tab)tab.close();show('Payment saved, but printing failed: '+e.message,'error');return}}
- show('Payment recorded'+(printAfter?' and receipt opened.':'.'));}
- catch(e){if(tab)tab.close();show('Payment not recorded: '+e.message,'error')}
+ if(printAfter){try{await printCheckoutDocument(orderId)}catch(e){show('Payment saved, but printing failed: '+e.message,'error');return}}
+ show('Payment recorded'+(printAfter?' and receipt sent to printer.':'.'));}
+ catch(e){show('Payment not recorded: '+e.message,'error')}
  finally{S.busy=false}
 }
 async function historyDateChanged(date){S.historyDate=date;try{await loadHistory();render()}catch(e){show(e.message,'error')}}
