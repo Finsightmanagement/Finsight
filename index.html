@@ -9802,6 +9802,63 @@ function printActive(){
      if(label.startsWith('revenue after vat'))tr.classList.add('fs-pdf-revenue-after');
    });
  }
+ const isCogs=tab.includes('cost of sales')&&!!panel.querySelector('.cogs-report-table');
+ if(isCogs){
+   const table=panel.querySelector('.cogs-report-table');
+   const totals=table.tFoot?.rows?.[0];
+   if(totals&&totals.cells.length===11){
+     const cells=totals.cells;
+     const metrics=[
+       ['Opening Stock Value',cells[3].textContent],
+       ['Purchases Value',cells[5].textContent],
+       ['Closing Stock Value',cells[8].textContent],
+       ['Total Food Cost',cells[10].textContent]
+     ];
+     const summary=document.createElement('div');
+     summary.className='fs-cogs-pdf-summary';
+     metrics.forEach(([label,value],i)=>{
+       const card=document.createElement('div');
+       card.className='fs-cogs-pdf-metric'+(i===3?' fs-cogs-pdf-total':'');
+       const name=document.createElement('span'),amount=document.createElement('strong');
+       name.textContent=label;amount.textContent=value;
+       card.append(name,amount);summary.appendChild(card);
+     });
+     table.parentElement?.parentElement?.insertBefore(summary,table.parentElement);
+   }
+   table.querySelectorAll('tbody tr').forEach((tr,i)=>{
+     if(i%2===1)tr.classList.add('fs-cogs-pdf-alt');
+   });
+ }
+ const cogsPdfStyles=isCogs?`
+ /* Cost of Sales PDF: visual hierarchy only; source figures are unchanged. */
+ @page{size:A3 landscape;margin:12mm}
+ .fs-cogs-pdf-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0 17px;break-inside:avoid}
+ .fs-cogs-pdf-metric{border:1px solid #cbd5e1;border-top:3px solid #64748b;background:#f1f5f9;padding:11px 13px;min-width:0}
+ .fs-cogs-pdf-metric span{display:block;font-size:10px;font-weight:700;color:#475569;margin-bottom:7px}
+ .fs-cogs-pdf-metric strong{display:block;font-size:16px;color:#1e293b;overflow-wrap:anywhere}
+ .fs-cogs-pdf-total{background:#dbeafe;border-top-color:#2563eb}
+ .fs-cogs-pdf-total strong{color:#1d4ed8}
+ .cogs-report-table{width:100%!important;min-width:0!important;border-collapse:collapse!important;table-layout:fixed!important;font-size:8px!important;font-variant-numeric:tabular-nums}
+ .cogs-report-table th,.cogs-report-table td{padding:7px 5px!important;border:1px solid #d3dce8!important;vertical-align:middle!important;overflow-wrap:anywhere}
+ .cogs-report-table th:first-child,.cogs-report-table td:first-child{width:19%!important;text-align:left!important;font-weight:700}
+ .cogs-report-table th:not(:first-child),.cogs-report-table td:not(:first-child){text-align:right!important}
+ .cogs-report-table thead .fs109-cogs-groups th{background:#233044!important;color:#fff!important;font-size:10px!important;font-weight:800!important;text-align:center!important;padding:10px 5px!important}
+ .cogs-report-table thead .fs109-cogs-groups th:nth-child(2){background:#1e5665!important}
+ .cogs-report-table thead .fs109-cogs-groups th:nth-child(3){background:#735321!important}
+ .cogs-report-table thead .fs109-cogs-groups th:nth-child(4){background:#44546b!important}
+ .cogs-report-table thead .fs109-cogs-groups th:nth-child(5){background:#166452!important}
+ .cogs-report-table thead .fs109-cogs-groups th:nth-child(6){background:#334f9a!important}
+ .cogs-report-table thead .fs109-cogs-fields th{background:#e8edf5!important;color:#263449!important;font-weight:800!important;font-size:8px!important;text-align:right!important}
+ .cogs-report-table tbody tr.fs-cogs-pdf-alt{background:#f5f8fc!important}
+ .cogs-report-table tbody td:nth-child(4),.cogs-report-table tbody td:nth-child(6),.cogs-report-table tbody td:nth-child(9){background:#eef3f8!important;font-weight:750!important}
+ .cogs-report-table tbody td:nth-child(11){background:#e7f0ff!important;color:#174b9b!important;font-weight:850!important}
+ .cogs-report-table tbody td:nth-child(2),.cogs-report-table tbody td:nth-child(5),.cogs-report-table tbody td:nth-child(7),.cogs-report-table tbody td:nth-child(10){border-left:2px solid #9caec4!important}
+ .cogs-report-table tfoot th{background:#dbeafe!important;color:#17345c!important;border-top:3px solid #2563eb!important;font-size:9px!important;font-weight:900!important;padding:11px 5px!important}
+ .cogs-report-table tfoot th:last-child{background:#bfdbfe!important;color:#1d4ed8!important;font-size:11px!important}
+ .cogs-report-table thead{display:table-header-group}
+ .cogs-report-table tr{break-inside:avoid;page-break-inside:avoid}
+ .cogs-report-table,.cogs-report-table *,.fs-cogs-pdf-summary *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+ `:'';
  const pnlPdfStyles=isPnl?`
  /* P&L PDF hierarchy - deliberately scoped to the exported print window only. */
  .pnl-statement{font-size:10px!important;border-collapse:collapse;width:100%}
@@ -9828,7 +9885,7 @@ function printActive(){
 
  const w=window.open('','_blank');if(!w){alert('Allow pop-ups to export the PDF.');return}
  const styles=`@page{size:${wide?'A3 landscape':'A4 landscape'};margin:10mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px}h2,h3{font-size:17px;margin:6px 0 12px}table{width:100%;border-collapse:collapse;table-layout:auto;font-size:${wide?'7':'9'}px}th,td{border:1px solid #cbd5e1;padding:${wide?'3':'5'}px;text-align:right;vertical-align:middle;overflow-wrap:anywhere}th:first-child,td:first-child{text-align:left}thead{display:table-header-group}tfoot{display:table-footer-group}thead tr th{background:#eef2ff;font-weight:bold}.grouped-head .fs-pay-group{background:#dbeafe;text-align:center;border-left:2px solid #818cf8}.sub-head .fs-pay-start,tbody .fs-pay-start{border-left:2px solid #818cf8}tbody tr:nth-child(even){background:#f8fafc}.fs-daily-scroll,.report-card{overflow:visible!important}.cogs-report-table{min-width:0!important}.cogs-report-table td,.cogs-report-table th{white-space:normal!important}input,button,.no-print,.fs510-no-print{display:none!important}tr{page-break-inside:avoid;break-inside:avoid}.report-headline{display:flex;justify-content:space-between;border-bottom:2px solid #1e293b;margin-bottom:12px;padding-bottom:6px}.report-headline h3{margin:0}.report-headline div:last-child{text-align:right}.report-card{border:0}.live-fin-table td:nth-child(n+2){text-align:right}.fs-daily-footer th,.cogs-report-table tfoot th{background:#eef2ff;font-weight:bold}.fs-pay-group:nth-of-type(even){background:#dcfce7}`;
- w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title())}</title><style>${styles}${pnlPdfStyles}</style></head><body>${panel.innerHTML}
+ w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title())}</title><style>${styles}${pnlPdfStyles}${cogsPdfStyles}</style></head><body>${panel.innerHTML}
 
 </body></html>`);w.document.close();w.focus();w.addEventListener('load',()=>w.print(),{once:true});
 }
