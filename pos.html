@@ -402,7 +402,7 @@ async function saveReceipt(){if(S.busy)return;const data=readReceiptForm();S.bus
 function removeReceiptLogo(){S.receipt={...S.receipt,logo_path:null};render()}
 async function uploadReceiptLogo(input){const file=input.files?.[0];if(!file)return;if(S.busy)return;S.busy=true;S.receiptLogoUploading=true;try{const blob=await convertPhoto(file);const path=S.ws.company_id+'/receipt/'+newUuid()+'.jpg';const {error}=await S.db.storage.from('finsight-pos-menu').upload(path,blob,{contentType:'image/jpeg',upsert:false});if(error)throw error;S.receipt={...S.receipt,logo_path:path};show('Logo uploaded. Save the template to keep it.')}catch(e){show('Logo upload failed: '+e.message,'error')}finally{S.busy=false;S.receiptLogoUploading=false}}
 function testPrintReceipt(){const data=readReceiptForm();const preview=receiptPreview(data);openPrintWindow('FinSight Receipt Test',preview,data.paper_mm+'mm auto')}
-function openPrintWindow(title,html,pageSize){const popup=window.open('','_blank');if(!popup){show('Allow pop-ups for this site to print.','error');return}const width=pageSize.startsWith('58')?'58mm':pageSize.startsWith('80')?'80mm':'A4';popup.document.open();popup.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+esc(title)+'</title><style>@page{size:'+width+';margin:4mm}body{font:12px Arial;color:#111}table{width:100%;border-collapse:collapse}th,td{padding:5px;border-bottom:1px solid #ccc;text-align:left}.receipt-preview{font:12px/1.4 monospace;text-align:center;width:100%;max-width:100%}.rline{display:flex;justify-content:space-between}.receipt-preview img{max-width:150px;max-height:70px}.receipt-preview hr{border:0;border-top:1px dashed #999}</style></head><body>'+html+'</body></html>');popup.document.close();popup.focus();setTimeout(()=>popup.print(),350)}
+function openPrintWindow(title,html,pageSize){const width=pageSize.startsWith('58')?'58mm':pageSize.startsWith('80')?'80mm':'A4';printReceiptInPage(title,html,'',width).catch(e=>show('Printing failed: '+e.message,'error'))}
 async function convertPhoto(file){if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('Use JPEG, PNG or WebP.');const img=await createImageBitmap(file);const scale=Math.min(1,1200/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));const ctx=canvas.getContext('2d');if(!ctx)throw Error('Image processing unavailable.');ctx.drawImage(img,0,0,canvas.width,canvas.height);img.close?.();const blob=await new Promise((resolve,reject)=>canvas.toBlob(x=>x?resolve(x):reject(Error('Conversion failed.')),'image/jpeg',.83));if(blob.size>3145728)throw Error('Image exceeds 3 MB.');return blob}
 
 async function loadTillSummary(){try{S.tillSummary=await rpc('pos_cashier_latest_shift',arg())}catch(e){S.tillSummary=null;console.warn('Till summary:',e.message)}}
@@ -519,36 +519,44 @@ function payAndPrint(){if(!S.checkoutDialog)return;const payments=readCheckoutPa
 function checkoutGuestBill(){submitCheckout('Guest Bill',[])}
 
 async function printReceiptInPage(title,receiptHtml,style,paper){
- // Use a temporary same-page print frame: no receipt tab and no navigation.
- // Browser print confirmation is managed by the browser or configured kiosk policy.
- const frame=document.createElement('iframe');
- frame.setAttribute('title','FinSight receipt printer');
- frame.setAttribute('aria-hidden','true');
- frame.style.cssText='position:fixed;left:-10000px;top:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
- const cleanup=()=>{if(frame.isConnected)frame.remove()};
- const timeout=setTimeout(cleanup,120000);
+ if(document.getElementById('finsight-pos-print-root'))throw Error('A receipt is already being prepared for printing.');
+ const width=paper==='58mm'?'58mm':paper==='80mm'?'80mm':'A4';
+ const pageWidth=width==='A4'?'210mm':width;
+ const receiptWidth=width==='58mm'?'52mm':width==='80mm'?'74mm':'200mm';
+ const root=document.createElement('div');
+ root.id='finsight-pos-print-root';root.setAttribute('aria-hidden','true');
+ root.style.cssText='position:absolute;left:-10000px;top:0;width:'+pageWidth+';background:white;color:#111;pointer-events:none;';
+ root.innerHTML=receiptHtml;
+ const css=document.createElement('style');
+ css.id='finsight-pos-print-style';
+ css.textContent=`
+ @media print {
+  body > :not(#finsight-pos-print-root){display:none!important}
+  html,body{width:${pageWidth}!important;min-width:0!important;max-width:${pageWidth}!important;margin:0!important;padding:0!important;background:white!important;color:#111!important}
+  #finsight-pos-print-root{display:block!important;position:static!important;left:auto!important;top:auto!important;width:${pageWidth}!important;max-width:${pageWidth}!important;margin:0!important;padding:3mm!important;box-sizing:border-box!important;visibility:visible!important;pointer-events:auto!important}
+  #finsight-pos-print-root .receipt-preview{width:${receiptWidth}!important;max-width:${receiptWidth}!important;margin:0 auto!important;padding:0!important;border:0!important;text-align:center!important;background:white!important;color:#111!important;font:11px/1.35 'Courier New',monospace!important;overflow-wrap:anywhere!important}
+  #finsight-pos-print-root .receipt-preview img{max-width:80%!important;max-height:18mm!important;object-fit:contain}
+  #finsight-pos-print-root .rline{display:flex!important;justify-content:space-between!important;gap:2mm!important;text-align:left!important;padding:1mm 0!important}
+  #finsight-pos-print-root .rline span:first-child{flex:1;min-width:0}
+  #finsight-pos-print-root .rline span:last-child{text-align:right;flex-shrink:0}
+  #finsight-pos-print-root .hint{font-size:9px!important;color:#444!important}
+  #finsight-pos-print-root hr{border:0!important;border-top:1px dashed #888!important;margin:2mm 0!important}
+ }`;
+ document.head.appendChild(css);document.body.appendChild(root);
+ let timeout,cleaned=false;
+ const onPrinted=()=>setTimeout(cleanup,350);
+ const cleanup=()=>{if(cleaned)return;cleaned=true;clearTimeout(timeout);window.removeEventListener('afterprint',onPrinted);css.remove();root.remove()};
  try{
-  await new Promise((resolve,reject)=>{
-   frame.onload=()=>resolve();
-   frame.onerror=()=>reject(Error('Receipt print frame could not load'));
-   frame.srcdoc='<!doctype html><html><head><meta charset="utf-8"><title>'+title+'</title>'+style+'</head><body>'+receiptHtml+'</body></html>';
-   document.body.appendChild(frame);
-  });
-  const win=frame.contentWindow,doc=frame.contentDocument;
-  if(!win||!doc)throw Error('Browser blocked receipt printing');
-  try{await Promise.race([doc.fonts.ready,new Promise(r=>setTimeout(r,1600))]);}catch(_){}
-  await Promise.all(Array.from(doc.images).map(im=>im.complete?Promise.resolve():new Promise(resolve=>{
-   im.onload=resolve;im.onerror=resolve;setTimeout(resolve,1600);
-  })));
-  const receipt=doc.querySelector('.receipt-preview');
-  const px=Math.max(receipt?.scrollHeight||0,doc.body.scrollHeight||0);
-  const heightMm=Math.max(45,Math.min(1500,Math.ceil(px*25.4/96+9)));
-  doc.getElementById('receipt-page-rule').textContent='@page{size:'+paper+' '+heightMm+'mm;margin:0}';
-  win.addEventListener('afterprint',()=>{clearTimeout(timeout);setTimeout(cleanup,350)},{once:true});
-  win.print();
- }catch(error){clearTimeout(timeout);cleanup();throw error}
+  timeout=setTimeout(cleanup,120000);
+  try{await Promise.race([document.fonts.ready,new Promise(ok=>setTimeout(ok,1600))])}catch(_){}
+  await Promise.all(Array.from(root.querySelectorAll('img')).map(im=>im.complete?Promise.resolve():new Promise(ok=>{im.onload=ok;im.onerror=ok;setTimeout(ok,1600)})));
+  const contentPx=Math.max(root.scrollHeight,root.querySelector('.receipt-preview')?.scrollHeight||0);
+  const heightMm=Math.max(45,Math.min(1500,Math.ceil(contentPx*25.4/96+9)));
+  css.textContent+='@page{size:'+pageWidth+' '+heightMm+'mm;margin:0}';
+  window.addEventListener('afterprint',onPrinted);
+  window.print();
+ }catch(error){cleanup();throw error}
 }
-
 async function printCheckoutDocument(id){
  const d=await rpc('pos_cashier_print_document',arg({p_order:id}));
  const t=d.template||{},paid=d.status==='Paid',paperMm=Number(t.paper_mm)===58?58:80;
