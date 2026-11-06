@@ -9792,9 +9792,43 @@ function downloadExcel(){
 function printActive(){
  const panel=cloneReport();if(!panel)return;
  const tab=title().toLowerCase(),wide=tab.includes('daily')||tab.includes('cost of sales');
+ const isPnl=tab.includes('profit')||!!panel.querySelector('.pnl-statement');
+ if(isPnl){
+   panel.querySelectorAll('.pnl-statement tbody tr').forEach(tr=>{
+     const label=(tr.cells[0]?.textContent||'').trim().toLowerCase();
+     if(label.startsWith('food cost'))tr.classList.add('fs-pdf-food-cost');
+     if(label.startsWith('gross profit'))tr.classList.add('fs-pdf-gross-profit');
+     if(label.startsWith('net profit'))tr.classList.add('fs-pdf-net-profit');
+     if(label.startsWith('revenue after vat'))tr.classList.add('fs-pdf-revenue-after');
+   });
+ }
+ const pnlPdfStyles=isPnl?`
+ /* P&L PDF hierarchy - deliberately scoped to the exported print window only. */
+ .pnl-statement{font-size:10px!important;border-collapse:collapse;width:100%}
+ .pnl-statement thead th{background:#233044!important;color:#fff!important;font-size:10px;font-weight:800;padding:9px 10px!important;border-color:#233044!important}
+ .pnl-statement thead th:nth-child(n+2),.pnl-statement tbody td:nth-child(n+2){text-align:right!important;white-space:nowrap}
+ .pnl-statement tbody td{padding:7px 10px!important;border:0!important;border-bottom:1px solid #e2e8f0!important;vertical-align:middle}
+ .pnl-statement tbody tr:nth-child(even):not(.section-heading):not(.subtotal):not(.grand){background:#f8fafc}
+ .pnl-statement tbody tr.section-heading{background:#e6ebf2!important;break-after:avoid;page-break-after:avoid}
+ .pnl-statement tbody tr.section-heading td{font-size:11px!important;font-weight:800!important;letter-spacing:.55px;text-transform:uppercase;color:#1e293b!important;padding:11px 10px 9px!important;border-top:2px solid #94a3b8!important;border-bottom:1px solid #94a3b8!important}
+ .pnl-statement tbody tr.subtotal{background:#eff3f8!important}
+ .pnl-statement tbody tr.subtotal td{font-weight:800!important;color:#1e293b!important;border-top:1.5px solid #94a3b8!important;padding:9px 10px!important}
+ .pnl-statement tbody tr.grand{background:#dbeafe!important}
+ .pnl-statement tbody tr.grand td{font-size:11px!important;font-weight:900!important;color:#15345f!important;border-top:2px solid #3b82f6!important;padding:12px 10px!important}
+ .pnl-statement tbody tr.fs-pdf-food-cost{background:#fff2d7!important}
+ .pnl-statement tbody tr.fs-pdf-food-cost td{font-weight:850!important;color:#854d0e!important;border-top:2px solid #d97706!important;padding:11px 10px!important}
+ .pnl-statement tbody tr.fs-pdf-gross-profit{background:#dbeafe!important}
+ .pnl-statement tbody tr.fs-pdf-gross-profit td{font-size:12px!important;color:#1d4ed8!important;border-top:2px solid #2563eb!important;font-weight:900!important;padding:13px 10px!important}
+ .pnl-statement tbody tr.fs-pdf-net-profit{background:#dcfce7!important}
+ .pnl-statement tbody tr.fs-pdf-net-profit td{font-size:13px!important;color:#166534!important;border-top:3px double #15803d!important;font-weight:900!important;padding:14px 10px!important}
+ .pnl-statement tbody tr.fs-pdf-revenue-after td{font-weight:800!important;border-top:2px solid #64748b!important}
+ .pnl-statement tbody tr{page-break-inside:avoid;break-inside:avoid}
+ .pnl-statement,.pnl-statement *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+ `:'';
+
  const w=window.open('','_blank');if(!w){alert('Allow pop-ups to export the PDF.');return}
  const styles=`@page{size:${wide?'A3 landscape':'A4 landscape'};margin:10mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#172033;margin:0;font-size:10px}h2,h3{font-size:17px;margin:6px 0 12px}table{width:100%;border-collapse:collapse;table-layout:auto;font-size:${wide?'7':'9'}px}th,td{border:1px solid #cbd5e1;padding:${wide?'3':'5'}px;text-align:right;vertical-align:middle;overflow-wrap:anywhere}th:first-child,td:first-child{text-align:left}thead{display:table-header-group}tfoot{display:table-footer-group}thead tr th{background:#eef2ff;font-weight:bold}.grouped-head .fs-pay-group{background:#dbeafe;text-align:center;border-left:2px solid #818cf8}.sub-head .fs-pay-start,tbody .fs-pay-start{border-left:2px solid #818cf8}tbody tr:nth-child(even){background:#f8fafc}.fs-daily-scroll,.report-card{overflow:visible!important}.cogs-report-table{min-width:0!important}.cogs-report-table td,.cogs-report-table th{white-space:normal!important}input,button,.no-print,.fs510-no-print{display:none!important}tr{page-break-inside:avoid;break-inside:avoid}.report-headline{display:flex;justify-content:space-between;border-bottom:2px solid #1e293b;margin-bottom:12px;padding-bottom:6px}.report-headline h3{margin:0}.report-headline div:last-child{text-align:right}.report-card{border:0}.live-fin-table td:nth-child(n+2){text-align:right}.fs-daily-footer th,.cogs-report-table tfoot th{background:#eef2ff;font-weight:bold}.fs-pay-group:nth-of-type(even){background:#dcfce7}`;
- w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title())}</title><style>${styles}</style></head><body>${panel.innerHTML}
+ w.document.open();w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(title())}</title><style>${styles}${pnlPdfStyles}</style></head><body>${panel.innerHTML}
 
 </body></html>`);w.document.close();w.focus();w.addEventListener('load',()=>w.print(),{once:true});
 }
