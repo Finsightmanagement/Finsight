@@ -531,8 +531,8 @@ async function printReceiptInPage(title,receiptHtml,style,paper){
   await new Promise((resolve,reject)=>{
    frame.onload=()=>resolve();
    frame.onerror=()=>reject(Error('Receipt print frame could not load'));
-   document.body.appendChild(frame);
    frame.srcdoc='<!doctype html><html><head><meta charset="utf-8"><title>'+title+'</title>'+style+'</head><body>'+receiptHtml+'</body></html>';
+   document.body.appendChild(frame);
   });
   const win=frame.contentWindow,doc=frame.contentDocument;
   if(!win||!doc)throw Error('Browser blocked receipt printing');
