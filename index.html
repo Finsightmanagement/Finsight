@@ -528,7 +528,10 @@ body.online-loading .app{visibility:hidden}
 <main class="main">
 <div class="topbar">
   <div class="title"><h2 id="pageTitle">Executive Dashboard</h2><p id="pageSub">Sales performance, item analysis and bank position.</p></div>
-  <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.6 Inventory Reconciliation</div>
+  <div class="fs-page-refresh-actions">
+    <button type="button" class="btn fs-page-refresh" id="fsRefreshCurrentSection" title="Refresh FinSight data without signing out" aria-label="Refresh current section">↻ Refresh</button>
+    <div class="status" id="buildVersionBadge" title="Production-audited online build">V18.5.6 Inventory Reconciliation</div>
+  </div>
 </div>
 
 <section class="page active" id="dashboard">
@@ -2153,7 +2156,53 @@ renderAll();
     const esc=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     let sheet=`<html><head><meta charset="UTF-8"></head><body><table border="1" cellspacing="0" cellpadding="6"><tr><th colspan="20" style="font-size:16pt;text-align:left">${esc(title)}</th></tr>`;
     rows.forEach(r=>{sheet+="<tr>"+r.map((c,i)=>`<${i===0?"td":"td"}>${esc(c)}</td>`).join("")+"</tr>"});
-    sheet+="</table>\n\n</body></html>";
+    sheet+="</table>\n\n
+<style id="finsight-manual-refresh-style">
+.fs-page-refresh-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}
+.fs-page-refresh{white-space:nowrap;font-weight:600}
+.fs-page-refresh:disabled{opacity:.65;cursor:wait}
+@media(max-width:650px){.fs-page-refresh-actions{gap:6px}.fs-page-refresh{padding:9px 12px}}
+@media print{.fs-page-refresh{display:none!important}}
+</style>
+<script id="finsight-manual-cloud-refresh">
+(function(){
+ 'use strict';
+ function bindRefresh(){
+   const btn=document.getElementById('fsRefreshCurrentSection');
+   if(!btn||btn.dataset.fsRefreshBound)return;
+   btn.dataset.fsRefreshBound='1';
+   btn.addEventListener('click',async()=>{
+     if(btn.disabled)return;
+     const refresh=window.finsightReloadCloudState;
+     if(typeof refresh!=='function'){
+       if(typeof window.toast==='function')window.toast('FinSight cloud refresh is not ready.');
+       else alert('FinSight cloud refresh is not ready.');
+       return;
+     }
+     const modal=document.getElementById('modal');
+     if(modal?.classList.contains('show')&&!confirm('Refresh will close any unsaved form changes. Continue?'))return;
+     const original=btn.textContent;
+     btn.disabled=true;btn.textContent='↻ Refreshing…';
+     try{
+       await refresh();
+       if(typeof window.toast==='function')window.toast('FinSight data refreshed.');
+       else{btn.textContent='✓ Refreshed';setTimeout(()=>{if(!btn.disabled)btn.textContent=original},1400);}
+     }catch(error){
+       console.error('[FinSight] Manual refresh failed',error);
+       const msg='Refresh failed: '+(error?.message||String(error));
+       if(typeof window.toast==='function')window.toast(msg);
+       else alert(msg);
+     }finally{
+       btn.disabled=false;
+       if(btn.textContent!=='✓ Refreshed')btn.textContent=original;
+     }
+   });
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindRefresh,{once:true});
+ else bindRefresh();
+})();
+</script>
+</body></html>";
     const blob=new Blob([sheet],{type:"application/vnd.ms-excel;charset=utf-8"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=title.replace(/[^a-z0-9]+/gi,"_")+".xls";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500);
   }
