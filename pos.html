@@ -64,11 +64,56 @@
 .guest-payment-modal .two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .guest-payment-modal .two .field{min-width:0}
 @media(max-width:560px){.pos-modal-shade{padding:10px}.pos-modal-shade .guest-payment-modal{padding:18px;max-height:calc(100dvh - 20px)}.guest-payment-modal .two{grid-template-columns:1fr}}
+
+.pos-theme-switch{white-space:nowrap;display:inline-flex;align-items:center;gap:7px}
+.pos-auth-theme{display:flex;justify-content:flex-end;margin:-4px 0 13px}
+:root[data-pos-theme="dark"]{color-scheme:dark;--bg:#10191e;--panel:#1b2930;--ink:#edf6f7;--muted:#a9bec5;--line:#344750;--accent:#67d9ca;--light:#203c40;--red:#ff9990;--gold:#41361f;--shadow:0 9px 25px rgba(0,0,0,.22)}
+:root[data-pos-theme="dark"] body{background:var(--bg);color:var(--ink)}
+:root[data-pos-theme="dark"] .sidebar,:root[data-pos-theme="dark"] .card,:root[data-pos-theme="dark"] .authpanel,:root[data-pos-theme="dark"] .btn:not(.primary),:root[data-pos-theme="dark"] .role,:root[data-pos-theme="dark"] .menu-card,:root[data-pos-theme="dark"] .order-card,:root[data-pos-theme="dark"] .table-tile:not(.occupied),:root[data-pos-theme="dark"] .cat-tab:not(.active),:root[data-pos-theme="dark"] .admin-appearance-toggle,:root[data-pos-theme="dark"] .admin-appearance-panel,:root[data-pos-theme="dark"] .category-choice:not(.active),:root[data-pos-theme="dark"] .menu-add-tile,:root[data-pos-theme="dark"] .admin-section-tile:not(.selected),:root[data-pos-theme="dark"] .pos-profile-button,:root[data-pos-theme="dark"] .pos-profile-menu,:root[data-pos-theme="dark"] .pos-payment-modal,:root[data-pos-theme="dark"] .pos-modal-shade .guest-payment-modal{background:var(--panel);color:var(--ink);border-color:var(--line)}
+:root[data-pos-theme="dark"] .modalwrap{background:var(--bg)}
+:root[data-pos-theme="dark"] .nav{color:var(--muted)}
+:root[data-pos-theme="dark"] .nav.active,:root[data-pos-theme="dark"] .nav:hover{color:var(--accent);background:var(--light)}
+:root[data-pos-theme="dark"] .field input,:root[data-pos-theme="dark"] .field select,:root[data-pos-theme="dark"] .field textarea,:root[data-pos-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),:root[data-pos-theme="dark"] select,:root[data-pos-theme="dark"] textarea{background:#142228;color:var(--ink);border-color:var(--line)}
+:root[data-pos-theme="dark"] input::placeholder,:root[data-pos-theme="dark"] textarea::placeholder{color:#91a7af}
+:root[data-pos-theme="dark"] .report-summary>div,:root[data-pos-theme="dark"] .menu-photo,:root[data-pos-theme="dark"] .tag:not(.Preparing):not(.Ready):not(.New){background:#263940;color:var(--ink)}
+:root[data-pos-theme="dark"] .role:hover,:root[data-pos-theme="dark"] .admin-section-tile.selected,:root[data-pos-theme="dark"] .table-tile.occupied{background:var(--light);color:var(--ink)}
+:root[data-pos-theme="dark"] .tag.Preparing{background:#49361c;color:#ffda93}
+:root[data-pos-theme="dark"] .tag.Ready{background:#204833;color:#92e8ae}
+:root[data-pos-theme="dark"] .tag.New{background:#273e5d;color:#aacdff}
+:root[data-pos-theme="dark"] .notice{background:#1d4138;color:#9af2c7}
+:root[data-pos-theme="dark"] .notice.error,:root[data-pos-theme="dark"] .pos-notice-toast.error{background:#482825;color:#ffd0ca;border-color:#a65b54}
+:root[data-pos-theme="dark"] .pill{background:var(--light);color:var(--accent)}
+:root[data-pos-theme="dark"] .btn.primary,:root[data-pos-theme="dark"] .cat-tab.active,:root[data-pos-theme="dark"] .category-choice.active{background:#087e79;color:#fff;border-color:#087e79}
+:root[data-pos-theme="dark"] .menu-add-tile{border-style:dashed}
+:root[data-pos-theme="dark"] .receipt-preview{background:#fff;color:#111;border-color:#a4b9b6;color-scheme:light}
+:root[data-pos-theme="dark"] .receipt-preview *{color:inherit}
+:root[data-pos-theme="dark"] .payment-status.paid,:root[data-pos-theme="dark"] .countdown{color:#82e6ac}
+:root[data-pos-theme="dark"] .payment-status.unpaid{color:#ffd08b}
+:root[data-pos-theme="dark"] .countdown.overdue{color:#ff9990}
+@media print{:root[data-pos-theme="dark"]{color-scheme:light}}
 </style></head><body><div id="root"><div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div><h2>FinSight POS</h2><p>Preparing secure sign-in…</p></div></div></div><script>
 'use strict';
 const SUPABASE_URL='https://kwyvytwyhslhmdqtfrkf.supabase.co';
 const KEY='sb_publishable_jEMjFFLw8D3DfbCdtD7fGg_cxKK9SbR';
 const root=document.getElementById('root');
+
+const POS_THEME_KEY='finsight-pos-display-theme-v1';
+let posTheme='light';
+try{posTheme=localStorage.getItem(POS_THEME_KEY)==='dark'?'dark':'light'}catch(_){}
+function setPosTheme(next){
+ posTheme=next==='dark'?'dark':'light';
+ document.documentElement.setAttribute('data-pos-theme',posTheme);
+ try{localStorage.setItem(POS_THEME_KEY,posTheme)}catch(_){}
+ document.querySelectorAll('.pos-theme-switch').forEach(btn=>{
+   btn.textContent=posTheme==='dark'?'☀ Light Mode':'☾ Dark Mode';
+   btn.setAttribute('aria-label',posTheme==='dark'?'Switch to light mode':'Switch to dark mode');
+   btn.setAttribute('aria-pressed',String(posTheme==='dark'));
+ });
+}
+function togglePosTheme(){setPosTheme(posTheme==='dark'?'light':'dark')}
+function posThemeButton(){return '<button type="button" class="btn pos-theme-switch" onclick="togglePosTheme()" aria-pressed="'+(posTheme==='dark')+'">'+(posTheme==='dark'?'☀ Light Mode':'☾ Dark Mode')+'</button>'}
+setPosTheme(posTheme);
+
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=x=>'KES '+Number(x||0).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
 const when=x=>x?new Date(x).toLocaleString('en-KE',{dateStyle:'medium',timeStyle:'short',timeZone:'Africa/Nairobi'}):'—';
@@ -89,7 +134,7 @@ async function rpc(name,payload={}){const {data,error}=await S.db.rpc(name,paylo
 function buttonBusy(){return S.busy?' disabled':''}
 async function emailLogin(){if(S.busy)return;const email=document.getElementById('email')?.value.trim(),password=document.getElementById('password')?.value;if(!email||!password)return show('Enter email and password.','error');S.busy=true;try{const {data,error}=await S.db.auth.signInWithPassword({email,password});if(error)throw error;await connectCompany(data?.session)}catch(e){show(e.message,'error')}finally{S.busy=false}}
 async function logout(){clearTimeout(S.mpesaTimer);S.mpesaTimer=null;clearCache();if(S.liveChannel){await S.db.removeChannel(S.liveChannel);S.liveChannel=null;}clearInterval(S.timer);S.timer=null;S.selection='';S.role='';S.employee=null;S.token=null;S.ws=null;S.user=null;S.cart=[];await S.db.auth.signOut();S.notice='';render()}
-function loginPage(){root.innerHTML=`<div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div><h2>Company Sign In</h2>${notice()}<div class="field"><label>Email</label><input type="email" id="email" autocomplete="username"></div><div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')emailLogin()"></div>${b('Sign In','emailLogin()','primary wide')}</div></div>`}
+function loginPage(){root.innerHTML=`<div class="modalwrap"><div class="authpanel"><div class="pos-auth-theme">${posThemeButton()}</div><div class="brand"><span class="mark">F</span> FinSight POS</div><h2>Company Sign In</h2>${notice()}<div class="field"><label>Email</label><input type="email" id="email" autocomplete="username"></div><div class="field"><label>Password</label><input id="password" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')emailLogin()"></div>${b('Sign In','emailLogin()','primary wide')}</div></div>`}
 async function connectCompany(session=null){
  const current=session|| (await S.db.auth.getSession()).data?.session;
  if(!current?.user){S.user=null;S.ws=null;render();return}
@@ -112,10 +157,10 @@ function applyPreferences(){
  document.documentElement.style.setProperty('--pos-font',fonts[x.font_family]||fonts.Modern);
 }
 async function loadChoices(){if(!S.ws)return;S.choices=await rpc('pos_employee_list',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_role:null})||[];S.hasAdmin=S.choices.some(e=>e.role==='Admin')}
-function noAccess(){root.innerHTML=`<div class="modalwrap"><div class="authpanel"><h2>POS Access</h2>${notice()}<p>Your shared FinSight login does not have an active POS workspace.</p>${b('Sign Out','logout()')}</div></div>`}
+function noAccess(){root.innerHTML=`<div class="modalwrap"><div class="authpanel"><div class="pos-auth-theme">${posThemeButton()}</div><h2>POS Access</h2>${notice()}<p>Your shared FinSight login does not have an active POS workspace.</p>${b('Sign Out','logout()')}</div></div>`}
 function chooseRole(){S.profileOpen=false;clearTimeout(S.mpesaTimer);S.mpesaTimer=null;S.mpesaIntentId=null;S.mpesaOrder=null;clearCache();if(S.liveChannel){S.db.removeChannel(S.liveChannel);S.liveChannel=null;}clearInterval(S.timer);S.selection='';S.notice='';S.token=null;S.employee=null;S.role='';S.page='';S.cart=[];S.orders=[];S.menu=[];S.setup=null;S.employees=[];S.tillSummary=null;S.shiftDetail=null;S.reconInfo=null;S.integrationData=null;S.paymentBalance=null;S.paymentMethods=[];render()}
 function selectRole(role){S.selection=role;S.notice='';render()}
-function choicePage(){const names=S.choices.filter(e=>e.role===S.selection);root.innerHTML=`<div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div>${notice()}${!S.selection?`<h2>Choose Workspace</h2><p class="muted">${esc(S.ws.company_name)} · ${esc(S.ws.outlet_name)}</p><div class="rolegrid"><button class="role" onclick="selectRole('Cashier')"><span>▣</span>Cashier</button><button class="role" onclick="selectRole('Kitchen')"><span>♨</span>Kitchen</button><button class="role" onclick="selectRole('Admin')"><span>⚙</span>Admin</button></div>`:`<h2>${esc(S.selection)} Sign In</h2>${S.selection==='Admin'&&!S.hasAdmin&&S.ws.role==='admin'?`<div class="field"><label>First Admin Name</label><input id="bootstrapName" maxlength="100"></div><div class="field"><label>Admin PIN</label><input id="bootstrapPin" type="password" inputmode="numeric" maxlength="8"></div>${b('Create First Admin','bootstrapAdmin()','primary wide')}`:`<div class="field"><label>Employee</label><select id="chosenEmployee">${names.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select></div><div class="field"><label>PIN</label><input id="employeePin" type="password" maxlength="8" inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter')enterEmployee()"></div>${b('Sign In','enterEmployee()','primary wide')}${names.length?'':'<p class="hint">No active employees for this role. Admin can add them in Employees.</p>'}`}<div style="margin-top:14px">${b('Back','chooseRole()')} ${b('Sign Out','logout()')}</div>`}</div></div>`}
+function choicePage(){const names=S.choices.filter(e=>e.role===S.selection);root.innerHTML=`<div class="modalwrap"><div class="authpanel"><div class="pos-auth-theme">${posThemeButton()}</div><div class="brand"><span class="mark">F</span> FinSight POS</div>${notice()}${!S.selection?`<h2>Choose Workspace</h2><p class="muted">${esc(S.ws.company_name)} · ${esc(S.ws.outlet_name)}</p><div class="rolegrid"><button class="role" onclick="selectRole('Cashier')"><span>▣</span>Cashier</button><button class="role" onclick="selectRole('Kitchen')"><span>♨</span>Kitchen</button><button class="role" onclick="selectRole('Admin')"><span>⚙</span>Admin</button></div>`:`<h2>${esc(S.selection)} Sign In</h2>${S.selection==='Admin'&&!S.hasAdmin&&S.ws.role==='admin'?`<div class="field"><label>First Admin Name</label><input id="bootstrapName" maxlength="100"></div><div class="field"><label>Admin PIN</label><input id="bootstrapPin" type="password" inputmode="numeric" maxlength="8"></div>${b('Create First Admin','bootstrapAdmin()','primary wide')}`:`<div class="field"><label>Employee</label><select id="chosenEmployee">${names.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join('')}</select></div><div class="field"><label>PIN</label><input id="employeePin" type="password" maxlength="8" inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter')enterEmployee()"></div>${b('Sign In','enterEmployee()','primary wide')}${names.length?'':'<p class="hint">No active employees for this role. Admin can add them in Employees.</p>'}`}<div style="margin-top:14px">${b('Back','chooseRole()')} ${b('Sign Out','logout()')}</div>`}</div></div>`}
 async function bootstrapAdmin(){const name=document.getElementById('bootstrapName')?.value.trim(),pin=document.getElementById('bootstrapPin')?.value;if(!name||!/^[0-9]{4,8}$/.test(pin||''))return show('Enter Admin name and a 4–8 digit PIN.','error');if(S.busy)return;S.busy=true;try{await rpc('pos_bootstrap_admin',{p_company:S.ws.company_id,p_outlet:S.ws.outlet_id,p_name:name,p_pin:pin});await loadChoices();S.notice='Admin created. Select the Admin name and enter the PIN.';S.noticeType='ok';render()}catch(e){show('Could not create Admin: '+e.message,'error')}finally{S.busy=false}}
 async function enterEmployee(){
  if(S.busy)return;
@@ -157,7 +202,7 @@ function setRefresh(){
  S.timer=setInterval(refresh,15000);
 }
 function togglePosProfile(){S.profileOpen=!S.profileOpen;render()}
-function shell(){const groups=S.role==='Admin'?[['management','Back Office','⚙'],['reports','Shift Reports','▤'],['receipt','Receipt Templates','▧'],['integrations','Integrations','⇄']]:S.role==='Kitchen'?[['kitchen','Kitchen Orders','♨']]:[['checkout','Checkout','▣'],['history','Order History','▤'],['tables','Tables','▦'],['shift','Till Shift','◷']];return `<div class="app"><aside class="sidebar"><div class="brand"><span class="mark">F</span> FinSight POS</div>${groups.map(([id,label,ico])=>`<button class="nav ${S.page===id?'active':''}" onclick="go('${id}')">${ico} &nbsp; ${label}</button>`).join('')}<div class="sidebottom">${esc(S.ws.company_name)} · ${esc(S.role)}</div></aside><main class="main"><div class="topbar"><div><div class="sub">${esc(S.ws.company_name)} · ${esc(S.ws.outlet_name)}</div><h1 style="margin:2px 0 0">${esc(Object.fromEntries(groups.map(([id,label])=>[id,label]))[S.page]||'FinSight POS')}</h1></div><div class="actions"><span class="pill">${esc(S.role)}</span><div class="pos-profile-wrap"><button type="button" class="pos-profile-button" aria-label="Profile menu" aria-expanded="${S.profileOpen?'true':'false'}" onclick="togglePosProfile()"><svg xmlns="http://www.w3.org/2000/svg" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></button>${S.profileOpen?`<div class="pos-profile-menu"><strong>${esc(S.employee?.name||'Employee')}</strong>${b('Switch Workspace','chooseRole()','wide')}${b('Sign Out','logout()','wide')}</div>`:''}</div></div></div>${notice()}${screen()}</main></div>${S.page==='history'&&S.paymentOrder?paymentPanel():''}`}
+function shell(){const groups=S.role==='Admin'?[['management','Back Office','⚙'],['reports','Shift Reports','▤'],['receipt','Receipt Templates','▧'],['integrations','Integrations','⇄']]:S.role==='Kitchen'?[['kitchen','Kitchen Orders','♨']]:[['checkout','Checkout','▣'],['history','Order History','▤'],['tables','Tables','▦'],['shift','Till Shift','◷']];return `<div class="app"><aside class="sidebar"><div class="brand"><span class="mark">F</span> FinSight POS</div>${groups.map(([id,label,ico])=>`<button class="nav ${S.page===id?'active':''}" onclick="go('${id}')">${ico} &nbsp; ${label}</button>`).join('')}<div class="sidebottom">${esc(S.ws.company_name)} · ${esc(S.role)}</div></aside><main class="main"><div class="topbar"><div><div class="sub">${esc(S.ws.company_name)} · ${esc(S.ws.outlet_name)}</div><h1 style="margin:2px 0 0">${esc(Object.fromEntries(groups.map(([id,label])=>[id,label]))[S.page]||'FinSight POS')}</h1></div><div class="actions">${posThemeButton()}<span class="pill">${esc(S.role)}</span><div class="pos-profile-wrap"><button type="button" class="pos-profile-button" aria-label="Profile menu" aria-expanded="${S.profileOpen?'true':'false'}" onclick="togglePosProfile()"><svg xmlns="http://www.w3.org/2000/svg" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0 1 16 0v2"/></svg></button>${S.profileOpen?`<div class="pos-profile-menu"><strong>${esc(S.employee?.name||'Employee')}</strong>${b('Switch Workspace','chooseRole()','wide')}${b('Sign Out','logout()','wide')}</div>`:''}</div></div></div>${notice()}${screen()}</main></div>${S.page==='history'&&S.paymentOrder?paymentPanel():''}`}
 function screen(){switch(S.page){case 'management':return management();case 'reports':return reports();case 'receipt':return receiptPage();case 'integrations':return integrationsPage();case 'checkout':return checkout();case 'history':return history();case 'tables':return tables();case 'shift':return shift();case 'kitchen':return kitchen();default:return ''}}
 
 // Each POS employee workspace has its own browser-tab icon.
