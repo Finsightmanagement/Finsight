@@ -2157,51 +2157,7 @@ renderAll();
     let sheet=`<html><head><meta charset="UTF-8"></head><body><table border="1" cellspacing="0" cellpadding="6"><tr><th colspan="20" style="font-size:16pt;text-align:left">${esc(title)}</th></tr>`;
     rows.forEach(r=>{sheet+="<tr>"+r.map((c,i)=>`<${i===0?"td":"td"}>${esc(c)}</td>`).join("")+"</tr>"});
     sheet+="</table>\n\n
-<style id="finsight-manual-refresh-style">
-.fs-page-refresh-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}
-.fs-page-refresh{white-space:nowrap;font-weight:600}
-.fs-page-refresh:disabled{opacity:.65;cursor:wait}
-@media(max-width:650px){.fs-page-refresh-actions{gap:6px}.fs-page-refresh{padding:9px 12px}}
-@media print{.fs-page-refresh{display:none!important}}
-</style>
-<script id="finsight-manual-cloud-refresh">
-(function(){
- 'use strict';
- function bindRefresh(){
-   const btn=document.getElementById('fsRefreshCurrentSection');
-   if(!btn||btn.dataset.fsRefreshBound)return;
-   btn.dataset.fsRefreshBound='1';
-   btn.addEventListener('click',async()=>{
-     if(btn.disabled)return;
-     const refresh=window.finsightReloadCloudState;
-     if(typeof refresh!=='function'){
-       if(typeof window.toast==='function')window.toast('FinSight cloud refresh is not ready.');
-       else alert('FinSight cloud refresh is not ready.');
-       return;
-     }
-     const modal=document.getElementById('modal');
-     if(modal?.classList.contains('show')&&!confirm('Refresh will close any unsaved form changes. Continue?'))return;
-     const original=btn.textContent;
-     btn.disabled=true;btn.textContent='↻ Refreshing…';
-     try{
-       await refresh();
-       if(typeof window.toast==='function')window.toast('FinSight data refreshed.');
-       else{btn.textContent='✓ Refreshed';setTimeout(()=>{if(!btn.disabled)btn.textContent=original},1400);}
-     }catch(error){
-       console.error('[FinSight] Manual refresh failed',error);
-       const msg='Refresh failed: '+(error?.message||String(error));
-       if(typeof window.toast==='function')window.toast(msg);
-       else alert(msg);
-     }finally{
-       btn.disabled=false;
-       if(btn.textContent!=='✓ Refreshed')btn.textContent=original;
-     }
-   });
- }
- if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindRefresh,{once:true});
- else bindRefresh();
-})();
-</script>
+
 </body></html>";
     const blob=new Blob([sheet],{type:"application/vnd.ms-excel;charset=utf-8"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=title.replace(/[^a-z0-9]+/gi,"_")+".xls";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500);
@@ -9954,5 +9910,51 @@ function bind(){
  if(pdf&&!pdf.dataset.fs101){pdf.dataset.fs101='1';pdf.addEventListener('click',e=>{e.preventDefault();e.stopImmediatePropagation();printActive()},true)}
 }
 bind();document.addEventListener('finsight:cloud-state-loaded',bind);
+})();
+</script>
+
+<style id="finsight-manual-refresh-style">
+.fs-page-refresh-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex-wrap:wrap}
+.fs-page-refresh{white-space:nowrap;font-weight:600}
+.fs-page-refresh:disabled{opacity:.65;cursor:wait}
+@media(max-width:650px){.fs-page-refresh-actions{gap:6px}.fs-page-refresh{padding:9px 12px}}
+@media print{.fs-page-refresh{display:none!important}}
+</style>
+<script id="finsight-manual-cloud-refresh">
+(function(){
+ 'use strict';
+ function bindRefresh(){
+   const btn=document.getElementById('fsRefreshCurrentSection');
+   if(!btn||btn.dataset.fsRefreshBound)return;
+   btn.dataset.fsRefreshBound='1';
+   btn.addEventListener('click',async()=>{
+     if(btn.disabled)return;
+     const refresh=window.finsightReloadCloudState;
+     if(typeof refresh!=='function'){
+       if(typeof window.toast==='function')window.toast('FinSight cloud refresh is not ready.');
+       else alert('FinSight cloud refresh is not ready.');
+       return;
+     }
+     const modal=document.getElementById('modal');
+     if(modal?.classList.contains('show')&&!confirm('Refresh will close any unsaved form changes. Continue?'))return;
+     const original=btn.textContent;
+     btn.disabled=true;btn.textContent='↻ Refreshing…';
+     try{
+       await refresh();
+       if(typeof window.toast==='function')window.toast('FinSight data refreshed.');
+       else{btn.textContent='✓ Refreshed';setTimeout(()=>{if(!btn.disabled)btn.textContent=original},1400);}
+     }catch(error){
+       console.error('[FinSight] Manual refresh failed',error);
+       const msg='Refresh failed: '+(error?.message||String(error));
+       if(typeof window.toast==='function')window.toast(msg);
+       else alert(msg);
+     }finally{
+       btn.disabled=false;
+       if(btn.textContent!=='✓ Refreshed')btn.textContent=original;
+     }
+   });
+ }
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindRefresh,{once:true});
+ else bindRefresh();
 })();
 </script>
