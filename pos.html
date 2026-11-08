@@ -409,7 +409,8 @@ async function syncApprovedSales(){
  try{
   const result=await rpc('pos_admin_sync_approved_history',arg());
   await loadReports();
-  show('Accounting sync: '+Number(result.posted||0)+' posted, '+Number(result.skipped||0)+' skipped, '+Number(result.pending||0)+' pending, '+Number(result.failed||0)+' failed.'+(result.failed?' Check shift categories and income accounts.':''));
+  if(S.selectedShift){S.reconInfo=await rpc('pos_admin_reconciliation',arg({p_shift:S.selectedShift,p_action:'view',p_note:null}));}
+  show('Accounting sync: '+Number(result.posted||0)+' posted, '+Number(result.skipped||0)+' skipped, '+Number(result.pending||0)+' pending, '+Number(result.failed||0)+' failed.'+(result.failed?' Check shift categories, income accounts and accounting periods.':''),result.failed?'error':'ok');
  }catch(e){show(e.message,'error')}finally{S.busy=false}
 }
 async function syncShiftAccounting(){
