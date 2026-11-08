@@ -47,6 +47,14 @@
 .pos-notice-toast{position:fixed;z-index:200;top:14px;left:50%;transform:translateX(-50%);width:min(540px,calc(100vw - 28px));padding:18px 46px 18px 18px;box-shadow:0 12px 35px #0003;font-weight:650;font-size:15px}
 .pos-notice-toast.error{background:#fff0ed;color:#8b221b;border:2px solid #cf3b2c}.pos-notice-close{position:absolute;right:12px;top:9px;font-size:24px;border:0;background:transparent;color:inherit}
 @media(max-width:1090px){.checkout .cart{position:static;max-height:none;overflow:visible}}
+
+/* Guest Bill payment dialog */
+.guest-payment-modal{width:min(590px,calc(100vw - 28px));border:1px solid var(--line);max-height:min(86vh,800px);overflow:auto}
+.guest-payment-head{margin-bottom:18px;align-items:center}
+.guest-payment-modal .field{margin-top:12px}
+.guest-payment-modal .two{margin:14px 0}
+.guest-payment-modal .btn{margin-top:10px}
+@media(max-width:580px){.guest-payment-modal{padding:18px}.guest-payment-modal .two{grid-template-columns:1fr}}
 </style></head><body><div id="root"><div class="modalwrap"><div class="authpanel"><div class="brand"><span class="mark">F</span> FinSight POS</div><h2>FinSight POS</h2><p>Preparing secure sign-in…</p></div></div></div><script>
 'use strict';
 const SUPABASE_URL='https://kwyvytwyhslhmdqtfrkf.supabase.co';
@@ -618,7 +626,7 @@ function reprintOrder(id){
 function formatOrderNumber(n){return n==null?'—':String(n).padStart(3,'0')}
 function history(){
  return `<div class="filters"><div class="field"><label>Order Date</label><input type="date" value="${esc(S.historyDate)}" onchange="historyDateChanged(this.value)"></div><div class="field"><label>Payment Status</label><select onchange="S.historyPaymentFilter=this.value;render()"><option value="All" ${S.historyPaymentFilter==='All'?'selected':''}>All</option><option value="Paid" ${S.historyPaymentFilter==='Paid'?'selected':''}>Paid</option><option value="Unpaid" ${S.historyPaymentFilter==='Unpaid'?'selected':''}>Unpaid</option></select></div>${b('All Dates',"historyDateChanged('')")}${b('Refresh',"go('history')")}</div>
- ${S.paymentOrder?paymentPanel():''}<div class="order-grid">${S.orders.filter(o=>S.historyPaymentFilter==='All'||(S.historyPaymentFilter==='Paid'?o.payment_status==='Paid':o.payment_status!=='Paid')).map(o=>`<div class="order-card"><div class="row"><strong>Order ${esc(formatOrderNumber(o.order_number))}</strong><span class="tag ${esc(o.kitchen_status)}">${esc(o.kitchen_status)}</span></div><div class="hint">${esc(when(o.created_at))} · ${esc(o.order_type)}</div><div class="payment-status ${o.payment_status==='Paid'?'paid':'unpaid'}">${o.payment_status==='Paid'?'Paid':o.checkout_kind==='Guest Bill'?'Guest Bill — Unpaid':'Unpaid'}</div><div style="margin:12px 0">${(o.pos_order_lines||[]).map(l=>`<div>${Number(l.quantity)} × ${esc(l.name_snapshot)}</div>`).join('')}</div><div class="row"><strong>${money(o.total)}</strong><div class="actions">${o.payment_status!=='Paid'&&['Guest Bill','Legacy'].includes(o.checkout_kind)?b('Take Payment',`openPayment('${esc(o.id)}')`,'primary small'):''}${b(o.payment_status==='Paid'?'Reprint Receipt':'Print Guest Bill',`reprintOrder('${esc(o.id)}')`,'small')}</div></div></div>`).join('')||'<div class="card">No orders found.</div>'}</div>`
+ <div class="order-grid">${S.orders.filter(o=>S.historyPaymentFilter==='All'||(S.historyPaymentFilter==='Paid'?o.payment_status==='Paid':o.payment_status!=='Paid')).map(o=>`<div class="order-card"><div class="row"><strong>Order ${esc(formatOrderNumber(o.order_number))}</strong><span class="tag ${esc(o.kitchen_status)}">${esc(o.kitchen_status)}</span></div><div class="hint">${esc(when(o.created_at))} · ${esc(o.order_type)}</div><div class="payment-status ${o.payment_status==='Paid'?'paid':'unpaid'}">${o.payment_status==='Paid'?'Paid':o.checkout_kind==='Guest Bill'?'Guest Bill — Unpaid':'Unpaid'}</div><div style="margin:12px 0">${(o.pos_order_lines||[]).map(l=>`<div>${Number(l.quantity)} × ${esc(l.name_snapshot)}</div>`).join('')}</div><div class="row"><strong>${money(o.total)}</strong><div class="actions">${o.payment_status!=='Paid'&&['Guest Bill','Legacy'].includes(o.checkout_kind)?b('Take Payment',`openPayment('${esc(o.id)}')`,'primary small'):''}${b(o.payment_status==='Paid'?'Reprint Receipt':'Print Guest Bill',`reprintOrder('${esc(o.id)}')`,'small')}</div></div></div>`).join('')||'<div class="card">No orders found.</div>'}</div>${S.paymentOrder?paymentPanel():''}`
 }
 async function openPayment(id){
  try{
@@ -632,10 +640,11 @@ async function openPayment(id){
   S.paymentBalance=balance;S.paymentMethods=methods||[];S.paymentRequest=null;S.mpesaIntentId=null;S.mpesaOrder=id;S.mpesaMessage='';S.mpesaRequestId=null;clearTimeout(S.mpesaTimer);render();
  }catch(e){S.paymentOrder=null;show('Cannot load payment: '+e.message,'error')}
 }
+function closeGuestPayment(){if(S.busy)return;S.paymentOrder=null;S.paymentBalance=null;S.paymentRequest=null;render()}
 function paymentPanel(){
  const d=S.paymentBalance||{},remaining=Math.max(0,Number(d.total||0)-Number(d.confirmed||0));
- return `<div class="card" style="margin-bottom:16px;border:2px solid var(--accent)">
- <div class="row"><h3>Collect Payment · ${esc(formatOrderNumber(S.orders.find(x=>x.id===S.paymentOrder)?.order_number))}</h3>${b('Close',"S.paymentOrder=null;render()")}</div>
+ return `<div class="pos-modal-shade"><div class="pos-payment-modal guest-payment-modal" role="dialog" aria-modal="true" aria-label="Collect Guest Bill Payment">
+ <div class="row guest-payment-head"><h2 style="margin:0">Collect Payment · ${esc(formatOrderNumber(S.orders.find(x=>x.id===S.paymentOrder)?.order_number))}</h2>${b('Close',"closeGuestPayment()")}</div>
  <div class="row"><span>Order Total</span><strong>${money(d.total)}</strong></div>
  <div class="row"><span>Already Paid</span><strong>${money(d.confirmed)}</strong></div>
  <div class="row"><span>Balance Due</span><strong>${money(remaining)}</strong></div>
@@ -646,7 +655,7 @@ function paymentPanel(){
  <div class="field"><label>Payment Reference (optional)</label><input id="payRef" maxlength="150" placeholder="M-Pesa / card transaction reference"></div>
  ${b('Record Payment','recordPayment()','primary')}${b('Pay & Print Receipt','recordPayment(true)')}`:'<p class="pill">Paid in full</p>'}
  
- </div>`
+ </div></div>`
 }
 async function recordPayment(printAfter=false){
  if(!S.paymentOrder||S.busy)return;
