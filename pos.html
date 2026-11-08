@@ -360,7 +360,7 @@ function reportDetail(){const d=S.shiftDetail,rows=reportRows(),shift=S.reports.
  <h3>Sales Items</h3><div class="reportscroll"><table class="report-table"><thead><tr><th>Date</th><th>Order</th><th>Item</th><th>Qty</th><th>Before Discount</th><th>Discount</th><th>After Discount</th><th>Payment Type(s)</th><th>Order Cashier</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.order)}</td><td>${esc(r.item)}</td><td>${Number(r.quantity)}</td><td>${money(r.gross)}</td><td>${money(r.discount||0)}</td><td>${money(r.net||0)}</td><td>${esc(r.payment)}</td><td>${esc(r.cashier)}</td></tr>`).join('')||'<tr><td colspan="9">No items found.</td></tr>'}</tbody></table></div>
  <h3 style="margin-top:25px">Payment Collections</h3><div class="reportscroll"><table class="report-table"><thead><tr><th>Received At</th><th>Order</th><th>Payment Type</th><th>Amount</th><th>Receiving Cashier</th><th>Reference</th></tr></thead><tbody>${payments.map(p=>`<tr><td>${esc(when(p.collected_at))}</td><td>${esc(String(p.order_id||'').slice(0,8))}</td><td>${esc(p.method)}</td><td>${money(p.amount)}</td><td>${esc(p.receiver)}</td><td>${esc(p.reference||'')}</td></tr>`).join('')||'<tr><td colspan="6">No payments recorded.</td></tr>'}</tbody></table></div>
  <h3 style="margin-top:25px">Reconciliation — ${esc(recon.status)}</h3>
- ${recon.status==='Approved'?`<div class="row" style="margin:12px 0"><strong>Accounting: ${esc(recon.accounting_posted?'Posted':recon.posting_status==='Approved'?'Pending':'Not Yet Posted')}</strong>${!recon.accounting_posted?b('Sync This Shift','syncShiftAccounting()','small'):''}</div>`:''}
+ ${recon.status==='Approved'?`<div class="row" style="margin:12px 0"><strong>Accounting: ${esc(recon.accounting_posted?'Posted':'Pending')}</strong>${!recon.accounting_posted?b('Sync This Shift','syncShiftAccounting()','small'):''}</div>${recon.posting_error?`<p class="notice error">Posting issue: ${esc(recon.posting_error)}</p>`:''}`:''}
  ${recon.lines?.length?`<div class="reportscroll"><table class="report-table"><thead><tr><th>Payment Type</th><th>Expected</th><th>Actual</th><th>Variance</th><th>Explanation</th></tr></thead><tbody>${recon.lines.map(x=>`<tr><td>${esc(x.payment_type)}</td><td>${money(x.expected)}</td><td>${money(x.actual)}</td><td>${money(x.variance)}</td><td>${esc(x.explanation||'')}</td></tr>`).join('')}</tbody></table></div>`:'<p class="hint">Cashier reconciliation has not been submitted.</p>'}
  ${recon.status==='Submitted'?`<div class="field" style="margin-top:12px"><label>Review note (required when returning)</label><textarea id="reviewReconNote">${esc(recon.note||'')}</textarea></div><div class="actions">${b('Approve Reconciliation',"reviewReconciliation('approve')",'primary')}${b('Return for Correction',"reviewReconciliation('return')")}</div>`:''}
  <div class="actions" style="margin-top:18px">${reviewable?`${b('Accept',"reviewShift('Accepted')")}${b('Approve Shift',"reviewShift('Approved')",'primary')}${b('Discard',"S.discardOpen=!S.discardOpen;render()",'danger')}`:''}</div>
@@ -479,31 +479,55 @@ function testPrintReceipt(){const data=readReceiptForm();const preview=receiptPr
 function openPrintWindow(title,html,pageSize){const width=pageSize.startsWith('58')?'58mm':pageSize.startsWith('80')?'80mm':'A4';printReceiptInPage(title,html,'',width).catch(e=>show('Printing failed: '+e.message,'error'))}
 async function convertPhoto(file){if(!['image/jpeg','image/png','image/webp'].includes(file.type))throw Error('Use JPEG, PNG or WebP.');const img=await createImageBitmap(file);const scale=Math.min(1,1200/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));const ctx=canvas.getContext('2d');if(!ctx)throw Error('Image processing unavailable.');ctx.drawImage(img,0,0,canvas.width,canvas.height);img.close?.();const blob=await new Promise((resolve,reject)=>canvas.toBlob(x=>x?resolve(x):reject(Error('Conversion failed.')),'image/jpeg',.83));if(blob.size>3145728)throw Error('Image exceeds 3 MB.');return blob}
 
-async function loadTillSummary(){try{S.tillSummary=await rpc('pos_cashier_latest_shift',arg())}catch(e){S.tillSummary=null;console.warn('Till summary:',e.message)}}
+async function loadTillSummary(){try{
+ S.tillShiftList=await rpc('pos_cashier_shift_list',arg());
+ if(S.tillSelectedShift&&!(S.tillShiftList||[]).some(x=>x.id===S.tillSelectedShift))S.tillSelectedShift='';
+ S.tillSummary=S.tillSelectedShift?
+   await rpc('pos_cashier_shift_summary',arg({p_shift:S.tillSelectedShift})):
+   await rpc('pos_cashier_latest_shift',arg());
+}catch(e){S.tillSummary=null;console.warn('Till summary:',e.message)}}
+async function selectTillShift(id){S.tillSelectedShift=id||'';await loadTillSummary();render()}
+function updateTillVariance(i,expected){
+ const field=document.getElementById('actual_'+i),info=document.getElementById('variance_'+i),
+ explanation=document.getElementById('explain_'+i),label=document.getElementById('variance_label_'+i);
+ const actual=field?.value===''?NaN:Number(field?.value),diff=actual-Number(expected);
+ const needsExplanation=Number.isFinite(diff)&&Math.abs(diff)>=0.01;
+ if(info)info.textContent=Number.isFinite(diff)?money(diff):'Enter actual received';
+ if(info)info.style.color=needsExplanation?'#bb3636':'';
+ if(explanation)explanation.required=needsExplanation;
+ if(label)label.textContent=needsExplanation?'Variance explanation (required)':'Variance explanation';
+}
 async function submitTillReconciliation(){if(!S.tillSummary?.shift_id||S.busy)return;
  const methods=S.tillSummary.payment_types||[],actuals=methods.map((m,i)=>({payment_type_id:m.id,actual:Number(document.getElementById('actual_'+i)?.value),explanation:document.getElementById('explain_'+i)?.value.trim()||null}));
- if(actuals.some(x=>!Number.isFinite(x.actual)||x.actual<0||Math.round(x.actual*100)!==x.actual*100))return show('Enter valid collection amounts.','error');
+ if(actuals.some(x=>!Number.isFinite(x.actual)||x.actual<0||Math.abs(Math.round(x.actual*100)-x.actual*100)>0.000001))return show('Enter valid collection amounts.','error');
+ const missing=actuals.find((x,i)=>Math.abs(x.actual-Number(methods[i].expected||0))>=0.01&&String(x.explanation||'').length<5);
+ if(missing)return show('Explain each payment variance (at least 5 characters) before submitting.','error');
  await action('pos_cashier_submit_reconciliation',arg({p_shift:S.tillSummary.shift_id,p_actuals:actuals}),
  'Till reconciliation submitted for Admin review.',loadTillSummary);
 }
 function shift(){const t=S.tillSummary||{status:'None',payment_types:[]},open=!!S.ws.shift_id;
- const closedToday=!open&&t.business_date===localDay(new Date().toISOString())&&t.status!=='None';
- const pending=!!t.shift_id&&t.status==='Closed'&&['Not Submitted','Returned'].includes(t.reconciliation_status);
+ const pending=!!t.shift_id&&['Closed','Returned'].includes(t.status)&&['Not Submitted','Returned'].includes(t.reconciliation_status);
  return `<div class="card" style="max-width:790px"><h3>Till Shift</h3>
  <div class="row"><span>Current cashier</span><strong>${esc(S.employee?.name)}</strong></div>
  <div class="row" style="margin-top:10px"><span>Business date</span><strong>${esc(t.business_date||localDay(new Date().toISOString()))}</strong></div>
- <div class="row" style="margin-top:10px"><span>Shift</span><span class="pill">${esc(open?'Open':t.status||'None')}</span></div>
+ <div class="row" style="margin-top:10px"><span>Current outlet shift</span><span class="pill">${open?'Open':'None open'}</span></div>
+ <div class="field" style="margin-top:12px"><label>Select shift for reconciliation</label>
+ <select onchange="selectTillShift(this.value)">
+ <option value="" ${!S.tillSelectedShift?'selected':''}>Latest shift</option>
+ ${(S.tillShiftList||[]).map(x=>`<option value="${esc(x.id)}" ${S.tillSelectedShift===x.id?'selected':''}>${esc(x.business_date||'')} · ${esc(when(x.opened_at))} · ${esc(x.status)} · ${esc(x.reconciliation_status)}</option>`).join('')}
+ </select></div>
+ <div class="row" style="margin-top:10px"><span>Selected shift</span><span class="pill">${esc(t.status||'None')}</span></div>
  <div class="row" style="margin-top:10px"><span>Reconciliation</span><span class="pill">${esc(t.reconciliation_status||'Not Submitted')}</span></div>
- <div class="actions" style="margin-top:18px">${open?b('Close Till Shift','closeTill()','primary'):!closedToday?b('Open Till Shift','openTill()','primary'):'<span class="hint">Today’s shift is already closed. A new shift begins on the next business day.</span>'}${b('Refresh','reloadTill()')}</div>
+ <div class="actions" style="margin-top:18px">${open?b('Close Till Shift','closeTill()','primary'):b('Open Till Shift','openTill()','primary')}${b('Refresh','reloadTill()')}</div>
  ${pending?`<div class="section-head"><h3>Submit Shift Reconciliation</h3></div><p class="hint">Count and enter actual collections. Explain each difference before submitting for approval.</p>
- ${t.payment_types.map((m,i)=>`<div class="recon-method"><div><strong>${esc(m.name)}</strong><div class="hint">Expected: ${money(m.expected)}</div></div><div class="field"><label>Actual Received</label><input id="actual_${i}" type="number" min="0" step="0.01" value="${m.actual==null?Number(m.expected).toFixed(2):Number(m.actual).toFixed(2)}"></div><div class="field"><label>Variance Explanation</label><input id="explain_${i}" maxlength="500" value="${esc(m.explanation||'')}" placeholder="If different from expected"></div></div>`).join('')}
+ ${t.payment_types.map((m,i)=>`<div class="recon-method"><div><strong>${esc(m.name)}</strong><div class="hint">Expected: ${money(m.expected)}</div></div><div class="field"><label>Actual Received</label><input id="actual_${i}" type="number" min="0" step="0.01" oninput="updateTillVariance(${i},${Number(m.expected)||0})" value="${m.actual==null?Number(m.expected).toFixed(2):Number(m.actual).toFixed(2)}"><div class="hint">Variance: <strong id="variance_${i}">${money((m.actual==null?Number(m.expected):Number(m.actual))-Number(m.expected))}</strong></div></div><div class="field"><label id="variance_label_${i}">${Math.abs((m.actual==null?Number(m.expected):Number(m.actual))-Number(m.expected))>=0.01?'Variance explanation (required)':'Variance explanation'}</label><input id="explain_${i}" maxlength="500" value="${esc(m.explanation||'')}" placeholder="Explain any difference" ${Math.abs((m.actual==null?Number(m.expected):Number(m.actual))-Number(m.expected))>=0.01?'required':''}></div></div>`).join('')}
  ${b('Submit Reconciliation','submitTillReconciliation()','primary')}`:''}
- <p class="hint" style="margin-top:16px">One outlet shift per day. All cashiers work under the same shift, while payments retain the receiving cashier. Unpaid Guest Bills must be settled before the shift can close.</p>
+ <p class="hint" style="margin-top:16px">Cashiers open and close shifts manually. A new shift may be opened immediately after closing the previous one. Only one shift may be open per outlet at a time. Unpaid Guest Bills must be settled before closing.</p>
  </div>`;
 }
 async function reloadTill(){await refreshWorkspace();await loadTillSummary();render()}
-function openTill(){action('pos_cashier_open_shift',arg(),'Till shift opened.',async()=>{await refreshWorkspace();await loadTillSummary()})}
-function closeTill(){action('pos_cashier_close_shift',arg({p_shift:S.ws.shift_id}),'Till shift closed.',async()=>{await refreshWorkspace();await loadTillSummary()})}
+function openTill(){action('pos_cashier_open_shift',arg(),'Till shift opened.',async()=>{S.tillSelectedShift='';await refreshWorkspace();await loadTillSummary()})}
+function closeTill(){action('pos_cashier_close_shift',arg({p_shift:S.ws.shift_id}),'Till shift closed.',async()=>{S.tillSelectedShift='';await refreshWorkspace();await loadTillSummary()})}
 function selectCategoryIndex(index){const categories=['All',...new Set(S.menu.map(x=>x.category||'Uncategorized'))];if(categories[index]!==undefined){S.category=categories[index];render()}}
 function cartLineGross(x){const ids=x.modifiers||[];const modCost=ids.reduce((sum,id)=>{const opt=S.modifierGroups.flatMap(g=>g.options||[]).find(m=>m.id===id);return sum+Number(opt?.price_delta||0)},0);return Math.round((Number(x.price)+modCost)*x.qty*100)/100;}
 function checkoutTotals(){const gross=S.cart.reduce((sum,x)=>sum+cartLineGross(x),0);let discount=0,surcharge=0;
