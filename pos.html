@@ -345,7 +345,7 @@ function addTable(){const name=document.getElementById('newTable')?.value.trim()
 function saveItem(id){const raw=document.getElementById('price_'+id)?.value,p=Number(raw),minutes=Number(document.getElementById('prep_'+id)?.value),available=!!document.getElementById('avail_'+id)?.checked;if(raw===''||!Number.isFinite(p)||p<0||!Number.isInteger(minutes)||minutes<0||minutes>240)return show('Enter a valid price and preparation minutes.','error');action('pos_employee_save_item',arg({p_item:id,p_price:p,p_minutes:minutes,p_available:available}),'Menu item saved.',loadAdmin)}
 function picture(item){const path=item.image_url;if(!path||!path.startsWith(S.ws.company_id+'/'+item.id+'/'))return '🍽️';const url=S.db.storage.from('finsight-pos-menu').getPublicUrl(path).data.publicUrl;return `<img src="${esc(url)}" alt="${esc(item.name)}" loading="lazy" onerror="this.style.display='none';this.parentElement.textContent='🍽️'">`}
 async function uploadPhoto(id,input){const file=input.files?.[0];if(!file||S.busy)return;S.busy=true;S.uploading=id;try{const blob=await convertPhoto(file);const path=S.ws.company_id+'/'+id+'/'+newUuid()+'.jpg';const {error}=await S.db.storage.from('finsight-pos-menu').upload(path,blob,{contentType:'image/jpeg',upsert:false,cacheControl:'3600'});if(error)throw Error('Storage rejected image: '+error.message);await rpc('pos_employee_menu_image',arg({p_item:id,p_path:path}));await loadAdmin();S.notice='Menu photo saved.';S.noticeType='ok'}catch(e){S.notice='Image upload failed: '+e.message;S.noticeType='error'}finally{S.uploading='';S.busy=false;render()}}
-function reports(){const shifts=S.reports.filter(r=>!S.reportDate||localDay(r.opened_at)===S.reportDate);if(S.selectedShift&&S.shiftDetail)return reportDetail();return `<div class="card"><div class="row"><div class="field"><label>Filter by date</label><input type="date" value="${esc(S.reportDate)}" onchange="S.reportDate=this.value;render()"></div><div class="actions">${b('All Dates',"S.reportDate='';render()")}${b('Refresh',"go('reports')")}</div></div><div class="reportscroll"><table class="report-table"><thead><tr><th>Date</th><th>Shift</th><th>Status</th><th>Review</th><th>Orders</th><th>Sales</th><th></th></tr></thead><tbody>${shifts.map(r=>`<tr><td>${esc(when(r.opened_at))}</td><td>${esc(String(r.id).slice(0,8))}</td><td>${esc(r.status)}</td><td>${esc(r.review)}</td><td>${Number(r.orders)}</td><td>${money(r.order_total)}</td><td>${b('View Report',`viewShift('${esc(r.id)}')`,'small')}</td></tr>`).join('')||'<tr><td colspan="7">No shifts found.</td></tr>'}</tbody></table></div></div>`}
+function reports(){const shifts=S.reports.filter(r=>!S.reportDate||localDay(r.opened_at)===S.reportDate);if(S.selectedShift&&S.shiftDetail)return reportDetail();return `<div class="card"><div class="row"><div class="field"><label>Filter by date</label><input type="date" value="${esc(S.reportDate)}" onchange="S.reportDate=this.value;render()"></div><div class="actions">${b('All Dates',"S.reportDate='';render()")}${b('Refresh',"go('reports')")}${b('Sync Approved Sales','syncApprovedSales()','primary')}</div></div><div class="reportscroll"><table class="report-table"><thead><tr><th>Date</th><th>Shift</th><th>Status</th><th>Review</th><th>Orders</th><th>Sales</th><th></th></tr></thead><tbody>${shifts.map(r=>`<tr><td>${esc(when(r.opened_at))}</td><td>${esc(String(r.id).slice(0,8))}</td><td>${esc(r.status)}</td><td>${esc(r.review)}</td><td>${Number(r.orders)}</td><td>${money(r.order_total)}</td><td>${b('View Report',`viewShift('${esc(r.id)}')`,'small')}</td></tr>`).join('')||'<tr><td colspan="7">No shifts found.</td></tr>'}</tbody></table></div></div>`}
 function reportRows(){return (S.shiftDetail?.orders||[]).flatMap(order=>(order.items||[]).map(item=>({date:when(order.date),order:order.order_id?.slice(0,8)||'',item:item.item,quantity:item.quantity,gross:item.revenue_before_discount,discount:item.discount,net:item.revenue_after_discount,payment:order.payment_types,cashier:order.cashier,status:order.payment_status}))) }
 function reportDetail(){const d=S.shiftDetail,rows=reportRows(),shift=S.reports.find(r=>r.id===S.selectedShift),recon=S.reconInfo||{status:'Not Submitted',lines:[]};
  const orders=d.orders||[],payments=d.payments||[];
@@ -360,11 +360,12 @@ function reportDetail(){const d=S.shiftDetail,rows=reportRows(),shift=S.reports.
  <h3>Sales Items</h3><div class="reportscroll"><table class="report-table"><thead><tr><th>Date</th><th>Order</th><th>Item</th><th>Qty</th><th>Before Discount</th><th>Discount</th><th>After Discount</th><th>Payment Type(s)</th><th>Order Cashier</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.order)}</td><td>${esc(r.item)}</td><td>${Number(r.quantity)}</td><td>${money(r.gross)}</td><td>${money(r.discount||0)}</td><td>${money(r.net||0)}</td><td>${esc(r.payment)}</td><td>${esc(r.cashier)}</td></tr>`).join('')||'<tr><td colspan="9">No items found.</td></tr>'}</tbody></table></div>
  <h3 style="margin-top:25px">Payment Collections</h3><div class="reportscroll"><table class="report-table"><thead><tr><th>Received At</th><th>Order</th><th>Payment Type</th><th>Amount</th><th>Receiving Cashier</th><th>Reference</th></tr></thead><tbody>${payments.map(p=>`<tr><td>${esc(when(p.collected_at))}</td><td>${esc(String(p.order_id||'').slice(0,8))}</td><td>${esc(p.method)}</td><td>${money(p.amount)}</td><td>${esc(p.receiver)}</td><td>${esc(p.reference||'')}</td></tr>`).join('')||'<tr><td colspan="6">No payments recorded.</td></tr>'}</tbody></table></div>
  <h3 style="margin-top:25px">Reconciliation — ${esc(recon.status)}</h3>
+ ${recon.status==='Approved'?`<div class="row" style="margin:12px 0"><strong>Accounting: ${esc(recon.accounting_posted?'Posted':recon.posting_status==='Approved'?'Pending':'Not Yet Posted')}</strong>${!recon.accounting_posted?b('Sync This Shift','syncShiftAccounting()','small'):''}</div>`:''}
  ${recon.lines?.length?`<div class="reportscroll"><table class="report-table"><thead><tr><th>Payment Type</th><th>Expected</th><th>Actual</th><th>Variance</th><th>Explanation</th></tr></thead><tbody>${recon.lines.map(x=>`<tr><td>${esc(x.payment_type)}</td><td>${money(x.expected)}</td><td>${money(x.actual)}</td><td>${money(x.variance)}</td><td>${esc(x.explanation||'')}</td></tr>`).join('')}</tbody></table></div>`:'<p class="hint">Cashier reconciliation has not been submitted.</p>'}
  ${recon.status==='Submitted'?`<div class="field" style="margin-top:12px"><label>Review note (required when returning)</label><textarea id="reviewReconNote">${esc(recon.note||'')}</textarea></div><div class="actions">${b('Approve Reconciliation',"reviewReconciliation('approve')",'primary')}${b('Return for Correction',"reviewReconciliation('return')")}</div>`:''}
  <div class="actions" style="margin-top:18px">${reviewable?`${b('Accept',"reviewShift('Accepted')")}${b('Approve Shift',"reviewShift('Approved')",'primary')}${b('Discard',"S.discardOpen=!S.discardOpen;render()",'danger')}`:''}</div>
  ${S.discardOpen?`<div class="field"><label>Discard reason</label><textarea id="discardReason"></textarea></div>${b('Confirm Discard',"reviewShift('Discarded')",'danger')}`:''}
- <p class="hint">Shift approval requires an approved reconciliation. Approval does not post into Accounting.</p></div></div>`;
+ <p class="hint">Approved shifts post to Accounting automatically when Accounting is enabled. An unposted approved shift can be retried using Sync This Shift.</p></div></div>`;
 }
 function xmlEscape(text){return String(text??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function downloadBlob(blob,name){const uri=globalThis.URL.createObjectURL(blob);const a=document.createElement('a');a.href=uri;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>globalThis.URL.revokeObjectURL(uri),3000)}
@@ -390,10 +391,37 @@ async function viewShift(id){S.selectedShift=id;S.discardOpen=false;S.shiftDetai
 }
 async function reviewReconciliation(actionName){const note=document.getElementById('reviewReconNote')?.value.trim()||null;
  if(actionName==='return'&&!note)return show('Enter a return reason.','error');
- await action('pos_admin_reconciliation',arg({p_shift:S.selectedShift,p_action:actionName,p_note:note}),
- 'Reconciliation '+(actionName==='approve'?'approved.':'returned to Cashier.'),async()=>{
-  S.reconInfo=await rpc('pos_admin_reconciliation',arg({p_shift:S.selectedShift,p_action:'view',p_note:null}));await loadReports();
- });
+ if(S.busy)return;S.busy=true;
+ try{
+  const result=await rpc('pos_admin_reconciliation',arg({p_shift:S.selectedShift,p_action:actionName,p_note:note}));
+  S.reconInfo=await rpc('pos_admin_reconciliation',arg({p_shift:S.selectedShift,p_action:'view',p_note:null}));
+  await loadReports();
+  const accounting=result.accounting||{};
+  const feedback=actionName==='return'?'Reconciliation returned to Cashier.':
+    accounting.status==='Posted'?'Reconciliation approved and sales posted to Accounting.':
+    'Reconciliation approved. Accounting posting pending: '+(accounting.reason||accounting.status||'Check configuration.');
+  show(feedback,actionName==='approve'&&accounting.status!=='Posted'?'error':'ok');
+ }catch(e){show(e.message,'error')}finally{S.busy=false}
+}
+async function syncApprovedSales(){
+ if(S.busy)return;
+ S.busy=true;
+ try{
+  const result=await rpc('pos_admin_sync_approved_history',arg());
+  await loadReports();
+  show('Accounting sync: '+Number(result.posted||0)+' posted, '+Number(result.skipped||0)+' skipped, '+Number(result.pending||0)+' pending, '+Number(result.failed||0)+' failed.'+(result.failed?' Check shift categories and income accounts.':''));
+ }catch(e){show(e.message,'error')}finally{S.busy=false}
+}
+async function syncShiftAccounting(){
+ if(!S.selectedShift||S.busy)return;
+ S.busy=true;
+ try{
+  const result=await rpc('pos_admin_reconciliation',arg({p_shift:S.selectedShift,p_action:'sync',p_note:null}));
+  S.reconInfo=await rpc('pos_admin_reconciliation',arg({p_shift:S.selectedShift,p_action:'view',p_note:null}));
+  await loadReports();
+  const accounting=result.accounting||{};
+  show(accounting.status==='Posted'?'Shift sales posted to Accounting.':('Accounting posting pending: '+(accounting.reason||accounting.status||'Check settings.')),accounting.status==='Posted'?'ok':'error');
+ }catch(e){show(e.message,'error')}finally{S.busy=false}
 }
 function closeShiftDetail(){S.selectedShift=null;S.shiftDetail=null;S.reportLines=[];S.discardOpen=false;render()}
 function openAdminShift(){action('pos_employee_setup',arg({p_action:'open_shift',p_data:{outlet_id:S.ws.outlet_id}}),'Till shift opened.',async()=>{await loadReports();await refreshWorkspace()})}
