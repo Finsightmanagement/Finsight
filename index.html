@@ -9238,29 +9238,29 @@ async function openBatchSales(){
  if(!receivable)return toast('Sales Receivable account is missing.');
  const menuOpt=menu.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
  const payOpt=pays.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
- openModal('Batch Sales','',`<div class="form-grid"><div class="field"><label>Sales Date</label><input class="input" type="date" id="fsBatchDate" value="${typeof today==='function'?today():new Date().toISOString().slice(0,10)}"></div><div class="field"><label>Payment Type</label><select class="input" id="fsBatchPayment">${payOpt}</select></div><div class="field full"><label>Memo</label><input class="input" id="fsBatchMemo"></div></div>
- <div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Menu Item</th><th>Category</th><th>Quantity Sold</th><th>Income Account</th><th>Sales Amount</th><th></th></tr></thead><tbody id="fsBatchRows"></tbody></table></div>
+ openModal('Batch Sales','',`<div class="form-grid"><div class="field"><label>Payment Type</label><select class="input" id="fsBatchPayment">${payOpt}</select></div><div class="field full"><label>Memo</label><input class="input" id="fsBatchMemo"></div></div>
+ <div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Sales Date</th><th>Menu Item</th><th>Category</th><th>Quantity Sold</th><th>Income Account</th><th>Sales Amount</th><th></th></tr></thead><tbody id="fsBatchRows"></tbody></table></div>
  <div class="modal-actions" style="justify-content:space-between;align-items:center;flex-wrap:wrap"><button class="btn" id="fsBatchAdd">+ Add Item</button><strong id="fsBatchTotal">Total: KSh 0.00</strong></div>
  <div id="fsBatchStatus" role="status"></div>
  <div class="modal-actions"><button class="btn primary" id="fsBatchPost">Post Batch Sales</button></div>`);
  const rows=el('#fsBatchRows'),status=el('#fsBatchStatus'),btn=el('#fsBatchPost');
  function refresh(){let sum=0;for(const tr of rows.children){const m=menu.find(x=>x.id===el('.fs-item',tr).value);el('.fs-cat',tr).value=categories.get(m?.category_id)||'';el('.fs-inc',tr).value=accountMap.get(m?.income_account_id)?.name||'';sum+=Number(el('.fs-amount',tr).value)||0;}el('#fsBatchTotal').textContent='Total: KSh '+money(sum)}
- function addRow(){const tr=document.createElement('tr');tr.innerHTML=`<td><select class="fs-item input">${menuOpt}</select></td><td><input class="fs-cat input" readonly></td><td><input class="fs-qty input" type="number" min="0.001" step="0.001" value="1"></td><td><input class="fs-inc input" readonly></td><td><input class="fs-amount input" type="text" inputmode="decimal" placeholder="0.00"></td><td><button type="button" class="btn fs-remove">Remove</button></td>`;rows.appendChild(tr);el('.fs-item',tr).onchange=refresh;el('.fs-amount',tr).oninput=refresh;el('.fs-remove',tr).onclick=()=>{if(rows.children.length===1)return toast('At least one item is required.');tr.remove();refresh()};refresh()}
+ function addRow(){const defaultDate=rows.lastElementChild?el('.fs-date',rows.lastElementChild).value:(typeof today==='function'?today():new Date().toISOString().slice(0,10));const tr=document.createElement('tr');tr.innerHTML=`<td><input class="fs-date input" type="date" required value="${esc(defaultDate)}"></td><td><select class="fs-item input">${menuOpt}</select></td><td><input class="fs-cat input" readonly></td><td><input class="fs-qty input" type="number" min="0.001" step="0.001" value="1"></td><td><input class="fs-inc input" readonly></td><td><input class="fs-amount input" type="text" inputmode="decimal" placeholder="0.00"></td><td><button type="button" class="btn fs-remove">Remove</button></td>`;rows.appendChild(tr);el('.fs-item',tr).onchange=refresh;el('.fs-amount',tr).oninput=refresh;el('.fs-remove',tr).onclick=()=>{if(rows.children.length===1)return toast('At least one item is required.');tr.remove();refresh()};refresh()}
  el('#fsBatchAdd').onclick=addRow;addRow();
  btn.onclick=async()=>{
-  const date=el('#fsBatchDate').value,paymentId=el('#fsBatchPayment').value,memo=el('#fsBatchMemo').value.trim();
-  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return toast('Select a valid sales date.');
+  const paymentId=el('#fsBatchPayment').value,memo=el('#fsBatchMemo').value.trim();
   const parsed=[];
   for(const [i,tr] of [...rows.children].entries()){
-   const m=menu.find(x=>x.id===el('.fs-item',tr).value),qty=Number(el('.fs-qty',tr).value),amount=Number(el('.fs-amount',tr).value);
+   const date=el('.fs-date',tr).value,m=menu.find(x=>x.id===el('.fs-item',tr).value),qty=Number(el('.fs-qty',tr).value),amount=Number(el('.fs-amount',tr).value);
+   if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!el('.fs-date',tr).validity.valid)return toast('Enter a valid sales date on row '+(i+1));
    if(!m||!m.category_id||!m.income_account_id||!Number.isFinite(qty)||qty<=0||!Number.isFinite(amount)||amount<=0)return toast('Check item, quantity and amount on row '+(i+1));
-   parsed.push({m,qty,amount});
+   parsed.push({date,m,qty,amount});
   }
   btn.disabled=true;el('#fsBatchAdd').disabled=true;let posted=0;
   try{
    // Persist each row through the existing Sale RPC. Reconciliation must not repost a partially completed batch.
    for(const item of parsed){
-    const {m,qty,amount}=item;
+    const {date,m,qty,amount}=item;
     const r=await sb.rpc('post_sale',{p_company_id:companyId,p_sale_date:date,p_payment_type_id:paymentId,p_income_account_id:m.income_account_id,p_sales_receivable_account_id:receivable.id,p_total_amount:amount,p_memo:memo||null,p_items:[{category_id:m.category_id,item_name:m.name,quantity:qty,line_revenue:amount}]});
     if(r.error)throw r.error;
     posted++;status.textContent=`Posted ${posted} of ${parsed.length} items.`;
