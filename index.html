@@ -6505,35 +6505,29 @@ async function validateSales(p){
   if(!receivable)errors.push({label:'Required Chart of Accounts entry missing',column:'Account',items:['Sales Receivable']});
   return {errors,paymentMap,categoryMap,receivable};
 }
-async function postSales(p,v){
+async function salesBatchKey(text,cid){
+  const bytes=new TextEncoder().encode(cid+'\n'+text.replace(/\r\n/g,'\n'));
+  const digest=await crypto.subtle.digest('SHA-256',bytes);
+  return 'csv_'+[...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function postSales(p,v,batchKey){
   const {cid}=cloud();
-  const total=p.rows.length;
-  // Post a small, bounded batch at a time. Do not start later batches after an error.
-  // Each record retains the original post_sale RPC and its journal behaviour.
-  const batchSize=3;
-  let completed=0;
-  for(let start=0;start<total;start+=batchSize){
-    const batch=p.rows.slice(start,start+batchSize);
-    const results=await Promise.allSettled(batch.map(async(r)=>{
-      const pay=clean(r[idx(p.headers,'Payment_Type')]),cat=clean(r[idx(p.headers,'Category')]),
-            inc=clean(r[idx(p.headers,'Income_Account')]),date=csvDate(r[idx(p.headers,'Date')]),
-            memo=clean(r[idx(p.headers,'Memo')]),item=clean(r[idx(p.headers,'Item')])||'Unspecified',
-            qty=num(r[idx(p.headers,'Quantity')]),amount=num(r[idx(p.headers,'Line_Revenue')]);
-      await rpc('post_sale',{
-        p_company_id:cid,p_sale_date:date,p_payment_type_id:v.paymentMap.get(norm(pay)).id,
-        p_income_account_id:accountByName(inc,['Income']).id,
-        p_sales_receivable_account_id:v.receivable.id,p_total_amount:amount,p_memo:memo||null,
-        p_items:[{category_id:v.categoryMap.get(norm(cat)).id,item_name:item,quantity:qty,line_revenue:amount}]
-      });
-    }));
-    completed+=results.filter(x=>x.status==='fulfilled').length;
-    setProgress(start+batch.length,total,`Sales: ${completed} posted of ${total} rows processed`);
-    const failed=results.findIndex(x=>x.status==='rejected');
-    if(failed!==-1){
-      const reason=results[failed].reason;
-      throw new Error(`Sales CSV row ${start+failed+2} failed. ${completed} of ${total} rows were successfully posted in this attempt. ${reason?.message||String(reason)}`);
-    }
-  }
+  const batchRows=p.rows.map((r,i)=>{
+    const pay=clean(r[idx(p.headers,'Payment_Type')]),cat=clean(r[idx(p.headers,'Category')]),
+          inc=clean(r[idx(p.headers,'Income_Account')]),date=csvDate(r[idx(p.headers,'Date')]),
+          memo=clean(r[idx(p.headers,'Memo')]),item=clean(r[idx(p.headers,'Item')])||'Unspecified',
+          qty=num(r[idx(p.headers,'Quantity')]),amount=num(r[idx(p.headers,'Line_Revenue')]);
+    const payment=v.paymentMap.get(norm(pay)),category=v.categoryMap.get(norm(cat)),income=accountByName(inc,['Income']);
+    if(!payment||!category||!income||!date||qty<=0||amount<=0)throw Error('Sales CSV row '+(i+2)+' has invalid sales data.');
+    return {date,payment_type_id:payment.id,income_account_id:income.id,
+      receivable_account_id:v.receivable.id,amount,memo:memo||null,
+      items:[{category_id:category.id,item_name:item,quantity:qty,line_revenue:amount}]};
+  });
+  setProgress(0,batchRows.length,'Posting entire sales batch securely…');
+  const result=await rpc('fs_post_sales_batch',{p_company_id:cid,p_batch_key:batchKey,p_rows:batchRows});
+  setProgress(batchRows.length,batchRows.length,
+    result?.already_posted?'Batch previously posted — no duplicates created.':batchRows.length+' sales posted successfully.');
+  return result;
 }
 
 /* Supplier Bills only: preserve quoted commas, quoted newlines, and escaped quotes. */
@@ -6854,6 +6848,7 @@ function enableButtons(){
 
 async function handleFile(file){
   const text=await file.text();
+  const salesKey=activeKind==='sales'?await salesBatchKey(text,cloud().cid):null;
   const p=activeKind==='bills'?parseBillsCsv(text):parseCsv(text);
   if(!p.rows.length)return toast('The CSV contains no data rows.');
 
@@ -6888,17 +6883,17 @@ async function handleFile(file){
     const total=activeKind==='bills'?validation.groups.size:p.rows.length;
     beginPosting(total);
     try{
-      if(activeKind==='sales')await postSales(p,validation);
+      if(activeKind==='sales')var salesResult=await postSales(p,validation,salesKey);
       if(activeKind==='bills')await postBills(p,validation);
       if(activeKind==='petty')await postPetty(p,validation);
       if(activeKind==='stock')await postStock(p,validation);
       await refreshCloud();
       setProgress(total,total,'Import complete.');
-      finishPosting(`Import complete. ${activeKind==='bills'?total+' supplier invoice(s)':p.rows.length+' row(s)'} imported.`,true);
+      finishPosting(activeKind==='sales'&&salesResult?.already_posted?`This sales CSV was already posted. ${salesResult.posted} existing rows confirmed; no duplicate sales created.`:`Import complete. ${activeKind==='bills'?total+' supplier invoice(s)':p.rows.length+' row(s)'} imported.`,true);
       toast('CSV imported successfully');
     }catch(e){
       console.error('[FinSight V18.5.3 CSV]',e);
-      finishPosting(`Import stopped: ${e?.message||String(e)}. Some earlier rows may already have posted. Do not immediately re-upload the same file; review the affected module first.`,false);
+      finishPosting(activeKind==='sales'?`Sales batch not confirmed: ${e?.message||String(e)}. The batch is atomic; a rejected batch posts no rows. If the connection was interrupted after submission, retrying this exact CSV is protected against duplicate posting.`:`Import stopped: ${e?.message||String(e)}. Some earlier rows may already have posted. Do not immediately re-upload the same file; review the affected module first.`,false);
       toast(e?.message||'CSV import stopped.');
     }
   };
@@ -9244,6 +9239,7 @@ async function openBatchSales(){
  <div id="fsBatchStatus" role="status"></div>
  <div class="modal-actions"><button class="btn primary" id="fsBatchPost">Post Batch Sales</button></div>`);
  const rows=el('#fsBatchRows'),status=el('#fsBatchStatus'),btn=el('#fsBatchPost');
+ const manualBatchKey='manual_'+crypto.randomUUID();
  function refresh(){let sum=0;for(const tr of rows.children){const m=menu.find(x=>x.id===el('.fs-item',tr).value);el('.fs-cat',tr).value=categories.get(m?.category_id)||'';el('.fs-inc',tr).value=accountMap.get(m?.income_account_id)?.name||'';sum+=Number(el('.fs-amount',tr).value)||0;}el('#fsBatchTotal').textContent='Total: KSh '+money(sum)}
  function addRow(){const defaultDate=rows.lastElementChild?el('.fs-date',rows.lastElementChild).value:(typeof today==='function'?today():new Date().toISOString().slice(0,10));const tr=document.createElement('tr');tr.innerHTML=`<td><input class="fs-date input" type="date" required value="${esc(defaultDate)}"></td><td><select class="fs-item input">${menuOpt}</select></td><td><input class="fs-cat input" readonly></td><td><input class="fs-qty input" type="number" min="0.001" step="0.001" value="1"></td><td><input class="fs-inc input" readonly></td><td><input class="fs-amount input" type="text" inputmode="decimal" placeholder="0.00"></td><td><button type="button" class="btn fs-remove">Remove</button></td>`;rows.appendChild(tr);el('.fs-item',tr).onchange=refresh;el('.fs-amount',tr).oninput=refresh;el('.fs-remove',tr).onclick=()=>{if(rows.children.length===1)return toast('At least one item is required.');tr.remove();refresh()};refresh()}
  el('#fsBatchAdd').onclick=addRow;addRow();
@@ -9256,19 +9252,23 @@ async function openBatchSales(){
    if(!m||!m.category_id||!m.income_account_id||!Number.isFinite(qty)||qty<=0||!Number.isFinite(amount)||amount<=0)return toast('Check item, quantity and amount on row '+(i+1));
    parsed.push({date,m,qty,amount});
   }
-  btn.disabled=true;el('#fsBatchAdd').disabled=true;let posted=0;
+  const entries=parsed.map(({date,m,qty,amount})=>({
+   date,payment_type_id:paymentId,income_account_id:m.income_account_id,
+   receivable_account_id:receivable.id,amount,memo:memo||null,
+   items:[{category_id:m.category_id,item_name:m.name,quantity:qty,line_revenue:amount}]
+  }));
+  btn.disabled=true;el('#fsBatchAdd').disabled=true;status.textContent='Posting complete sales batch…';
   try{
-   // Persist each row through the existing Sale RPC. Reconciliation must not repost a partially completed batch.
-   for(const item of parsed){
-    const {date,m,qty,amount}=item;
-    const r=await sb.rpc('post_sale',{p_company_id:companyId,p_sale_date:date,p_payment_type_id:paymentId,p_income_account_id:m.income_account_id,p_sales_receivable_account_id:receivable.id,p_total_amount:amount,p_memo:memo||null,p_items:[{category_id:m.category_id,item_name:m.name,quantity:qty,line_revenue:amount}]});
-    if(r.error)throw r.error;
-    posted++;status.textContent=`Posted ${posted} of ${parsed.length} items.`;
-   }
-   status.textContent=`Successfully posted ${posted} sales items.`;
+   const {data,error}=await sb.rpc('fs_post_sales_batch',{p_company_id:companyId,p_batch_key:manualBatchKey,p_rows:entries});
+   if(error)throw error;
+   status.textContent=data?.already_posted?'This batch was already posted; no duplicates created.':'Successfully posted '+entries.length+' sales items.';
    btn.textContent='Finish';btn.disabled=false;
    btn.onclick=async()=>{closeModal();await window.finsightReloadCloudState?.()};
-  }catch(e){status.textContent=`Posted ${posted} of ${parsed.length}. ${e.message||e}. Review the Sales Register before retrying to avoid duplicate sales.`;btn.textContent='Close';btn.disabled=false;btn.onclick=async()=>{closeModal();await window.finsightReloadCloudState?.()}}
+  }catch(e){
+   status.textContent='Batch not confirmed: '+(e.message||e)+'. Rejected batches roll back completely. If the network disconnected, retrying this form is protected from duplicate posting.';
+   btn.textContent='Retry Batch';btn.disabled=false;
+   el('#fsBatchAdd').disabled=false;
+  }
  };
 }
 window.openFinSightBatchSales=openBatchSales;
