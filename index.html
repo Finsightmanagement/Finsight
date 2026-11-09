@@ -6379,6 +6379,55 @@ function csvDate(v){
   const d=new Date(v);
   return isNaN(d)?v:d.toISOString().slice(0,10);
 }
+// Sales CSV dates must be interpreted explicitly rather than guessed.
+let salesCsvDateFormat='ISO';
+function salesCsvDate(value){
+ const v=clean(value);
+ if(!v)return '';
+ let year,month,day;
+ const iso=v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+ const delimited=v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+ if(iso){year=+iso[1];month=+iso[2];day=+iso[3]}
+ else if(delimited&&(salesCsvDateFormat==='DMY'||salesCsvDateFormat==='MDY')){
+   year=+delimited[3];
+   month=+(salesCsvDateFormat==='DMY'?delimited[2]:delimited[1]);
+   day=+(salesCsvDateFormat==='DMY'?delimited[1]:delimited[2]);
+ }else if(/^\d+(?:\.\d+)?$/.test(v)){
+   const serial=Number(v);
+   if(serial>20000&&serial<100000){
+     const d=new Date(Date.UTC(1899,11,30)+Math.floor(serial)*86400000);
+     return d.toISOString().slice(0,10);
+   }
+   return '';
+ }else return '';
+ const date=new Date(Date.UTC(year,month-1,day));
+ if(date.getUTCFullYear()!==year||date.getUTCMonth()!==month-1||date.getUTCDate()!==day)return '';
+ return year+'-'+String(month).padStart(2,'0')+'-'+String(day).padStart(2,'0');
+}
+async function chooseSalesCsvDateFormat(file,p){
+ const col=idx(p.headers,'Date');
+ if(col<0)return 'ISO';
+ const examples=p.rows.map(r=>clean(r[col])).filter(x=>/^\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4}$/.test(x));
+ if(!examples.length)return 'ISO';
+ return await new Promise(resolve=>{
+   const html='<div class="field"><label>Date format in this CSV</label>'
+    +'<select class="input" id="fsSalesCsvDateMode" required>'
+    +'<option value="">Choose date format</option>'
+    +'<option value="DMY">DD/MM/YYYY — day first (04/11/2026 = 4 November)</option>'
+    +'<option value="MDY">MM/DD/YYYY — month first (11/04/2026 = 4 November)</option>'
+    +'</select></div><p class="muted" style="margin-top:10px">Example from your file: <strong>'
+    +esc(examples[0])+'</strong>. This format applies to every sales row.</p>'
+    +'<div class="modal-actions"><button class="btn" id="fsSalesCsvDateCancel" type="button">Cancel</button>'
+    +'<button class="btn primary" id="fsSalesCsvDateConfirm" type="button">Continue</button></div>';
+   openModal('Sales CSV Date Format',file.name,html);
+   q('#fsSalesCsvDateCancel').onclick=()=>{closeModal();resolve(null)};
+   q('#fsSalesCsvDateConfirm').onclick=()=>{
+     const format=q('#fsSalesCsvDateMode')?.value;
+     if(!format){toast('Select how dates are written in your CSV.');return}
+     resolve(format);
+   };
+ });
+}
 function parseCsv(text){
   const lines=String(text||'').replace(/\r/g,'').split('\n').filter(x=>x.trim());
   if(!lines.length)return {headers:[],rows:[]};
@@ -6486,7 +6535,7 @@ async function validateSales(p){
   const badPayment=[],badCategory=[],badIncome=[],badDate=[],badAmount=[];
   p.rows.forEach((r,i)=>{
     const pay=clean(r[idx(p.headers,'Payment_Type')]),cat=clean(r[idx(p.headers,'Category')]),
-          inc=clean(r[idx(p.headers,'Income_Account')]),date=csvDate(r[idx(p.headers,'Date')]),
+          inc=clean(r[idx(p.headers,'Income_Account')]),date=salesCsvDate(r[idx(p.headers,'Date')]),
           amount=num(r[idx(p.headers,'Line_Revenue')]);
     if(!date)badDate.push(rowLabel(i));
     if(!pay||!paymentMap.get(norm(pay))?.is_active)badPayment.push(pay||rowLabel(i));
@@ -6514,7 +6563,7 @@ async function postSales(p,v,batchKey){
   const {cid}=cloud();
   const batchRows=p.rows.map((r,i)=>{
     const pay=clean(r[idx(p.headers,'Payment_Type')]),cat=clean(r[idx(p.headers,'Category')]),
-          inc=clean(r[idx(p.headers,'Income_Account')]),date=csvDate(r[idx(p.headers,'Date')]),
+          inc=clean(r[idx(p.headers,'Income_Account')]),date=salesCsvDate(r[idx(p.headers,'Date')]),
           memo=clean(r[idx(p.headers,'Memo')]),item=clean(r[idx(p.headers,'Item')])||'Unspecified',
           qty=num(r[idx(p.headers,'Quantity')]),amount=num(r[idx(p.headers,'Line_Revenue')]);
     const payment=v.paymentMap.get(norm(pay)),category=v.categoryMap.get(norm(cat)),income=accountByName(inc,['Income']);
@@ -6848,9 +6897,15 @@ function enableButtons(){
 
 async function handleFile(file){
   const text=await file.text();
-  const salesKey=activeKind==='sales'?await salesBatchKey(text,cloud().cid):null;
+  let salesKey=null;
   const p=activeKind==='bills'?parseBillsCsv(text):parseCsv(text);
   if(!p.rows.length)return toast('The CSV contains no data rows.');
+  if(activeKind==='sales'){
+    const selectedFormat=await chooseSalesCsvDateFormat(file,p);
+    if(!selectedFormat){closeModal();return;}
+    salesCsvDateFormat=selectedFormat;
+    salesKey=await salesBatchKey(text+'\nSALES_DATE_FORMAT='+selectedFormat,cloud().cid);
+  }
 
   let validation;
   if(activeKind==='sales')validation=await validateSales(p);
