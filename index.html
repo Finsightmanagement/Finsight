@@ -10201,7 +10201,7 @@ bind();document.addEventListener('finsight:cloud-state-loaded',bind);
       description:row.querySelector('.fsBankLineDescription').value
     })):[];
     const amount=source==='Cheque'?lines.reduce((sum,line)=>sum+line.amount,0):Number(value('fsBankAmount'));
-    if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100||
+    if(!Number.isFinite(amount)||amount<=0||Math.abs(Math.round(amount*100)-amount*100)>0.00001||
       lines.some(l=>!Number.isFinite(l.amount)||l.amount<=0||Math.abs(Math.round(l.amount*100)-l.amount*100)>0.00001)){
       feedback('Enter valid positive amounts to two decimal places.');return;
     }
