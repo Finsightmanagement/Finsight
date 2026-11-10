@@ -6211,7 +6211,25 @@ async function fsCoaLoadStatement(accountId){
       if(error)throw error;
       entries.push(...(data||[]));
     }
-    const entryMap=new Map(entries.map(e=>[String(e.id),e]));
+    // Manual voids stay in the audit ledger, but neither the original nor its
+    // compensating reversal belongs in the ordinary working account statement.
+    // Scope every lookup to the selected company to prevent cross-company reads.
+    const hiddenVoidedIds=new Set();
+    for(let offset=0;;offset+=750){
+      const {data,error}=await sb.from('fs_manual_journal_voids')
+        .select('journal_entry_id,reversal_entry_id')
+        .eq('company_id',cid)
+        .order('id',{ascending:true}).range(offset,offset+749);
+      if(error)throw error;
+      for(const record of data||[]){
+        hiddenVoidedIds.add(String(record.journal_entry_id));
+        hiddenVoidedIds.add(String(record.reversal_entry_id));
+      }
+      if(!data||data.length<750)break;
+    }
+    const entryMap=new Map(entries
+      .filter(e=>e.status==='Posted'&&!hiddenVoidedIds.has(String(e.id)))
+      .map(e=>[String(e.id),e]));
     // Fetch the other journal lines for the same entries to show the actual double-entry account(s).
     // Batch by journal ID and company, so an account statement never reads another company's entries.
     const relatedByJournal=new Map();
@@ -6239,13 +6257,17 @@ async function fsCoaLoadStatement(accountId){
     });
     const creditNormal=['Liability','Equity','Income'].includes(a.type);
     let opening=0,deb=0,cred=0,balance=0;
-    for(const l of movements){const e=entryMap.get(String(l.journal_entry_id));if(e&&from&&e.entry_date<from)opening+=(creditNormal?-1:1)*(Number(l.debit||0)-Number(l.credit||0));}
+    for(const l of movements){
+      const e=entryMap.get(String(l.journal_entry_id));
+      if(e&&from&&e.entry_date<from)opening+=(creditNormal?-1:1)*(Number(l.debit||0)-Number(l.credit||0));
+    }
     balance=opening;
     let rows='';
     fsCoaStatementTitle=a.name;
     fsCoaStatementData=[['Date','Reference','Description','Corresponding Account','Debit','Credit','Running Balance'],['','Opening Balance','','', '', '',opening.toFixed(2)]];
     for(const l of movements){
-      const e=entryMap.get(String(l.journal_entry_id));if(!e||from&&e.entry_date<from)continue;
+      const e=entryMap.get(String(l.journal_entry_id));
+      if(!e||(from&&e.entry_date<from)||(to&&e.entry_date>to))continue;
       const d=Number(l.debit||0),c=Number(l.credit||0);deb+=d;cred+=c;
       balance+=(creditNormal?-1:1)*(d-c);
       const ref=e.reference||e.journal_no||e.id.slice(0,8);
