@@ -2158,134 +2158,6 @@ renderAll();
     rows.forEach(r=>{sheet+="<tr>"+r.map((c,i)=>`<${i===0?"td":"td"}>${esc(c)}</td>`).join("")+"</tr>"});
     sheet+="</table>\n\n
 
-<script>
-
-(function(){
-  'use strict';
-  const E=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const byId=id=>document.getElementById(id);
-  const company=()=>window.finsightOnline&&window.finsightOnline.companyId;
-  const db=()=>window.finsightSupabase;
-  const currency=v=>Number(v||0).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
-  let transaction=null, journalLines=[], voidRecord=null, editing=false, busy=false;
-  let lastTap={id:'',at:0};
-  function close(){byId('fsTransactionDetailsOverlay')?.remove();transaction=null;journalLines=[];editing=false;}
-  function shell(){
-    let el=byId('fsTransactionDetailsOverlay');
-    if(el)return el;
-    el=document.createElement('div');
-    el.id='fsTransactionDetailsOverlay';
-    el.style.cssText='position:fixed;inset:0;z-index:12500;background:rgba(15,23,42,.67);display:flex;align-items:center;justify-content:center;padding:12px';
-    el.innerHTML='<section role="dialog" aria-modal="true" aria-label="Transaction Details" style="background:var(--card,#fff);color:var(--text,#172033);width:min(760px,100%);max-height:92vh;overflow:auto;padding:22px;border-radius:16px;box-shadow:0 20px 70px #0004"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><h2 style="margin:0">Transaction Details</h2><button type="button" id="fsTxnClose" class="mini-btn">Close</button></div><div id="fsTxnBody" style="margin-top:18px">Loading transaction…</div></section>';
-    el.addEventListener('click',ev=>{if(ev.target===el)close()});
-    document.body.appendChild(el);
-    byId('fsTxnClose').onclick=close;
-    return el;
-  }
-  async function open(id){
-    if(!id||!db()||!company())return;
-    const myCompany=company();shell();byId('fsTxnBody').textContent='Loading transaction…';editing=false;
-    try{
-      const [entry,lines,voided]=await Promise.all([
-        db().from('journal_entries').select('id,company_id,entry_date,reference,memo,source_type,source_id,status,created_at,posted_at').eq('company_id',myCompany).eq('id',id).single(),
-        db().from('journal_lines').select('id,journal_entry_id,account_id,debit,credit,description').eq('company_id',myCompany).eq('journal_entry_id',id).order('created_at',{ascending:true}),
-        db().from('fs_manual_journal_voids').select('id,reason,voided_at,reversal_entry_id').eq('company_id',myCompany).eq('journal_entry_id',id).maybeSingle()
-      ]);
-      if(entry.error)throw entry.error;
-      if(lines.error)throw lines.error;
-      if(voided.error)throw voided.error;
-      if(company()!==myCompany||!byId('fsTransactionDetailsOverlay'))return;
-      transaction=entry.data;journalLines=lines.data||[];voidRecord=voided.data;
-      render();
-    }catch(err){if(byId('fsTxnBody'))byId('fsTxnBody').textContent='Unable to open transaction: '+(err.message||err)}
-  }
-  function accounts(){return (typeof state!=='undefined'&&state.accounts)||[]}
-  function accountName(id){const a=accounts().find(a=>String(a.id)===String(id));return a?a.name:String(id||'Unknown account')}
-  function selectAccounts(id){return accounts().filter(a=>a.active!==false||String(a.id)===String(id)).map(a=>'<option value="'+E(a.id)+'" '+(String(a.id)===String(id)?'selected':'')+'>'+E(a.name)+'</option>').join('')}
-  function render(){
-    const host=byId('fsTxnBody');if(!host||!transaction)return;
-    const j=transaction, manual=j.source_type==='Manual Journal'&&!j.source_id, canChange=manual&&j.status==='Posted'&&!voidRecord;
-    const table='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>Account</th><th>Debit</th><th>Credit</th></tr></thead><tbody>'+
-    journalLines.map(l=>'<tr><td>'+E(accountName(l.account_id))+'</td><td style="text-align:right">'+currency(l.debit)+'</td><td style="text-align:right">'+currency(l.credit)+'</td></tr>').join('')+
-    '<tr><td><b>Total</b></td><td style="text-align:right"><b>'+currency(journalLines.reduce((s,l)=>s+Number(l.debit||0),0))+'</b></td><td style="text-align:right"><b>'+currency(journalLines.reduce((s,l)=>s+Number(l.credit||0),0))+'</b></td></tr></tbody></table></div>';
-    host.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px">'+
-      '<div><small>Date</small><div><b>'+E(j.entry_date)+'</b></div></div><div><small>Reference</small><div><b>'+E(j.reference||j.id.slice(0,8))+'</b></div></div>'+
-      '<div><small>Source</small><div>'+E(j.source_type||'Journal')+'</div></div><div><small>Status</small><div><b>'+E(voidRecord?'Voided':j.status)+'</b></div></div></div>'+
-      '<p><b>Description:</b> '+E(j.memo||'—')+'</p>'+table+
-      (voidRecord?'<p><b>Void reason:</b> '+E(voidRecord.reason)+'</p>':'')+
-      (!manual?'<p style="color:var(--muted,#64748b)">This transaction was posted from another module. To preserve its source records, editing or voiding must be completed through that module’s controlled correction workflow.</p>':'')+
-      '<div id="fsTxnActions" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:18px">'+
-      (canChange?'<button type="button" class="mini-btn danger" id="fsTxnVoid">Void</button><button type="button" class="mini-btn" id="fsTxnEdit">Edit Transaction</button>':'')+
-      '</div><div id="fsTxnFeedback" role="status" style="margin-top:10px"></div>';
-    if(canChange){byId('fsTxnEdit').onclick=renderEdit;byId('fsTxnVoid').onclick=voidJournal;}
-  }
-  function renderEdit(){
-    if(!transaction||voidRecord)return;
-    editing=true;const j=transaction;
-    byId('fsTxnBody').innerHTML='<h3>Edit Manual Journal</h3>'+
-      '<label>Date <input id="fsTxnDate" type="date" value="'+E(j.entry_date)+'"></label> '+
-      '<label>Reference <input id="fsTxnReference" value="'+E(j.reference||'')+'"></label>'+
-      '<label style="display:block;margin:10px 0">Description <input id="fsTxnMemo" style="width:100%" value="'+E(j.memo||'')+'"></label>'+
-      '<div style="overflow-x:auto"><table style="width:100%"><thead><tr><th>Account</th><th>Debit</th><th>Credit</th><th>Line description</th></tr></thead><tbody>'+
-      journalLines.map(l=>'<tr class="fsTxnEditLine"><td><select style="max-width:210px" class="fsTxnAcc">'+selectAccounts(l.account_id)+'</select></td><td><input type="number" min="0" step="0.01" style="width:105px" class="fsTxnDebit" value="'+E(l.debit||0)+'"></td><td><input type="number" min="0" step="0.01" style="width:105px" class="fsTxnCredit" value="'+E(l.credit||0)+'"></td><td><input class="fsTxnDesc" value="'+E(l.description||'')+'"></td></tr>').join('')+
-      '</tbody></table></div><label style="display:block;margin:12px 0">Reason for correction (required)<input id="fsTxnReason" style="width:100%" placeholder="Explain the account or posting correction"></label>'+
-      '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="mini-btn" id="fsTxnCancelEdit">Cancel</button><button class="mini-btn" id="fsTxnSaveEdit">Save Changes</button></div><div id="fsTxnFeedback" role="status"></div>';
-    byId('fsTxnCancelEdit').onclick=()=>{editing=false;render()};
-    byId('fsTxnSaveEdit').onclick=saveEdit;
-  }
-  function feedback(message){const el=byId('fsTxnFeedback');if(el)el.textContent=message}
-  async function saveEdit(){
-    if(busy||!transaction)return;
-    const reason=byId('fsTxnReason').value.trim();
-    if(reason.length<5){feedback('Please enter a correction reason of at least 5 characters.');return}
-    const lines=[...document.querySelectorAll('.fsTxnEditLine')].map(row=>({
-      account_id:row.querySelector('.fsTxnAcc').value,
-      debit:Number(row.querySelector('.fsTxnDebit').value||0),
-      credit:Number(row.querySelector('.fsTxnCredit').value||0),
-      description:row.querySelector('.fsTxnDesc').value
-    }));
-    const debit=lines.reduce((s,l)=>s+l.debit,0),credit=lines.reduce((s,l)=>s+l.credit,0);
-    if(lines.some(l=>!Number.isFinite(l.debit)||!Number.isFinite(l.credit)||l.debit<0||l.credit<0||(l.debit>0&&l.credit>0))||debit<=0||Math.abs(debit-credit)>0.001){feedback('Journal lines must contain balanced, valid debits and credits.');return}
-    busy=true;byId('fsTxnSaveEdit').disabled=true;
-    try{
-      const {error}=await db().rpc('fs_edit_manual_journal',{p_company:company(),p_journal_id:transaction.id,p_date:byId('fsTxnDate').value,p_reference:byId('fsTxnReference').value,p_memo:byId('fsTxnMemo').value,p_lines:lines,p_reason:reason});
-      if(error)throw error;
-      await refreshStatement();
-      await open(transaction.id);
-    }catch(err){feedback('Correction failed: '+(err.message||err))}
-    finally{busy=false;const button=byId('fsTxnSaveEdit');if(button)button.disabled=false}
-  }
-  async function voidJournal(){
-    if(busy||!transaction||voidRecord)return;
-    const reason=prompt('Reason for voiding this manual journal (at least 5 characters):');
-    if(reason===null)return;
-    if(reason.trim().length<5){feedback('Please provide a void reason of at least 5 characters.');return}
-    if(!confirm('Void this journal by posting a balanced reversal? This cannot be undone.'))return;
-    busy=true;const button=byId('fsTxnVoid');if(button)button.disabled=true;
-    try{
-      const {error}=await db().rpc('fs_void_manual_journal',{p_company:company(),p_journal_id:transaction.id,p_reason:reason.trim()});
-      if(error)throw error;
-      await refreshStatement();await open(transaction.id);
-    }catch(err){feedback('Void failed: '+(err.message||err))}
-    finally{busy=false;const b=byId('fsTxnVoid');if(b)b.disabled=false}
-  }
-  async function refreshStatement(){
-    const overlay=byId('fsCoaStatementOverlay');const acc=overlay&&overlay.dataset.accountId;
-    if(acc&&typeof fsCoaLoadStatement==='function')await fsCoaLoadStatement(String(acc));
-    if(typeof fsLoadCoaBalances==='function')fsLoadCoaBalances();
-  }
-  function rowFor(target){return target.closest&&target.closest('#fsCoaStatementResult tr[data-fs-journal-id]')}
-  document.addEventListener('dblclick',e=>{const row=rowFor(e.target);if(row){e.preventDefault();open(row.dataset.fsJournalId)}});
-  document.addEventListener('keydown',e=>{const row=rowFor(e.target);if(row&&(e.key==='Enter'||e.key===' ')){e.preventDefault();open(row.dataset.fsJournalId)}});
-  document.addEventListener('touchend',e=>{
-    const row=rowFor(e.target);if(!row)return;
-    const id=row.dataset.fsJournalId,now=Date.now();
-    if(lastTap.id===id&&now-lastTap.at<450){e.preventDefault();lastTap={id:'',at:0};open(id)}
-    else lastTap={id,at:now};
-  },{passive:false});
-})();
-
-</script>
 </body></html>";
     const blob=new Blob([sheet],{type:"application/vnd.ms-excel;charset=utf-8"});
     const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=title.replace(/[^a-z0-9]+/gi,"_")+".xls";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),500);
@@ -10140,4 +10012,134 @@ bind();document.addEventListener('finsight:cloud-state-loaded',bind);
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',bindRefresh,{once:true});
  else bindRefresh();
 })();
+</script>
+
+
+<script>
+
+(function(){
+  'use strict';
+  const E=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const byId=id=>document.getElementById(id);
+  const company=()=>window.finsightOnline&&window.finsightOnline.companyId;
+  const db=()=>window.finsightSupabase;
+  const currency=v=>Number(v||0).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+  let transaction=null, journalLines=[], voidRecord=null, editing=false, busy=false;
+  let lastTap={id:'',at:0};
+  function close(){byId('fsTransactionDetailsOverlay')?.remove();transaction=null;journalLines=[];editing=false;}
+  function shell(){
+    let el=byId('fsTransactionDetailsOverlay');
+    if(el)return el;
+    el=document.createElement('div');
+    el.id='fsTransactionDetailsOverlay';
+    el.style.cssText='position:fixed;inset:0;z-index:12500;background:rgba(15,23,42,.67);display:flex;align-items:center;justify-content:center;padding:12px';
+    el.innerHTML='<section role="dialog" aria-modal="true" aria-label="Transaction Details" style="background:var(--card,#fff);color:var(--text,#172033);width:min(760px,100%);max-height:92vh;overflow:auto;padding:22px;border-radius:16px;box-shadow:0 20px 70px #0004"><div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><h2 style="margin:0">Transaction Details</h2><button type="button" id="fsTxnClose" class="mini-btn">Close</button></div><div id="fsTxnBody" style="margin-top:18px">Loading transaction…</div></section>';
+    el.addEventListener('click',ev=>{if(ev.target===el)close()});
+    document.body.appendChild(el);
+    byId('fsTxnClose').onclick=close;
+    return el;
+  }
+  async function open(id){
+    if(!id||!db()||!company())return;
+    const myCompany=company();shell();byId('fsTxnBody').textContent='Loading transaction…';editing=false;
+    try{
+      const [entry,lines,voided]=await Promise.all([
+        db().from('journal_entries').select('id,company_id,entry_date,reference,memo,source_type,source_id,status,created_at,posted_at').eq('company_id',myCompany).eq('id',id).single(),
+        db().from('journal_lines').select('id,journal_entry_id,account_id,debit,credit,description').eq('company_id',myCompany).eq('journal_entry_id',id).order('created_at',{ascending:true}),
+        db().from('fs_manual_journal_voids').select('id,reason,voided_at,reversal_entry_id').eq('company_id',myCompany).eq('journal_entry_id',id).maybeSingle()
+      ]);
+      if(entry.error)throw entry.error;
+      if(lines.error)throw lines.error;
+      if(voided.error)throw voided.error;
+      if(company()!==myCompany||!byId('fsTransactionDetailsOverlay'))return;
+      transaction=entry.data;journalLines=lines.data||[];voidRecord=voided.data;
+      render();
+    }catch(err){if(byId('fsTxnBody'))byId('fsTxnBody').textContent='Unable to open transaction: '+(err.message||err)}
+  }
+  function accounts(){return (typeof state!=='undefined'&&state.accounts)||[]}
+  function accountName(id){const a=accounts().find(a=>String(a.id)===String(id));return a?a.name:String(id||'Unknown account')}
+  function selectAccounts(id){return accounts().filter(a=>a.active!==false||String(a.id)===String(id)).map(a=>'<option value="'+E(a.id)+'" '+(String(a.id)===String(id)?'selected':'')+'>'+E(a.name)+'</option>').join('')}
+  function render(){
+    const host=byId('fsTxnBody');if(!host||!transaction)return;
+    const j=transaction, manual=j.source_type==='Manual Journal'&&!j.source_id, canChange=manual&&j.status==='Posted'&&!voidRecord;
+    const table='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>Account</th><th>Debit</th><th>Credit</th></tr></thead><tbody>'+
+    journalLines.map(l=>'<tr><td>'+E(accountName(l.account_id))+'</td><td style="text-align:right">'+currency(l.debit)+'</td><td style="text-align:right">'+currency(l.credit)+'</td></tr>').join('')+
+    '<tr><td><b>Total</b></td><td style="text-align:right"><b>'+currency(journalLines.reduce((s,l)=>s+Number(l.debit||0),0))+'</b></td><td style="text-align:right"><b>'+currency(journalLines.reduce((s,l)=>s+Number(l.credit||0),0))+'</b></td></tr></tbody></table></div>';
+    host.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px">'+
+      '<div><small>Date</small><div><b>'+E(j.entry_date)+'</b></div></div><div><small>Reference</small><div><b>'+E(j.reference||j.id.slice(0,8))+'</b></div></div>'+
+      '<div><small>Source</small><div>'+E(j.source_type||'Journal')+'</div></div><div><small>Status</small><div><b>'+E(voidRecord?'Voided':j.status)+'</b></div></div></div>'+
+      '<p><b>Description:</b> '+E(j.memo||'—')+'</p>'+table+
+      (voidRecord?'<p><b>Void reason:</b> '+E(voidRecord.reason)+'</p>':'')+
+      (!manual?'<p style="color:var(--muted,#64748b)">This transaction was posted from another module. To preserve its source records, editing or voiding must be completed through that module’s controlled correction workflow.</p>':'')+
+      '<div id="fsTxnActions" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:18px">'+
+      (canChange?'<button type="button" class="mini-btn danger" id="fsTxnVoid">Void</button><button type="button" class="mini-btn" id="fsTxnEdit">Edit Transaction</button>':'')+
+      '</div><div id="fsTxnFeedback" role="status" style="margin-top:10px"></div>';
+    if(canChange){byId('fsTxnEdit').onclick=renderEdit;byId('fsTxnVoid').onclick=voidJournal;}
+  }
+  function renderEdit(){
+    if(!transaction||voidRecord)return;
+    editing=true;const j=transaction;
+    byId('fsTxnBody').innerHTML='<h3>Edit Manual Journal</h3>'+
+      '<label>Date <input id="fsTxnDate" type="date" value="'+E(j.entry_date)+'"></label> '+
+      '<label>Reference <input id="fsTxnReference" value="'+E(j.reference||'')+'"></label>'+
+      '<label style="display:block;margin:10px 0">Description <input id="fsTxnMemo" style="width:100%" value="'+E(j.memo||'')+'"></label>'+
+      '<div style="overflow-x:auto"><table style="width:100%"><thead><tr><th>Account</th><th>Debit</th><th>Credit</th><th>Line description</th></tr></thead><tbody>'+
+      journalLines.map(l=>'<tr class="fsTxnEditLine"><td><select style="max-width:210px" class="fsTxnAcc">'+selectAccounts(l.account_id)+'</select></td><td><input type="number" min="0" step="0.01" style="width:105px" class="fsTxnDebit" value="'+E(l.debit||0)+'"></td><td><input type="number" min="0" step="0.01" style="width:105px" class="fsTxnCredit" value="'+E(l.credit||0)+'"></td><td><input class="fsTxnDesc" value="'+E(l.description||'')+'"></td></tr>').join('')+
+      '</tbody></table></div><label style="display:block;margin:12px 0">Reason for correction (required)<input id="fsTxnReason" style="width:100%" placeholder="Explain the account or posting correction"></label>'+
+      '<div style="display:flex;justify-content:flex-end;gap:8px"><button class="mini-btn" id="fsTxnCancelEdit">Cancel</button><button class="mini-btn" id="fsTxnSaveEdit">Save Changes</button></div><div id="fsTxnFeedback" role="status"></div>';
+    byId('fsTxnCancelEdit').onclick=()=>{editing=false;render()};
+    byId('fsTxnSaveEdit').onclick=saveEdit;
+  }
+  function feedback(message){const el=byId('fsTxnFeedback');if(el)el.textContent=message}
+  async function saveEdit(){
+    if(busy||!transaction)return;
+    const reason=byId('fsTxnReason').value.trim();
+    if(reason.length<5){feedback('Please enter a correction reason of at least 5 characters.');return}
+    const lines=[...document.querySelectorAll('.fsTxnEditLine')].map(row=>({
+      account_id:row.querySelector('.fsTxnAcc').value,
+      debit:Number(row.querySelector('.fsTxnDebit').value||0),
+      credit:Number(row.querySelector('.fsTxnCredit').value||0),
+      description:row.querySelector('.fsTxnDesc').value
+    }));
+    const debit=lines.reduce((s,l)=>s+l.debit,0),credit=lines.reduce((s,l)=>s+l.credit,0);
+    if(lines.some(l=>!Number.isFinite(l.debit)||!Number.isFinite(l.credit)||l.debit<0||l.credit<0||(l.debit>0&&l.credit>0))||debit<=0||Math.abs(debit-credit)>0.001){feedback('Journal lines must contain balanced, valid debits and credits.');return}
+    busy=true;byId('fsTxnSaveEdit').disabled=true;
+    try{
+      const {error}=await db().rpc('fs_edit_manual_journal',{p_company:company(),p_journal_id:transaction.id,p_date:byId('fsTxnDate').value,p_reference:byId('fsTxnReference').value,p_memo:byId('fsTxnMemo').value,p_lines:lines,p_reason:reason});
+      if(error)throw error;
+      await refreshStatement();
+      await open(transaction.id);
+    }catch(err){feedback('Correction failed: '+(err.message||err))}
+    finally{busy=false;const button=byId('fsTxnSaveEdit');if(button)button.disabled=false}
+  }
+  async function voidJournal(){
+    if(busy||!transaction||voidRecord)return;
+    const reason=prompt('Reason for voiding this manual journal (at least 5 characters):');
+    if(reason===null)return;
+    if(reason.trim().length<5){feedback('Please provide a void reason of at least 5 characters.');return}
+    if(!confirm('Void this journal by posting a balanced reversal? This cannot be undone.'))return;
+    busy=true;const button=byId('fsTxnVoid');if(button)button.disabled=true;
+    try{
+      const {error}=await db().rpc('fs_void_manual_journal',{p_company:company(),p_journal_id:transaction.id,p_reason:reason.trim()});
+      if(error)throw error;
+      await refreshStatement();await open(transaction.id);
+    }catch(err){feedback('Void failed: '+(err.message||err))}
+    finally{busy=false;const b=byId('fsTxnVoid');if(b)b.disabled=false}
+  }
+  async function refreshStatement(){
+    const overlay=byId('fsCoaStatementOverlay');const acc=overlay&&overlay.dataset.accountId;
+    if(acc&&typeof fsCoaLoadStatement==='function')await fsCoaLoadStatement(String(acc));
+    if(typeof fsLoadCoaBalances==='function')fsLoadCoaBalances();
+  }
+  function rowFor(target){return target.closest&&target.closest('#fsCoaStatementResult tr[data-fs-journal-id]')}
+  document.addEventListener('dblclick',e=>{const row=rowFor(e.target);if(row){e.preventDefault();open(row.dataset.fsJournalId)}});
+  document.addEventListener('keydown',e=>{const row=rowFor(e.target);if(row&&(e.key==='Enter'||e.key===' ')){e.preventDefault();open(row.dataset.fsJournalId)}});
+  document.addEventListener('touchend',e=>{
+    const row=rowFor(e.target);if(!row)return;
+    const id=row.dataset.fsJournalId,now=Date.now();
+    if(lastTap.id===id&&now-lastTap.at<450){e.preventDefault();lastTap={id:'',at:0};open(id)}
+    else lastTap={id,at:now};
+  },{passive:false});
+})();
+
 </script>
