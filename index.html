@@ -6227,6 +6227,17 @@ async function fsCoaLoadStatement(accountId){
       }
       if(!data||data.length<750)break;
     }
+    for(let offset=0;;offset+=750){
+      const {data,error}=await sb.from('fs_banking_voids')
+        .select('journal_entry_id,reversal_entry_id').eq('company_id',cid)
+        .order('id',{ascending:true}).range(offset,offset+749);
+      if(error)throw error;
+      for(const record of data||[]){
+        hiddenVoidedIds.add(String(record.journal_entry_id));
+        hiddenVoidedIds.add(String(record.reversal_entry_id));
+      }
+      if(!data||data.length<750)break;
+    }
     const entryMap=new Map(entries
       .filter(e=>e.status==='Posted'&&!hiddenVoidedIds.has(String(e.id)))
       .map(e=>[String(e.id),e]));
@@ -10065,16 +10076,15 @@ bind();document.addEventListener('finsight:cloud-state-loaded',bind);
     if(!id||!db()||!company())return;
     const myCompany=company();shell();byId('fsTxnBody').textContent='Loading transaction…';editing=false;
     try{
-      const [entry,lines,voided]=await Promise.all([
+      const [entry,lines,voided,bankVoided]=await Promise.all([
         db().from('journal_entries').select('id,company_id,entry_date,reference,memo,source_type,source_id,status,created_at,posted_at').eq('company_id',myCompany).eq('id',id).single(),
         db().from('journal_lines').select('id,journal_entry_id,account_id,debit,credit,description').eq('company_id',myCompany).eq('journal_entry_id',id).order('created_at',{ascending:true}),
-        db().from('fs_manual_journal_voids').select('id,reason,voided_at,reversal_entry_id').eq('company_id',myCompany).eq('journal_entry_id',id).maybeSingle()
+        db().from('fs_manual_journal_voids').select('id,reason,voided_at,reversal_entry_id').eq('company_id',myCompany).eq('journal_entry_id',id).maybeSingle(),
+        db().from('fs_banking_voids').select('id,reason,voided_at,reversal_entry_id').eq('company_id',myCompany).eq('journal_entry_id',id).maybeSingle()
       ]);
-      if(entry.error)throw entry.error;
-      if(lines.error)throw lines.error;
-      if(voided.error)throw voided.error;
+      for(const response of [entry,lines,voided,bankVoided])if(response.error)throw response.error;
       if(company()!==myCompany||!byId('fsTransactionDetailsOverlay'))return;
-      transaction=entry.data;journalLines=lines.data||[];voidRecord=voided.data;
+      transaction=entry.data;journalLines=lines.data||[];voidRecord=voided.data||bankVoided.data;
       render();
     }catch(err){if(byId('fsTxnBody'))byId('fsTxnBody').textContent='Unable to open transaction: '+(err.message||err)}
   }
@@ -10083,7 +10093,9 @@ bind();document.addEventListener('finsight:cloud-state-loaded',bind);
   function selectAccounts(id){return accounts().filter(a=>a.active!==false||String(a.id)===String(id)).map(a=>'<option value="'+E(a.id)+'" '+(String(a.id)===String(id)?'selected':'')+'>'+E(a.name)+'</option>').join('')}
   function render(){
     const host=byId('fsTxnBody');if(!host||!transaction)return;
-    const j=transaction, manual=j.source_type==='Manual Journal'&&!j.source_id, canChange=manual&&j.status==='Posted'&&!voidRecord;
+    const j=transaction, manual=j.source_type==='Manual Journal'&&!j.source_id,
+      banking=['Cheque','Fund Transfer','Fund Deposit'].includes(j.source_type)&&!!j.source_id,
+      canChange=(manual||banking)&&j.status==='Posted'&&!voidRecord;
     const table='<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>Account</th><th>Debit</th><th>Credit</th></tr></thead><tbody>'+
     journalLines.map(l=>'<tr><td>'+E(accountName(l.account_id))+'</td><td style="text-align:right">'+currency(l.debit)+'</td><td style="text-align:right">'+currency(l.credit)+'</td></tr>').join('')+
     '<tr><td><b>Total</b></td><td style="text-align:right"><b>'+currency(journalLines.reduce((s,l)=>s+Number(l.debit||0),0))+'</b></td><td style="text-align:right"><b>'+currency(journalLines.reduce((s,l)=>s+Number(l.credit||0),0))+'</b></td></tr></tbody></table></div>';
@@ -10092,11 +10104,11 @@ bind();document.addEventListener('finsight:cloud-state-loaded',bind);
       '<div><small>Source</small><div>'+E(j.source_type||'Journal')+'</div></div><div><small>Status</small><div><b>'+E(voidRecord?'Voided':j.status)+'</b></div></div></div>'+
       '<p><b>Description:</b> '+E(j.memo||'—')+'</p>'+table+
       (voidRecord?'<p><b>Void reason:</b> '+E(voidRecord.reason)+'</p>':'')+
-      (!manual?'<p style="color:var(--muted,#64748b)">This transaction was posted from another module. To preserve its source records, editing or voiding must be completed through that module’s controlled correction workflow.</p>':'')+
+      (!manual&&!banking?'<p style="color:var(--muted,#64748b)">This entry is linked to another module. Edit it through its original transaction workflow.</p>':'')+
       '<div id="fsTxnActions" style="display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;margin-top:18px">'+
       (canChange?'<button type="button" class="mini-btn danger" id="fsTxnVoid">Void</button><button type="button" class="mini-btn" id="fsTxnEdit">Edit Transaction</button>':'')+
       '</div><div id="fsTxnFeedback" role="status" style="margin-top:10px"></div>';
-    if(canChange){byId('fsTxnEdit').onclick=renderEdit;byId('fsTxnVoid').onclick=voidJournal;}
+    if(canChange){byId('fsTxnEdit').onclick=banking?renderBankingEdit:renderEdit;byId('fsTxnVoid').onclick=voidJournal;}
   }
   function renderEdit(){
     if(!transaction||voidRecord)return;
@@ -10112,6 +10124,104 @@ bind();document.addEventListener('finsight:cloud-state-loaded',bind);
     byId('fsTxnCancelEdit').onclick=()=>{editing=false;render()};
     byId('fsTxnSaveEdit').onclick=saveEdit;
   }
+
+  function bankOptionRows(value,asset){
+    return accounts().filter(a=>(
+       (a.active!==false||String(a.id)===String(value))&&(!asset||a.type==='Asset')
+    )).map(a=>'<option value="'+E(a.id)+'" '+(String(a.id)===String(value)?'selected':'')+'>'+E(a.name)+'</option>').join('');
+  }
+  function bankField(id,label,value,type){
+    return '<label style="display:block;flex:1;min-width:170px">'+E(label)+
+      '<input style="display:block;width:100%" id="'+id+'" type="'+(type||'text')+'" value="'+E(value)+'"></label>';
+  }
+  function bankSelect(id,label,value,asset){
+    return '<label style="display:block;flex:1;min-width:180px">'+E(label)+
+      '<select style="display:block;width:100%" id="'+id+'">'+bankOptionRows(value,asset)+'</select></label>';
+  }
+  function bankCurrentDebit(){
+    const l=journalLines.find(x=>Number(x.debit)>0);return l&&l.account_id;
+  }
+  function bankCurrentCredit(){
+    const l=journalLines.find(x=>Number(x.credit)>0);return l&&l.account_id;
+  }
+  async function renderBankingEdit(){
+    if(!transaction||voidRecord||busy)return;
+    const j=transaction,source=j.source_type,companyId=company();
+    const table=source==='Cheque'?'cheques':source==='Fund Transfer'?'fund_transfers':'fund_deposits';
+    const body=byId('fsTxnBody');body.textContent='Loading '+source+'…';
+    try{
+      const response=await db().from(table).select('*').eq('company_id',companyId).eq('id',j.source_id).single();
+      if(response.error)throw response.error;
+      if(company()!==companyId||!byId('fsTxnBody'))return;
+      const record=response.data;
+      let chequeLines=[];
+      if(source==='Cheque'){
+        const lines=await db().from('cheque_lines').select('id,account_id,description,amount')
+          .eq('company_id',companyId).eq('cheque_id',j.source_id).order('created_at',{ascending:true});
+        if(lines.error)throw lines.error;
+        chequeLines=lines.data||[];
+      }
+      const date=record.cheque_date||record.transfer_date||record.deposit_date;
+      const reference=record.cheque_no||record.reference||'';
+      const memo=record.memo||'';
+      const debit=source==='Fund Transfer'?record.to_account_id:record.deposit_to_account_id;
+      const credit=source==='Cheque'?record.payment_account_id:source==='Fund Transfer'?record.from_account_id:record.source_account_id;
+      const amount=record.total_amount||record.amount||0;
+      body.innerHTML='<h3>Edit '+E(source)+'</h3>'+
+        '<div style="display:flex;gap:12px;flex-wrap:wrap">'+bankField('fsBankDate','Date',date,'date')+
+        bankField('fsBankReference',source==='Cheque'?'Cheque Number':'Reference',reference)+'</div>'+
+        '<div style="display:flex;gap:12px;flex-wrap:wrap;margin:12px 0">'+
+        (source==='Cheque'?bankField('fsBankPayee','Payee',record.payee||''):'')+
+        bankField('fsBankMemo','Description',memo)+'</div>'+
+        '<div style="display:flex;gap:12px;flex-wrap:wrap">'+
+        (source==='Cheque'?'':bankSelect('fsBankDebit',source==='Fund Transfer'?'Transfer To':'Deposit To',debit,true))+
+        bankSelect('fsBankCredit',source==='Cheque'?'Payment Account':source==='Fund Transfer'?'Transfer From':'Source Account',credit,true)+
+        (source==='Cheque'?'':bankField('fsBankAmount','Amount',amount,'number'))+'</div>'+
+        (source==='Cheque'?'<div style="margin-top:12px"><b>Cheque allocations</b><div style="overflow-x:auto">'+
+          '<table style="width:100%"><thead><tr><th>Account</th><th>Amount</th><th>Description</th></tr></thead><tbody>'+
+          chequeLines.map(l=>'<tr class="fsBankChequeLine"><td><select class="fsBankLineAccount">'+bankOptionRows(l.account_id,false)+'</select></td><td><input class="fsBankLineAmount" type="number" min="0.01" step="0.01" style="width:125px" value="'+E(l.amount)+'"></td><td><input class="fsBankLineDescription" value="'+E(l.description||'')+'"></td></tr>').join('')+
+          '</tbody></table></div></div>':'')+
+        bankField('fsBankReason','Reason for correction (required)','')+
+        '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button type="button" class="mini-btn" id="fsBankCancel">Cancel</button><button type="button" class="mini-btn" id="fsBankSave">Save Changes</button></div>'+
+        '<div id="fsTxnFeedback" role="status"></div>';
+      byId('fsBankCancel').onclick=render;
+      byId('fsBankSave').onclick=()=>saveBankingEdit(source,companyId,j.id);
+      editing=true;
+    }catch(e){body.innerHTML='<p>Unable to load source transaction: '+E(e.message||e)+'</p><button type="button" class="mini-btn" id="fsBankBack">Back</button>';byId('fsBankBack').onclick=render}
+  }
+  async function saveBankingEdit(source,companyId,id){
+    if(busy||!transaction||transaction.id!==id)return;
+    const value=name=>byId(name)?.value||'';
+    const reason=value('fsBankReason').trim(),date=value('fsBankDate'),ref=value('fsBankReference').trim();
+    if(reason.length<5){feedback('Enter a reason of at least 5 characters.');return}
+    if(!date){feedback('Date is required.');return}
+    const lines=source==='Cheque'?[...document.querySelectorAll('.fsBankChequeLine')].map(row=>({
+      account_id:row.querySelector('.fsBankLineAccount').value,
+      amount:Number(row.querySelector('.fsBankLineAmount').value),
+      description:row.querySelector('.fsBankLineDescription').value
+    })):[];
+    const amount=source==='Cheque'?lines.reduce((sum,line)=>sum+line.amount,0):Number(value('fsBankAmount'));
+    if(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)!==amount*100||
+      lines.some(l=>!Number.isFinite(l.amount)||l.amount<=0||Math.abs(Math.round(l.amount*100)-l.amount*100)>0.00001)){
+      feedback('Enter valid positive amounts to two decimal places.');return;
+    }
+    if(source==='Cheque'&&!ref){feedback('Cheque number is required.');return}
+    busy=true;byId('fsBankSave').disabled=true;
+    try{
+      const args={
+        p_company:companyId,p_journal:id,p_date:date,p_reference:ref,p_memo:value('fsBankMemo'),
+        p_payee:source==='Cheque'?value('fsBankPayee'):null,
+        p_debit_account:source==='Cheque'?null:value('fsBankDebit'),
+        p_credit_account:value('fsBankCredit'),
+        p_amount:Number(amount.toFixed(2)),p_cheque_lines:source==='Cheque'?lines:null,p_reason:reason
+      };
+      const {error}=await db().rpc('fs_edit_banking_transaction',args);
+      if(error)throw error;
+      await refreshStatement();await open(id);
+    }catch(err){feedback('Correction failed: '+(err.message||err))}
+    finally{busy=false;const button=byId('fsBankSave');if(button)button.disabled=false;}
+  }
+
   function feedback(message){const el=byId('fsTxnFeedback');if(el)el.textContent=message}
   async function saveEdit(){
     if(busy||!transaction)return;
@@ -10136,13 +10246,16 @@ bind();document.addEventListener('finsight:cloud-state-loaded',bind);
   }
   async function voidJournal(){
     if(busy||!transaction||voidRecord)return;
-    const reason=prompt('Reason for voiding this manual journal (at least 5 characters):');
+    const reason=prompt('Reason for voiding this transaction (at least 5 characters):');
     if(reason===null)return;
     if(reason.trim().length<5){feedback('Please provide a void reason of at least 5 characters.');return}
     if(!confirm('Void this journal by posting a balanced reversal? This cannot be undone.'))return;
     busy=true;const button=byId('fsTxnVoid');if(button)button.disabled=true;
     try{
-      const {error}=await db().rpc('fs_void_manual_journal',{p_company:company(),p_journal_id:transaction.id,p_reason:reason.trim()});
+      const banking=['Cheque','Fund Transfer','Fund Deposit'].includes(transaction.source_type);
+      const {error}=await db().rpc(banking?'fs_void_banking_transaction':'fs_void_manual_journal',banking
+        ?{p_company:company(),p_journal:transaction.id,p_reason:reason.trim()}
+        :{p_company:company(),p_journal_id:transaction.id,p_reason:reason.trim()});
       if(error)throw error;
       await refreshStatement();await open(transaction.id);
     }catch(err){feedback('Void failed: '+(err.message||err))}
