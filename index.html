@@ -3613,7 +3613,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     while(walker.nextNode()){
       const node=walker.currentNode, text=node.nodeValue||'';
       if(markers.some(m=>text.includes(m))) bad.push(node);
-      else if(node.parentNode===document.body && /^\s*\\n(?:\\n)?\s*$/.test(text)) bad.push(node);
+      else if(/^\s*(?:\\n\s*){1,3}$/.test(text) && (node.parentNode===document.body || node.parentElement?.closest('.sidebar,.app'))) bad.push(node);
     }
     bad.forEach(n=>n.remove());
   }
@@ -9309,6 +9309,131 @@ async function loadHistory(){const body=el('fs15-history');if(!body)return;body.
  }catch(e){body.innerHTML='<tr><td colspan="7">Could not load journal history.</td></tr>';status('History loading failed: '+e.message,true)}}
 async function openEdit(id){try{const {data:entry,error}=await sb().from('journal_entries').select('id,entry_date,reference,memo,status,source_type,source_id').eq('company_id',company()).eq('id',id).single();if(error)throw Error(error.message);if(entry.source_type!=='Manual Journal'||entry.source_id||entry.status!=='Posted')throw Error('This journal cannot be edited.');const {data:items,error:lineError}=await sb().from('journal_lines').select('account_id,description,debit,credit').eq('company_id',company()).eq('journal_entry_id',id).order('created_at',{ascending:true});if(lineError)throw Error(lineError.message);if(!items?.length)throw Error('No journal lines found.');editing=id;el('fs15-editor-overlay').style.display='flex';lines=items.map(x=>({acc:x.account_id,dr:Number(x.debit)>0?String(x.debit):'',cr:Number(x.credit)>0?String(x.credit):'',desc:x.description||''}));el('fs15-date').value=entry.entry_date;el('fs15-ref').value=entry.reference||'';el('fs15-memo').value=entry.memo||'';el('fs15-editor-title').textContent='Edit General Journal';el('fs15-save').textContent='Save Correction';el('fs15-cancel').style.display='';el('fs15-reason-wrap').style.display='';drawLines();el('fs15-editor-title').scrollIntoView({behavior:'smooth',block:'start'});status('');}catch(e){status('Cannot edit journal: '+e.message,true)}}
 document.addEventListener('finsight:cloud-state-loaded',boot);if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
+})();
+</script>
+<script id="fs-supplier-batch-multi-date">
+(function(){
+ 'use strict';
+ const esc=v=>String(v??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+ const q=(s,r=document)=>r.querySelector(s);
+ const money=n=>Number(n||0).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const normalize=s=>String(s||'').trim().toLowerCase();
+ function bind(){
+  const button=q('#batchSupplierBillsBtn');
+  if(button)button.onclick=openBatch;
+ }
+ async function openBatch(){
+  const sb=window.finsightSupabase,companyId=window.finsightOnline?.companyId;
+  if(!sb||!companyId)return toast('Select a company.');
+  openModal('Batch Supplier Bills','','<div id="fsBillBatchLoad">Loading…</div>');
+  const [suppliersRes,itemsRes,accountsRes]=await Promise.all([
+   sb.from('suppliers').select('id,name').eq('company_id',companyId).eq('is_active',true).order('name'),
+   sb.from('stock_items').select('id,name').eq('company_id',companyId).eq('is_active',true).order('name'),
+   sb.from('accounts').select('id,name,account_type,sub_type').eq('company_id',companyId).eq('is_active',true).order('name')
+  ]);
+  const loader=q('#fsBillBatchLoad');
+  if(!loader||companyId!==window.finsightOnline?.companyId)return;
+  const failure=suppliersRes.error||itemsRes.error||accountsRes.error;
+  if(failure){loader.textContent=failure.message;return}
+  const suppliers=suppliersRes.data||[], items=itemsRes.data||[], accounts=accountsRes.data||[];
+  const payable=accounts.find(a=>normalize(a.name)==='accounts payable'&&a.account_type==='Liability'&&normalize(a.sub_type)==='accounts payable');
+  const food=accounts.find(a=>normalize(a.name)==='food cost');
+  const vat=accounts.find(a=>normalize(a.name)==='input vat');
+  if(!suppliers.length||!payable){loader.textContent='Add an active supplier and Accounts Payable account before posting.';return}
+  const supplierOptions=suppliers.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
+  const itemOptions='<option value="">Select Item</option>'+items.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
+  const expenseOptions='<option value="">Select Account</option>'+accounts.filter(x=>['Expense','Cost of Sales','Asset','Liability'].includes(x.account_type)).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
+  loader.outerHTML='<div class="form-grid"><div class="field"><label>Supplier</label><select class="input" id="fsBillBatchSupplier">'+supplierOptions+'</select></div></div>'+
+   '<div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Date</th><th>Invoice No.</th><th>Due Date</th><th>Group</th><th>Purchase Item</th><th>Description</th><th>Account</th><th>Qty</th><th>Rate</th><th>VAT</th><th>Memo</th><th></th></tr></thead><tbody id="fsBillBatchRows"></tbody></table></div>'+
+   '<div class="modal-actions" style="justify-content:space-between"><button type="button" class="btn" id="fsBillBatchAdd">+ Add Line</button><strong id="fsBillBatchTotal">KSh 0.00</strong></div>'+
+   '<div id="fsBillBatchStatus" role="status"></div><div class="modal-actions"><button type="button" class="btn primary" id="fsBillBatchPost">Post Batch Bills</button></div>';
+  const rows=q('#fsBillBatchRows'),status=q('#fsBillBatchStatus'),post=q('#fsBillBatchPost');
+  const date=typeof today==='function'?today():new Date().toLocaleDateString('en-CA');
+  function addRow(){
+   const tr=document.createElement('tr');
+   tr.innerHTML='<td><input class="input fsbb-date" type="date" value="'+esc(date)+'" style="min-width:135px"></td>'+
+   '<td><input class="input fsbb-invoice" style="min-width:118px"></td>'+
+   '<td><input class="input fsbb-due" type="date" style="min-width:135px"></td>'+
+   '<td><select class="input fsbb-group"><option>Purchase Item</option><option>Expenditure</option></select></td>'+
+   '<td><select class="input fsbb-item" style="min-width:170px">'+itemOptions+'</select></td>'+
+   '<td><input class="input fsbb-desc" style="min-width:160px"></td>'+
+   '<td><select class="input fsbb-account" style="min-width:170px">'+expenseOptions+'</select></td>'+
+   '<td><input class="input fsbb-qty" type="number" min="0.001" step="0.001" value="1" style="width:85px"></td>'+
+   '<td><input class="input fsbb-rate" type="number" min="0.01" step="0.01" style="width:105px"></td>'+
+   '<td><select class="input fsbb-vat"><option value="0">0%</option><option value="16">16%</option></select></td>'+
+   '<td><input class="input fsbb-memo" style="min-width:130px"></td>'+
+   '<td><button type="button" class="btn fsbb-remove">×</button></td>';
+   rows.appendChild(tr);
+   const configure=()=>{
+    const purchase=q('.fsbb-group',tr).value==='Purchase Item';
+    q('.fsbb-item',tr).disabled=!purchase;
+    q('.fsbb-account',tr).disabled=purchase;
+   };
+   q('.fsbb-group',tr).onchange=configure;
+   q('.fsbb-remove',tr).onclick=()=>{if(rows.children.length>1){tr.remove();recalc()}};
+   tr.addEventListener('input',recalc);tr.addEventListener('change',recalc);
+   configure();recalc();
+  }
+  function recalc(){
+   let total=0;
+   for(const row of rows.children)total+=Number(q('.fsbb-qty',row).value||0)*Number(q('.fsbb-rate',row).value||0);
+   q('#fsBillBatchTotal').textContent='KSh '+money(total);
+  }
+  function collect(){
+   const groups=new Map();
+   for(const [i,row] of [...rows.children].entries()){
+    const get=s=>q(s,row).value;
+    const d=get('.fsbb-date'),invoice=get('.fsbb-invoice').trim(),due=get('.fsbb-due'),memo=get('.fsbb-memo').trim();
+    const group=get('.fsbb-group'),quantity=Number(get('.fsbb-qty')),rate=Number(get('.fsbb-rate')),vatRate=Number(get('.fsbb-vat'));
+    const purchase=group==='Purchase Item', stockId=purchase?get('.fsbb-item'):null;
+    const acc=purchase?food?.id:get('.fsbb-account');
+    if(!d||!invoice)throw Error('Date and invoice number required on line '+(i+1));
+    if(due&&due<d)throw Error('Due date precedes bill date on line '+(i+1));
+    if(!acc||(purchase&&!stockId))throw Error('Select an item or account on line '+(i+1));
+    if(!Number.isFinite(quantity)||quantity<=0||Math.abs(quantity*1000-Math.round(quantity*1000))>0.00001)throw Error('Invalid quantity on line '+(i+1));
+    if(!Number.isFinite(rate)||rate<=0||Math.abs(rate*100-Math.round(rate*100))>0.00001)throw Error('Invalid rate on line '+(i+1));
+    if(vatRate===16&&!vat)throw Error('Input VAT account is missing.');
+    const key=normalize(invoice);
+    let inv=groups.get(key);
+    if(!inv){inv={bill_date:d,invoice_no:invoice,due_date:due||null,memo,lines:[]};groups.set(key,inv)}
+    else if(inv.bill_date!==d||inv.due_date!==(due||null)||inv.memo!==memo)throw Error('Invoice '+invoice+' has conflicting dates or memo.');
+    inv.lines.push({
+     line_type:group,stock_item_id:stockId,description:get('.fsbb-desc').trim()|| (purchase?items.find(x=>x.id===stockId)?.name||'Purchase Item':'Expenditure'),
+     account_id:acc,quantity,rate,vat_rate:vatRate
+    });
+   }
+   if(groups.size>100)throw Error('Maximum 100 invoices per batch.');
+   return [...groups.values()];
+  }
+  q('#fsBillBatchAdd').onclick=addRow;
+  post.onclick=async()=>{
+   if(post.disabled)return;
+   let invoices;try{invoices=collect()}catch(err){status.textContent=err.message;return}
+   if(!invoices.length){status.textContent='Add an invoice.';return}
+   post.disabled=true;post.textContent='Posting…';status.textContent='';
+   try{
+    const {data,error}=await sb.rpc('fs_post_supplier_bill_batch',{
+      p_company:companyId,p_supplier:q('#fsBillBatchSupplier').value,
+      p_accounts_payable:payable.id,p_vat_account:vat?.id||null,p_invoices:invoices
+    });
+    if(error)throw error;
+    closeModal();
+    toast((data?.length||invoices.length)+' supplier invoices posted');
+    if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
+   }catch(err){status.textContent='Batch posting failed: '+(err.message||err)}
+   finally{post.disabled=false;post.textContent='Post Batch Bills'}
+  };
+  addRow();
+ }
+ function addButton(){
+  const existing=q('#batchSupplierBillsBtn'),newBill=q('#newBillBtn');
+  if(existing||!newBill)return bind();
+  const button=document.createElement('button');
+  button.id='batchSupplierBillsBtn';button.type='button';button.className='btn';button.textContent='Batch Bills';
+  newBill.before(button);bind();
+ }
+ document.addEventListener('finsight:cloud-state-loaded',addButton);
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',addButton);else addButton();
 })();
 </script>
 <script id="fs-batch-sales-only">
