@@ -3823,7 +3823,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
           posted+=r.amount;
         }
         closeModal();
-        if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
+        if(typeof window.finsightReloadCloudState==='function'){try{await window.finsightReloadCloudState()}catch(refreshError){console.error('[FinSight] Batch posted; refresh failed',refreshError);toast('Invoices posted. Refresh to update the list.')}}
         toast(`Collections posted online · ${money(posted)}`);
       }catch(e){
         console.error('[FinSight Phase 2B] Collection posting failed',e);
@@ -9342,7 +9342,7 @@ document.addEventListener('finsight:cloud-state-loaded',boot);if(document.readyS
   if(!suppliers.length||!payable){loader.textContent='Add an active supplier and Accounts Payable account before posting.';return}
   const supplierOptions=suppliers.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
   const itemOptions='<option value="">Select Item</option>'+items.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
-  const expenseOptions='<option value="">Select Account</option>'+accounts.filter(x=>['Expense','Cost of Sales','Asset','Liability'].includes(x.account_type)).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
+  const expenseOptions='<option value="">Select Account</option>'+accounts.filter(x=>['Expense','Cost of Sales'].includes(x.account_type)).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
   loader.outerHTML='<div class="form-grid"><div class="field"><label>Supplier</label><select class="input" id="fsBillBatchSupplier">'+supplierOptions+'</select></div></div>'+
    '<div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Date</th><th>Invoice No.</th><th>Due Date</th><th>Group</th><th>Purchase Item</th><th>Description</th><th>Account</th><th>Qty</th><th>Rate</th><th>VAT</th><th>Memo</th><th></th></tr></thead><tbody id="fsBillBatchRows"></tbody></table></div>'+
    '<div class="modal-actions" style="justify-content:space-between"><button type="button" class="btn" id="fsBillBatchAdd">+ Add Line</button><strong id="fsBillBatchTotal">KSh 0.00</strong></div>'+
