@@ -10175,7 +10175,7 @@ bind();document.addEventListener('finsight:cloud-state-loaded',bind);
         bankField('fsBankMemo','Description',memo)+'</div>'+
         '<div style="display:flex;gap:12px;flex-wrap:wrap">'+
         (source==='Cheque'?'':bankSelect('fsBankDebit',source==='Fund Transfer'?'Transfer To':'Deposit To',debit,true))+
-        bankSelect('fsBankCredit',source==='Cheque'?'Payment Account':source==='Fund Transfer'?'Transfer From':'Source Account',credit,true)+
+        bankSelect('fsBankCredit',source==='Cheque'?'Payment Account':source==='Fund Transfer'?'Transfer From':'Source Account',credit,source!=='Fund Deposit')+
         (source==='Cheque'?'':bankField('fsBankAmount','Amount',amount,'number'))+'</div>'+
         (source==='Cheque'?'<div style="margin-top:12px"><b>Cheque allocations</b><div style="overflow-x:auto">'+
           '<table style="width:100%"><thead><tr><th>Account</th><th>Amount</th><th>Description</th></tr></thead><tbody>'+
