@@ -8272,6 +8272,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
  const norm=v=>String(v??'').trim().toLowerCase();
  const money=n=>'KSh '+Number(n).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
  const units=['Kg','g','Litre','ml','Pcs','Pack','Box','Bottle','Tray','Other'];
+ let stockManagerSearch='';
  async function fetchItems(){
    const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
    const {data,error}=await sb.from('stock_items').select('id,name,unit,is_active,track_variance,stock_take_category,unit_cost').eq('company_id',cid).order('name');
@@ -8285,12 +8286,14 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
    try{
      let rows=await fetchItems();
      openModal('Purchase / Recipe Items','',`<div class="fs-stock-manager-toolbar"><input class="input" id="fsStockSearch" placeholder="Search items"><button class="btn" id="fsStockSetupTemplate">Items CSV Template</button><button class="btn" id="fsStockSetupUpload">Upload Items CSV</button><button class="btn primary" id="fsStockNew">+ Add Item</button></div><div id="fsStockList"></div>`);
+     q('#fsStockSearch').value=stockManagerSearch;
      const render=()=>{
        const term=norm(q('#fsStockSearch').value),show=rows.filter(x=>!term||(norm(x.name).includes(term)||norm(x.stock_take_category).includes(term)));
        q('#fsStockList').innerHTML=show.length?show.map(x=>`<div class="manage-row" style="grid-template-columns:1fr auto"><div><b>${esc(x.name)}</b><div class="small-note">${esc(x.unit||'Unit')} · ${esc(x.stock_take_category||'Uncategorised')} · Unit Cost: ${x.unit_cost==null?'Not set':money(Number(x.unit_cost))} · Track Variance: ${x.track_variance===false?'No':'Yes'} · ${x.is_active===false?'Inactive':'Active'}</div></div><button class="mini-btn" data-stock-edit="${x.id}">Edit</button></div>`).join(''):'<div class="empty-state">No Purchase / Recipe Items.</div>';
        qa('[data-stock-edit]').forEach(b=>b.onclick=()=>editor(rows.find(x=>x.id===b.dataset.stockEdit)));
      };
      const editor=(item=null)=>{
+       stockManagerSearch=q('#fsStockSearch')?.value||'';
        openModal(item?'Edit Purchase / Recipe Item':'Add Purchase / Recipe Item','',`<div class="fs-stock-edit-grid">
          <div class="field"><label>Item Name</label><input class="input" id="fsiName" value="${esc(item?.name||'')}"></div>
          <div class="field"><label>Unit</label><select class="input" id="fsiUnit">${unitOpts(item?.unit||'Pcs')}</select></div>
@@ -8299,6 +8302,18 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
          <div class="field"><label>Track Variance</label><select class="input" id="fsiTrack"><option value="true" ${item?.track_variance!==false?'selected':''}>Yes</option><option value="false" ${item?.track_variance===false?'selected':''}>No</option></select></div>
          <div class="field"><label>Status</label><select class="input" id="fsiActive"><option value="true" ${item?.is_active!==false?'selected':''}>Active</option><option value="false" ${item?.is_active===false?'selected':''}>Inactive</option></select></div>
        </div><div class="modal-actions"><button class="btn primary" id="fsiSave">Save</button></div>`);
+       // Return to the Purchase Items list when the editor is closed,
+       // including after the shared unsaved-changes confirmation.
+       // This observer is limited to the lifetime of this one editor.
+       const backdrop=document.getElementById('modalBackdrop');
+       if(backdrop){
+         const restoreList=new MutationObserver(()=>{
+           if(backdrop.classList.contains('show'))return;
+           restoreList.disconnect();
+           window.openStockItemManagerV18593();
+         });
+         restoreList.observe(backdrop,{attributes:true,attributeFilter:['class']});
+       }
        q('#fsiQuickCategory').onclick=()=>{
          const value=prompt('New stock category name:');if(value===null)return;
          const cat=value.trim();if(!cat||cat.length>60)return toast('Enter a category (up to 60 characters).');
@@ -8324,9 +8339,13 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
              const catSave=await sb.rpc('stock_take_assign_category',{p_company:cid,p_item:id,p_category:category});
              if(catSave.error)throw new Error('Item saved but category could not be assigned: '+catSave.error.message);
            }
-           const costSave=await sb.rpc('stock_take_set_unit_cost',{p_company:cid,p_item:id,p_unit_cost:unitCostRaw===''?null:Number(unitCostRaw)});
-           if(costSave.error)throw new Error('Item saved, but Unit Cost could not be saved: '+costSave.error.message);
-           await window.finsightReloadCloudState?.();toast('Purchase / Recipe Item saved');closeModal();setTimeout(()=>window.openStockItemManagerV18593(),100);
+           const newCost=unitCostRaw===''?null:Number(unitCostRaw);
+           if(!item || (item.unit_cost==null?null:Number(item.unit_cost))!==newCost){
+             const costSave=await sb.rpc('stock_take_set_unit_cost',{p_company:cid,p_item:id,p_unit_cost:newCost});
+             if(costSave.error)throw new Error('Item saved, but Unit Cost could not be saved: '+costSave.error.message);
+           }
+           // No full application reload: the editor-close handler refreshes only this item list.
+           toast('Purchase / Recipe Item saved');closeModal();
          }catch(e){toast(e.message||String(e))}
          finally{btn.disabled=false;btn.textContent='Save'}
        };
@@ -8401,7 +8420,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
          }catch(e){toast(e.message||String(e))}
        };inp.click();
      };
-     q('#fsStockSearch').oninput=render;q('#fsStockNew').onclick=()=>editor(null);render();
+     q('#fsStockSearch').oninput=()=>{stockManagerSearch=q('#fsStockSearch').value;render()};q('#fsStockNew').onclick=()=>editor(null);render();
    }catch(e){toast(e.message||String(e))}
  };
 })();
