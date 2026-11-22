@@ -8506,7 +8506,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
      const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
      if(!sb||!cid)throw Error('Select a company and connect to FinSight.');
      const d=await load();
-     openModal('Batch Recipe Upload','',\`<div style="display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-bottom:12px">
+     openModal('Batch Recipe Upload','',`<div style="display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-bottom:12px">
        <button class="btn" type="button" id="fsRecipeTemplate">Download CSV Template</button>
        <button class="btn" type="button" id="fsRecipePrefilled">Template with Menu Items</button>
        <button class="btn" type="button" id="fsRecipeBack">Back to Recipes</button></div>
@@ -8514,7 +8514,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
        <input type="file" class="input" id="fsRecipeFile" accept=".csv,text/csv"></div>
        <div id="fsRecipeStatus" role="status" aria-live="polite" style="padding:10px 0"></div>
        <div id="fsRecipePreview" style="max-height:44vh;overflow:auto"></div>
-       <div class="modal-actions"><button class="btn primary" id="fsRecipeCommit" type="button" disabled>Replace Recipes</button></div>\`);
+       <div class="modal-actions"><button class="btn primary" id="fsRecipeCommit" type="button" disabled>Replace Recipes</button></div>`);
      const file=q('#fsRecipeFile'),status=q('#fsRecipeStatus'),preview=q('#fsRecipePreview'),submit=q('#fsRecipeCommit');
      let prepared=[],valid=false;
      const quote=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
@@ -8544,7 +8544,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
            if(c==='"'){if(src[i+1]==='"'){cell+='"';i++}else{quoted=false;afterQuote=true}}
            else cell+=c;
          }else if(c==='"'&&cell.trim()===''&&!afterQuote){quoted=true}
-         else if(c===','){row.push(cell);row=[] .concat(row);cell='';afterQuote=false}
+         else if(c===','){row.push(cell);cell='';afterQuote=false}
          else if(c==='\r'||c==='\n'){
            if(c==='\r'&&src[i+1]==='\n')i++;
            row.push(cell);if(row.some(v=>String(v).trim()))records.push(row);
@@ -8606,12 +8606,12 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
          }
          prepared=[...groups.values()];
          const priced=prepared.map(g=>({group:g,cost:g.lines.reduce((n,x)=>n+Number(x.stock.unit_cost||0)*x.quantity,0),missing:g.lines.filter(x=>x.stock.unit_cost==null).length}));
-         preview.innerHTML=priced.map(({group:g,cost,missing})=>\`<div style="border:1px solid var(--line);border-radius:9px;padding:10px;margin:8px 0">
-          <b>\${esc(g.menu.name)}</b> — \${g.lines.length} ingredient(s) — Estimated Cost: KSh \${cost.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2})}
-          \${missing?'<div style="color:#b45309">'+missing+' ingredient(s) have no unit cost set.</div>':''}
+         preview.innerHTML=priced.map(({group:g,cost,missing})=>`<div style="border:1px solid var(--line);border-radius:9px;padding:10px;margin:8px 0">
+          <b>${esc(g.menu.name)}</b> — ${g.lines.length} ingredient(s) — Estimated Cost: KSh ${cost.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2})}
+          ${missing?'<div style="color:#b45309">'+missing+' ingredient(s) have no unit cost set.</div>':''}
           <table style="width:100%"><thead><tr><th>Ingredient</th><th>Quantity</th><th>Unit</th><th>Cost</th></tr></thead><tbody>
-          \${g.lines.map(x=>\`<tr><td>\${esc(x.stock.name)}</td><td>\${x.quantity}</td><td>\${esc(x.stock.unit||'Unit')}</td><td>KSh \${(x.quantity*Number(x.stock.unit_cost||0)).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>\`).join('')}
-          </tbody></table></div>\`).join('');
+          ${g.lines.map(x=>`<tr><td>${esc(x.stock.name)}</td><td>${x.quantity}</td><td>${esc(x.stock.unit||'Unit')}</td><td>KSh ${(x.quantity*Number(x.stock.unit_cost||0)).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>`).join('')}
+          </tbody></table></div>`).join('');
          status.textContent=prepared.length+' recipes and '+totalLines+' ingredient rows ready. All existing ingredient lines for these menu items will be replaced. No inventory will be deducted.';
          valid=true;submit.disabled=false;
        }catch(e){status.textContent=e.message||String(e)}
