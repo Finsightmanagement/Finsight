@@ -8447,7 +8447,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
      sb.from('recipe_lines').select('*').eq('company_id',cid),
      sb.from('sales_categories').select('id,name,is_active').eq('company_id',cid).eq('is_active',true).order('name'),
      sb.from('accounts').select('id,name,account_type,is_active').eq('company_id',cid).eq('is_active',true).order('name'),
-     sb.from('stock_items').select('id,name,unit,is_active').eq('company_id',cid).eq('is_active',true).order('name')
+     sb.from('stock_items').select('id,name,unit,is_active,unit_cost').eq('company_id',cid).eq('is_active',true).order('name')
    ]);
    for(const x of [m,l,c,a,s])if(x.error)throw x.error;
    return {menu:m.data||[],lines:l.data||[],cats:c.data||[],accounts:(a.data||[]).filter(x=>norm(x.account_type)==='income'),stock:s.data||[]};
@@ -8458,7 +8458,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
  window.openRecipeManager=async function(){
    try{
      const d=await load();
-     openModal('Menu Items & Recipes','',`<div id="fsMenuGrid"><div><div style="display:flex;gap:8px;margin-bottom:10px"><input class="input" id="fsMenuSearch" placeholder="Search menu items"><button class="btn" id="fsMenuImport">Import Menu Items CSV</button><button class="btn primary" id="fsMenuNew">+ Add Menu Item</button></div><div id="fsMenuList"></div></div><div id="fsMenuEditor"><div class="empty-state">Select a menu item or add a new one.</div></div></div>`);
+     openModal('Menu Items & Recipes','',`<div id="fsMenuGrid"><div><div style="display:flex;gap:8px;margin-bottom:10px"><input class="input" id="fsMenuSearch" placeholder="Search menu items"><button class="btn" id="fsMenuImport">Import Menu Items CSV</button><button class="btn" id="fsRecipeImport">Upload Recipes CSV</button><button class="btn primary" id="fsMenuNew">+ Add Menu Item</button></div><div id="fsMenuList"></div></div><div id="fsMenuEditor"><div class="empty-state">Select a menu item or add a new one.</div></div></div>`);
      const renderList=(selected='')=>{
        const term=norm(q('#fsMenuSearch').value),rows=d.menu.filter(x=>!term||norm(x.name).includes(term));
        q('#fsMenuList').innerHTML=rows.length?rows.map(x=>`<div class="fs-menu-card ${x.id===selected?'active':''}" data-mid="${x.id}"><b>${esc(x.name)}</b><small>${esc(d.cats.find(c=>c.id===x.category_id)?.name||'No category')} · ${d.lines.filter(l=>l.menu_item_id===x.id).length} ingredient(s) · ${x.is_active===false?'Inactive':'Active'}</small></div>`).join(''):'<div class="empty-state">No menu items.</div>';
@@ -8494,7 +8494,141 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
          finally{btn.disabled=false;btn.textContent='Save Menu Item & Recipe'}
        };
      };
-     q('#fsMenuSearch').oninput=()=>renderList();q('#fsMenuNew').onclick=()=>edit(null);q('#fsMenuImport').onclick=()=>window.openMenuItemsCsvImport();renderList();
+     q('#fsMenuSearch').oninput=()=>renderList();q('#fsMenuNew').onclick=()=>edit(null);q('#fsMenuImport').onclick=()=>window.openMenuItemsCsvImport();q('#fsRecipeImport').onclick=()=>window.openRecipeCsvUpload();renderList();
+   }catch(e){toast(e.message||String(e))}
+ };
+
+
+ // Each recipe upload is a complete replacement of the selected menu item's recipe.
+ // Database replacement is atomic: there are no partial recipe writes.
+ window.openRecipeCsvUpload=async function(){
+   try{
+     const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId;
+     if(!sb||!cid)throw Error('Select a company and connect to FinSight.');
+     const d=await load();
+     openModal('Batch Recipe Upload','',\`<div style="display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-bottom:12px">
+       <button class="btn" type="button" id="fsRecipeTemplate">Download CSV Template</button>
+       <button class="btn" type="button" id="fsRecipePrefilled">Template with Menu Items</button>
+       <button class="btn" type="button" id="fsRecipeBack">Back to Recipes</button></div>
+       <div class="field"><label>Recipes CSV — Menu Item, Stock Item, Quantity, Unit</label>
+       <input type="file" class="input" id="fsRecipeFile" accept=".csv,text/csv"></div>
+       <div id="fsRecipeStatus" role="status" aria-live="polite" style="padding:10px 0"></div>
+       <div id="fsRecipePreview" style="max-height:44vh;overflow:auto"></div>
+       <div class="modal-actions"><button class="btn primary" id="fsRecipeCommit" type="button" disabled>Replace Recipes</button></div>\`);
+     const file=q('#fsRecipeFile'),status=q('#fsRecipeStatus'),preview=q('#fsRecipePreview'),submit=q('#fsRecipeCommit');
+     let prepared=[],valid=false;
+     const quote=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
+     function download(rows,name){
+       const csv='\uFEFF'+rows.map(row=>row.map(quote).join(',')).join('\r\n');
+       const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+       const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();
+       setTimeout(()=>URL.revokeObjectURL(url),1500);
+     }
+     q('#fsRecipeTemplate').onclick=()=>download([
+       ['Menu Item','Stock Item','Quantity','Unit'],
+       ['Chicken Pizza Large','Mozzarella Cheese','0.250','Kg'],
+       ['Chicken Pizza Large','Chicken','0.200','Kg'],
+       ['Beef Burger','Burger Bun','1','Pcs']
+     ],'FinSight_Recipe_Upload_Template.csv');
+     q('#fsRecipePrefilled').onclick=()=>download([
+       ['Menu Item','Stock Item','Quantity','Unit'],
+       ...d.menu.map(m=>[m.name,'','',''])
+     ],'FinSight_Recipes_Menu_Items_Template.csv');
+     q('#fsRecipeBack').onclick=()=>window.openRecipeManager();
+     function parseCsv(src){
+       const records=[];let row=[],cell='',quoted=false,afterQuote=false;
+       src=String(src).replace(/^\uFEFF/,'');
+       for(let i=0;i<src.length;i++){
+         const c=src[i];
+         if(quoted){
+           if(c==='"'){if(src[i+1]==='"'){cell+='"';i++}else{quoted=false;afterQuote=true}}
+           else cell+=c;
+         }else if(c==='"'&&cell.trim()===''&&!afterQuote){quoted=true}
+         else if(c===','){row.push(cell);row=[] .concat(row);cell='';afterQuote=false}
+         else if(c==='\r'||c==='\n'){
+           if(c==='\r'&&src[i+1]==='\n')i++;
+           row.push(cell);if(row.some(v=>String(v).trim()))records.push(row);
+           row=[];cell='';afterQuote=false;
+         }else if(afterQuote&&c!==' '&&c!=='\t')throw Error('Unexpected characters after a closing quote.');
+         else if(!afterQuote)cell+=c;
+       }
+       if(quoted)throw Error('CSV has an unclosed quote.');
+       row.push(cell);if(row.some(v=>String(v).trim()))records.push(row);
+       return records;
+     }
+     const menus=new Map(),stocks=new Map();
+     for(const m of d.menu){const key=norm(m.name);if(menus.has(key))throw Error('Duplicate menu names in master: '+m.name);menus.set(key,m)}
+     for(const x of d.stock){const key=norm(x.name);if(stocks.has(key))throw Error('Duplicate stock item names in master: '+x.name);stocks.set(key,x)}
+     file.onchange=async()=>{
+       prepared=[];valid=false;submit.disabled=true;preview.innerHTML='';status.textContent='';
+       if(!file.files?.length)return;
+       try{
+         if(file.files[0].size>5*1024*1024)throw Error('Maximum CSV file size is 5 MB.');
+         status.textContent='Validating file and matching ingredients…';
+         const rows=parseCsv(await file.files[0].text());
+         if(rows.length<2)throw Error('CSV has no recipe lines.');
+         const heads=rows[0].map(x=>norm(x));
+         if(heads.length!==4||new Set(heads).size!==4||!['menu item','stock item','quantity','unit'].every(x=>heads.includes(x)))
+           throw Error('CSV must have exactly four columns: Menu Item, Stock Item, Quantity, Unit.');
+         const mi=heads.indexOf('menu item'),si=heads.indexOf('stock item'),qi=heads.indexOf('quantity'),ui=heads.indexOf('unit');
+         const groups=new Map(),errors=[];
+         let totalLines=0;
+         for(let i=1;i<rows.length;i++){
+           const row=rows[i],lineNum=i+1;
+           // A prefilled template can contain empty ingredient cells for menu items not yet configured.
+           if(row.length!==4){errors.push('Row '+lineNum+': expected four columns.');continue}
+           const menuName=String(row[mi]||'').trim(),stockName=String(row[si]||'').trim();
+           const amount=String(row[qi]||'').trim(),unit=String(row[ui]||'').trim();
+           if(!stockName&&!amount&&!unit)continue;
+           if(!menuName||!stockName||!amount||!unit){errors.push('Row '+lineNum+': all four values are required.');continue}
+           const menu=menus.get(norm(menuName)),stock=stocks.get(norm(stockName));
+           if(!menu)errors.push('Row '+lineNum+': menu item not found: '+menuName);
+           if(!stock)errors.push('Row '+lineNum+': stock item not found or inactive: '+stockName);
+           if(stock&&norm(stock.unit||'Unit')!==norm(unit))errors.push('Row '+lineNum+': '+stock.name+' uses '+(stock.unit||'Unit')+', not '+unit);
+           if(!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(amount)||!Number.isFinite(Number(amount))||Number(amount)<=0||Number(amount)>1000000000)
+             errors.push('Row '+lineNum+': quantity must be positive.');
+           if(!menu||!stock)continue;
+           let group=groups.get(menu.id);
+           if(!group){group={menu,lines:[],stockIds:new Set()};groups.set(menu.id,group)}
+           if(group.stockIds.has(stock.id)){errors.push('Row '+lineNum+': duplicate '+stock.name+' in '+menu.name);continue}
+           group.stockIds.add(stock.id);
+           group.lines.push({stock,quantity:Number(amount)});
+           totalLines++;
+         }
+         if(groups.size>500)errors.push('Maximum 500 recipes per upload.');
+         if(totalLines>10000)errors.push('Maximum 10,000 ingredient lines per upload.');
+         if(!groups.size)errors.push('No valid recipe lines found.');
+         if([...groups.values()].some(x=>x.lines.length>200))errors.push('A recipe cannot contain more than 200 ingredients.');
+         if(errors.length){
+           status.textContent='Upload rejected: '+errors.length+' validation error(s). No recipes were changed.';
+           preview.innerHTML='<div style="color:#b91c1c">'+errors.slice(0,70).map(x=>'<div>'+esc(x)+'</div>').join('')+(errors.length>70?'<div>Additional errors omitted.</div>':'')+'</div>';
+           return;
+         }
+         prepared=[...groups.values()];
+         const priced=prepared.map(g=>({group:g,cost:g.lines.reduce((n,x)=>n+Number(x.stock.unit_cost||0)*x.quantity,0),missing:g.lines.filter(x=>x.stock.unit_cost==null).length}));
+         preview.innerHTML=priced.map(({group:g,cost,missing})=>\`<div style="border:1px solid var(--line);border-radius:9px;padding:10px;margin:8px 0">
+          <b>\${esc(g.menu.name)}</b> — \${g.lines.length} ingredient(s) — Estimated Cost: KSh \${cost.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2})}
+          \${missing?'<div style="color:#b45309">'+missing+' ingredient(s) have no unit cost set.</div>':''}
+          <table style="width:100%"><thead><tr><th>Ingredient</th><th>Quantity</th><th>Unit</th><th>Cost</th></tr></thead><tbody>
+          \${g.lines.map(x=>\`<tr><td>\${esc(x.stock.name)}</td><td>\${x.quantity}</td><td>\${esc(x.stock.unit||'Unit')}</td><td>KSh \${(x.quantity*Number(x.stock.unit_cost||0)).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>\`).join('')}
+          </tbody></table></div>\`).join('');
+         status.textContent=prepared.length+' recipes and '+totalLines+' ingredient rows ready. All existing ingredient lines for these menu items will be replaced. No inventory will be deducted.';
+         valid=true;submit.disabled=false;
+       }catch(e){status.textContent=e.message||String(e)}
+     };
+     submit.onclick=async()=>{
+       if(!valid||!prepared.length)return;
+       if(!confirm('Replace the complete existing recipes for '+prepared.length+' menu items? This cannot be undone automatically.'))return;
+       submit.disabled=true;file.disabled=true;status.textContent='Saving '+prepared.length+' recipes in one transaction…';
+       try{
+         const payload=prepared.map(g=>({menu_item_id:g.menu.id,lines:g.lines.map(x=>({stock_item_id:x.stock.id,quantity:x.quantity}))}));
+         const {data,error}=await sb.rpc('fs_replace_recipes_batch',{p_company:cid,p_recipes:payload});
+         if(error)throw error;
+         status.textContent='Complete: '+data.recipes+' recipes and '+data.ingredients+' ingredients saved. No stock quantities changed.';
+         submit.textContent='Return to Recipes';submit.disabled=false;
+         submit.onclick=()=>window.openRecipeManager();
+       }catch(e){status.textContent='No recipes replaced: '+(e.message||String(e));submit.disabled=false;file.disabled=false}
+     };
    }catch(e){toast(e.message||String(e))}
  };
 
