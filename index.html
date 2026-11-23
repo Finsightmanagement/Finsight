@@ -8435,6 +8435,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
 .fs-menu-card small{display:block;color:var(--muted);margin-top:4px}
 @media(max-width:900px){#fsMenuGrid{grid-template-columns:1fr}}
 </style>
+<script defer src="./semi-finished.js?v=1"></script>
 <script id="finsight-v18593-menu-manager">
 (function(){
  const q=(s,r=document)=>r.querySelector(s),qa=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -8458,9 +8459,9 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
  window.openRecipeManager=async function(){
    try{
      const d=await load();
-     openModal('Menu Items & Recipes','',`<div id="fsMenuGrid"><div><div style="display:flex;gap:8px;margin-bottom:10px"><input class="input" id="fsMenuSearch" placeholder="Search menu items"><button class="btn" id="fsMenuImport">Import Menu Items CSV</button><button class="btn" id="fsRecipeImport">Upload Recipes CSV</button><button class="btn primary" id="fsMenuNew">+ Add Menu Item</button></div><div id="fsMenuList"></div></div><div id="fsMenuEditor"><div class="empty-state">Select a menu item or add a new one.</div></div></div>`);
+     openModal('Menu Items & Recipes','',`<div id="fsMenuGrid"><div><div style="display:flex;gap:8px;margin-bottom:10px"><input class="input" id="fsMenuSearch" placeholder="Search menu items"><select class="input" id="fsMenuCategoryFilter" aria-label="Filter menu items by category" style="min-width:130px;max-width:200px"><option value="">All Categories</option>${d.cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select><button class="btn" id="fsMenuImport">Import Menu Items CSV</button><button class="btn" id="fsRecipeImport">Upload Recipes CSV</button><button class="btn primary" id="fsMenuNew">+ Add Menu Item</button></div><div id="fsMenuList"></div></div><div id="fsMenuEditor"><div class="empty-state">Select a menu item or add a new one.</div></div></div>`);
      const renderList=(selected='')=>{
-       const term=norm(q('#fsMenuSearch').value),rows=d.menu.filter(x=>!term||norm(x.name).includes(term));
+       const term=norm(q('#fsMenuSearch').value),category=q('#fsMenuCategoryFilter')?.value||'',rows=d.menu.filter(x=>(!term||norm(x.name).includes(term))&&(!category||x.category_id===category));
        q('#fsMenuList').innerHTML=rows.length?rows.map(x=>`<div class="fs-menu-card ${x.id===selected?'active':''}" data-mid="${x.id}"><b>${esc(x.name)}</b><small>${esc(d.cats.find(c=>c.id===x.category_id)?.name||'No category')} · ${d.lines.filter(l=>l.menu_item_id===x.id).length} ingredient(s) · ${x.is_active===false?'Inactive':'Active'}</small></div>`).join(''):'<div class="empty-state">No menu items.</div>';
        qa('[data-mid]').forEach(b=>b.onclick=()=>edit(b.dataset.mid));
      };
@@ -8494,7 +8495,7 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
          finally{btn.disabled=false;btn.textContent='Save Menu Item & Recipe'}
        };
      };
-     q('#fsMenuSearch').oninput=()=>renderList();q('#fsMenuNew').onclick=()=>edit(null);q('#fsMenuImport').onclick=()=>window.openMenuItemsCsvImport();q('#fsRecipeImport').onclick=()=>window.openRecipeCsvUpload();renderList();
+     q('#fsMenuSearch').oninput=()=>renderList();q('#fsMenuCategoryFilter').onchange=()=>renderList();q('#fsMenuNew').onclick=()=>edit(null);q('#fsMenuImport').onclick=()=>window.openMenuItemsCsvImport();q('#fsRecipeImport').onclick=()=>window.openRecipeCsvUpload();renderList();
    }catch(e){toast(e.message||String(e))}
  };
 
