@@ -8482,14 +8482,14 @@ new MutationObserver(()=>setTimeout(install,0)).observe(document.body,{childList
        q('#fsmSave').onclick=async()=>{
          const sb=window.finsightSupabase,cid=window.finsightOnline?.companyId,name=q('#fsmName').value.trim(),cat=q('#fsmCat').value,income=q('#fsmIncome').value,active=q('#fsmActive').value==='true';
          const rows=qa('.recipe-line-row',q('#fsMenuLines')).map(r=>({stock_item_id:q('.recipeStock',r)?.value,quantity_per_sale:num(q('.recipeQty',r)?.value)})).filter(x=>x.stock_item_id&&x.quantity_per_sale>0);
-         if(!name)return toast('Enter the Menu / Sales Item name.');if(!cat)return toast('Add a Sales Category first.');if(!income)return toast('Add an Income account first.');if(!rows.length)return toast('Add at least one recipe ingredient.');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same recipe item cannot appear twice.');
+         if(!name)return toast('Enter the Menu / Sales Item name.');if(!cat)return toast('Add a Sales Category first.');if(!income)return toast('Add an Income account first.');if(new Set(rows.map(x=>x.stock_item_id)).size!==rows.length)return toast('The same recipe item cannot appear twice.');
          const dup=d.menu.find(x=>x.id!==m?.id&&norm(x.name)===norm(name));if(dup)return toast('A Menu Item with this name already exists.');
          const btn=q('#fsmSave');btn.disabled=true;btn.textContent='Saving…';
          try{
            let mid=m?.id;
            if(mid){let r=await sb.from('menu_items').update({name,category_id:cat,income_account_id:income,is_active:active}).eq('company_id',cid).eq('id',mid);if(r.error)throw r.error;r=await sb.from('recipe_lines').delete().eq('company_id',cid).eq('menu_item_id',mid);if(r.error)throw r.error}
            else{const r=await sb.from('menu_items').insert({company_id:cid,name,category_id:cat,income_account_id:income,is_active:active}).select('id').single();if(r.error)throw r.error;mid=r.data.id}
-           const r=await sb.from('recipe_lines').insert(rows.map(x=>({company_id:cid,menu_item_id:mid,...x})));if(r.error)throw r.error;
+           if(rows.length){const r=await sb.from('recipe_lines').insert(rows.map(x=>({company_id:cid,menu_item_id:mid,...x})));if(r.error)throw r.error;}
            toast('Menu item and recipe saved');closeModal();setTimeout(()=>window.openRecipeManager(),100);
          }catch(e){toast(e.message||String(e))}
          finally{btn.disabled=false;btn.textContent='Save Menu Item & Recipe'}
