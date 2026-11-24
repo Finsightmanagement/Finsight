@@ -155,4 +155,11 @@ new MutationObserver(()=>{if(!$('#fsSupplierPriceListBtn'))scheduleAttach()}).ob
 
 // Load keyword search after FinSight's standard application shell.
 if(!document.querySelector('script[src*="keyword-select-search.js"]')){const script=document.createElement('script');script.src='keyword-select-search.js';script.defer=true;document.head.appendChild(script);}
+// Maintenance 7 enhancements are separate, non-posting UI modules.
+for(const src of ['accounting-drafts.js','supplier-bill-vat-display.js','sales-invoice-option.js']){
+ if(!document.querySelector('script[src*="'+src+'"]')){
+  const script=document.createElement('script');script.src=src;script.defer=true;document.head.appendChild(script);
+ }
+}
+
 })();
