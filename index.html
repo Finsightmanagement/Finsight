@@ -9499,7 +9499,7 @@ document.addEventListener('finsight:cloud-state-loaded',boot);if(document.readyS
   const itemOptions='<option value="">Select Item</option>'+items.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
   const expenseOptions='<option value="">Select Account</option>'+accounts.filter(x=>['Expense','Cost of Sales'].includes(x.account_type)).map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
   loader.outerHTML='<div class="form-grid"><div class="field"><label>Supplier</label><select class="input" id="fsBillBatchSupplier">'+supplierOptions+'</select></div></div>'+
-   '<div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Date</th><th>Invoice No.</th><th>Due Date</th><th>Group</th><th>Purchase Item</th><th>Description</th><th>Account</th><th>Qty</th><th>Rate</th><th>VAT</th><th>Memo</th><th></th></tr></thead><tbody id="fsBillBatchRows"></tbody></table></div>'+
+   '<div style="overflow:auto;margin-top:14px"><table class="line-table"><thead><tr><th>Date</th><th>Invoice No.</th><th>Due Date</th><th>Group</th><th>Purchase Item</th><th>Description</th><th>Account</th><th>Qty</th><th>Rate</th><th>VAT</th><th>Total</th><th></th></tr></thead><tbody id="fsBillBatchRows"></tbody></table></div>'+
    '<div class="modal-actions" style="justify-content:space-between"><button type="button" class="btn" id="fsBillBatchAdd">+ Add Line</button><strong id="fsBillBatchTotal">KSh 0.00</strong></div>'+
    '<div id="fsBillBatchStatus" role="status"></div><div class="modal-actions"><button type="button" class="btn primary" id="fsBillBatchPost">Post Batch Bills</button></div>';
   const rows=q('#fsBillBatchRows'),status=q('#fsBillBatchStatus'),post=q('#fsBillBatchPost');
@@ -9516,7 +9516,7 @@ document.addEventListener('finsight:cloud-state-loaded',boot);if(document.readyS
    '<td><input class="input fsbb-qty" type="number" min="0.001" step="0.001" value="1" style="width:85px"></td>'+
    '<td><input class="input fsbb-rate" type="number" min="0.01" step="0.01" style="width:105px"></td>'+
    '<td><select class="input fsbb-vat"><option value="0">0%</option><option value="16">16%</option></select></td>'+
-   '<td><input class="input fsbb-memo" style="min-width:130px"></td>'+
+   '<td class="fsbb-line-total" style="white-space:nowrap;text-align:right;font-weight:600;min-width:120px">KSh 0.00</td>'+
    '<td><button type="button" class="btn fsbb-remove">×</button></td>';
    rows.appendChild(tr);
    const configure=()=>{
@@ -9531,14 +9531,18 @@ document.addEventListener('finsight:cloud-state-loaded',boot);if(document.readyS
   }
   function recalc(){
    let total=0;
-   for(const row of rows.children)total+=Number(q('.fsbb-qty',row).value||0)*Number(q('.fsbb-rate',row).value||0);
+   for(const row of rows.children){
+    const amount=Number(q('.fsbb-qty',row).value||0)*Number(q('.fsbb-rate',row).value||0);
+    q('.fsbb-line-total',row).textContent='KSh '+money(amount);
+    total+=amount;
+   }
    q('#fsBillBatchTotal').textContent='KSh '+money(total);
   }
   function collect(){
    const groups=new Map();
    for(const [i,row] of [...rows.children].entries()){
     const get=s=>q(s,row).value;
-    const d=get('.fsbb-date'),invoice=get('.fsbb-invoice').trim(),due=get('.fsbb-due'),memo=get('.fsbb-memo').trim();
+    const d=get('.fsbb-date'),invoice=get('.fsbb-invoice').trim(),due=get('.fsbb-due');
     const group=get('.fsbb-group'),quantity=Number(get('.fsbb-qty')),rate=Number(get('.fsbb-rate')),vatRate=Number(get('.fsbb-vat'));
     const purchase=group==='Purchase Item', stockId=purchase?get('.fsbb-item'):null;
     const acc=purchase?food?.id:get('.fsbb-account');
@@ -9550,8 +9554,8 @@ document.addEventListener('finsight:cloud-state-loaded',boot);if(document.readyS
     if(vatRate===16&&!vat)throw Error('Input VAT account is missing.');
     const key=normalize(invoice);
     let inv=groups.get(key);
-    if(!inv){inv={bill_date:d,invoice_no:invoice,due_date:due||null,memo,lines:[]};groups.set(key,inv)}
-    else if(inv.bill_date!==d||inv.due_date!==(due||null)||inv.memo!==memo)throw Error('Invoice '+invoice+' has conflicting dates or memo.');
+    if(!inv){inv={bill_date:d,invoice_no:invoice,due_date:due||null,memo:'',lines:[]};groups.set(key,inv)}
+    else if(inv.bill_date!==d||inv.due_date!==(due||null))throw Error('Invoice '+invoice+' has conflicting bill or due dates.');
     inv.lines.push({
      line_type:group,stock_item_id:stockId,description:get('.fsbb-desc').trim()|| (purchase?items.find(x=>x.id===stockId)?.name||'Purchase Item':'Expenditure'),
      account_id:acc,quantity,rate,vat_rate:vatRate
