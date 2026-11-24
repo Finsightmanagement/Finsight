@@ -43,13 +43,26 @@ async function syncCloud(){
 
 const read=()=>{try{return JSON.parse(localStorage.getItem(STORE)||'[]')}catch{return []}};
 const write=rows=>{try{localStorage.setItem(STORE,JSON.stringify(rows));return true}catch(e){console.warn('FinSight draft save failed',e);return false}};
+// Stock Take has its own database-backed Draft / Continue mechanism.
+// Never attach generic draft controls or intercept input on any Stock Take subtree.
+function isStockTake(node){
+ if(!(node instanceof Element))return false;
+ return !!node.closest('#stock-take-clerk,#stock12body,#stock12form,#stockApprovalQueue12,[id="stock-take"],[id="stockTake"],[data-page="stock-take-clerk"]')
+  || !!node.querySelector?.('#stock12body,#stock12form,#stock12lines,#stock12draft');
+}
+function removeStockTakeOverlays(){
+ for(const root of $$('#stock-take-clerk,#stock12body,#stock12form,#stockApprovalQueue12')){
+  for(const bar of $$('[data-fs-draft-ui]',root))bar.remove();
+  for(const elem of $$('[data-fs-draft-ready]',root))delete elem.dataset.fsDraftReady;
+ }
+}
 const formKey=el=>el.id||el.getAttribute('data-draft-key')||el.getAttribute('aria-label')||el.querySelector('h1,h2,h3,h4')?.textContent.trim()||'Accounting Form';
 function container(node){
- if(!node||!(node instanceof Element))return null;
+ if(!node||!(node instanceof Element)||isStockTake(node))return null;
  const modal=node.closest('[role="dialog"],dialog,.modal,.modal-content,.modal-body');
- if(modal && modal.querySelector('input:not([type=hidden]),textarea,select'))return modal;
+ if(modal && !isStockTake(modal) && modal.querySelector('input:not([type=hidden]),textarea,select'))return modal;
  const section=node.closest('section,.page-section,.tab-panel,.content-section');
- return section && section.querySelector('input:not([type=hidden]),textarea,select')?section:null;
+ return section && !isStockTake(section) && section.querySelector('input:not([type=hidden]),textarea,select')?section:null;
 }
 function controls(root){return $$('input,textarea,select',root).filter(e=>!e.disabled&&e.type!=='hidden'&&e.type!=='file'&&e.type!=='password'&&!e.closest('[data-fs-draft-ui]')&&e.id!=='fsPriceAsAt');}
 function ident(e,i){return e.id?'id:'+e.id:(e.name?'name:'+e.name+':'+i:'position:'+i);}
@@ -68,12 +81,13 @@ function capture(root){
 }
 function draftId(root){return namespace()+'::'+formKey(root);}
 function store(root,manual=false){
+ if(isStockTake(root))return false;
  const id=draftId(root),payload=capture(root);
  if(!Object.keys(payload.fields).length)return false;
  const all=read(),old=all.find(x=>x.id===id);
  const item={id,owner:namespace(),label:formKey(root),updatedAt:new Date().toISOString(),payload,createdAt:old?.createdAt||new Date().toISOString()};
  const idx=all.findIndex(x=>x.id===id);if(idx>=0)all[idx]=item;else all.push(item);
- const ok=write(all.slice(-100));if(ok)void cloudSave(item);if(manual)notify(ok?'Draft saved to this browser.':'Draft could not be saved.');return ok;
+ const ok=write(all.slice(-100));if(manual)notify(ok?'Draft saved to this browser.':'Draft could not be saved.');return ok;
 }
 function notify(msg){let el=$('#fsDraftNotice');if(!el){el=document.createElement('div');el.id='fsDraftNotice';el.setAttribute('role','status');el.style.cssText='position:fixed;bottom:20px;right:20px;z-index:2147483646;background:#172238;color:white;padding:12px 16px;border-radius:8px;box-shadow:0 4px 20px #0003';document.body.appendChild(el)}el.textContent=msg;setTimeout(()=>{if(el.textContent===msg)el.remove()},3500);}
 const ADD={fsBillBatchRows:'#fsBillBatchAdd',billLines:'#addBillLine',fsBatchRows:'#fsBatchAdd'};
@@ -96,11 +110,11 @@ async function restore(root,item){
  notify('Draft restored. Review the details before posting.');
 }
 async function draftPanel(root){
- await syncCloud();
+ if(isStockTake(root))return;
  const drafts=read().filter(x=>x.owner===namespace()).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
  const dialog=document.createElement('dialog');dialog.setAttribute('data-fs-draft-ui','');dialog.style.cssText='border:1px solid #d5dbe4;border-radius:12px;padding:20px;max-width:92vw;width:620px;background:#fff;color:#172238';
  const title=document.createElement('h3');title.textContent='Saved Drafts';dialog.appendChild(title);
- const info=document.createElement('p');info.textContent='Drafts are stored on this browser until cloud draft synchronization is enabled.';dialog.appendChild(info);
+ const info=document.createElement('p');info.textContent='Drafts for these Accounting forms are saved in this browser. Stock Take uses its own existing draft system.';dialog.appendChild(info);
  if(!drafts.length){const empty=document.createElement('p');empty.textContent='No saved drafts yet.';dialog.appendChild(empty);}
  for(const item of drafts){
   const row=document.createElement('div');row.style.cssText='display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #ddd';
@@ -114,7 +128,7 @@ async function draftPanel(root){
  const close=document.createElement('button');close.type='button';close.className='btn';close.textContent='Close';close.onclick=()=>dialog.close();dialog.append(close);document.body.appendChild(dialog);dialog.addEventListener('close',()=>dialog.remove());dialog.showModal();
 }
 function install(root){
- if(!root||root.dataset.fsDraftReady==='1'||root.closest('[data-fs-draft-ui]'))return;
+ if(!root||isStockTake(root)||root.dataset.fsDraftReady==='1'||root.closest('[data-fs-draft-ui]'))return;
  if(!controls(root).length)return;
  root.dataset.fsDraftReady='1';
  const bar=document.createElement('div');bar.dataset.fsDraftUi='1';bar.style.cssText='display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin:8px 0';
@@ -127,8 +141,8 @@ let pending=null;
 document.addEventListener('input',e=>{const root=container(e.target);if(!root)return;install(root);clearTimeout(pending);pending=setTimeout(()=>store(root),550)},true);
 document.addEventListener('change',e=>{const root=container(e.target);if(!root)return;install(root);store(root)},true);
 document.addEventListener('click',e=>{const root=container(e.target);if(root)setTimeout(()=>install(root),30)},true);
-const observer=new MutationObserver(()=>{for(const el of $$('[role="dialog"],dialog,.modal,.modal-content,section,.page-section')){if(!el.dataset.fsDraftReady&&el.querySelector('input,textarea,select'))install(el)}});
+const observer=new MutationObserver(()=>{removeStockTakeOverlays();for(const el of $$('[role="dialog"],dialog,.modal,.modal-content,section,.page-section')){if(!isStockTake(el)&&!el.dataset.fsDraftReady&&el.querySelector('input,textarea,select'))install(el)}});
 observer.observe(document.documentElement,{childList:true,subtree:true});
-document.addEventListener('DOMContentLoaded',()=>{for(const el of $$('[role="dialog"],dialog,.modal,.modal-content,section,.page-section'))install(el)});
-window.addEventListener('pagehide',()=>{for(const el of $$('[data-fs-draft-ready="1"]'))store(el)});
+document.addEventListener('DOMContentLoaded',()=>{removeStockTakeOverlays();for(const el of $$('[role="dialog"],dialog,.modal,.modal-content,section,.page-section'))install(el)});
+window.addEventListener('pagehide',()=>{for(const el of $('[data-fs-draft-ready="1"]')){if(!isStockTake(el))store(el)}});
 })();
