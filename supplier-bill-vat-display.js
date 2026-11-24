@@ -13,9 +13,9 @@ function breakdown(row){
  const exclusive=vat>0?amount/(1+vat/100):0;
  const vatAmount=vat>0?amount-exclusive:0;
  const ex=$('.fsVatExclusive',row),tax=$('.fsVatAmount',row),inc=$('.fsVatInclusive',row);
- if(ex)ex.textContent=vat>0?money(exclusive):'—';
- if(tax)tax.textContent=vat>0?money(vatAmount):'—';
- if(inc)inc.textContent=money(amount);
+ if(ex){const v=vat>0?money(exclusive):'—';if(ex.textContent!==v)ex.textContent=v;}
+ if(tax){const v=vat>0?money(vatAmount):'—';if(tax.textContent!==v)tax.textContent=v;}
+ if(inc&&inc.textContent!==money(amount))inc.textContent=money(amount);
 }
 function setup(tableId,mode){
  const body=document.getElementById(tableId);if(!body)return;
