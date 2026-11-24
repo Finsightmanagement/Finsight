@@ -70,9 +70,19 @@ document.addEventListener('input',e=>{
 // Both bill forms add rows dynamically. Suggest a rate when the user adds a row;
 // do not touch hand-entered values on unrelated interactions.
 document.addEventListener('click',e=>{
-  if(e.target.closest('#fsBillBatchAdd,#addBillLine')){
-    setTimeout(()=>updateRows(e.target.closest('#fsBillBatchAdd')?'batch':'single'),0);
-  }
+  const batch=!!e.target.closest('#fsBillBatchAdd');
+  const single=!!e.target.closest('#addBillLine');
+  if(!batch&&!single)return;
+  const selector=batch?'#fsBillBatchRows tr':'#billLines tr';
+  const previous=$(selector).length;
+  setTimeout(()=>{
+    const rows=$(selector);
+    // Only prefill newly added lines; never overwrite manually adjusted existing rates.
+    for(const row of rows.slice(previous)){
+      if(batch?$('.fsbb-group',row)?.value==='Purchase Item':$('.line-group',row)?.value==='Purchase Item')
+        rateForRow(row,history());
+    }
+  },0);
 },true);
 
 function priceGrid(asOf){
