@@ -109,7 +109,7 @@ function printPrices(grid,asOf){
  document.body.appendChild(frame);
  const doc=frame.contentDocument;
  doc.open();doc.write('<!doctype html><html><head><title>Supplier Price List</title><style>body{font:12px Arial;padding:20px;color:#192337}h2{margin:0 0 8px}p{margin:0 0 18px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd2dc;padding:7px;text-align:left}th{background:#eef0f8}th:not(:first-child),td:not(:first-child){text-align:right}@page{size:landscape;margin:12mm}</style></head><body><h2>Supplier Price List</h2><p>As at '+escape(asOf)+' · KSh per purchase unit</p>'+priceTable(grid,asOf)+'</body></html>');doc.close();
- frame.onload=()=>{frame.contentWindow.focus();frame.contentWindow.print();setTimeout(()=>frame.remove(),1500)};
+ setTimeout(()=>{try{frame.contentWindow.focus();frame.contentWindow.print()}finally{setTimeout(()=>frame.remove(),3000)}},200);
 }
 function openPrices(){
  if(typeof window.openModal!=='function')return;
