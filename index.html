@@ -7040,8 +7040,9 @@ window.openSalesForm=async function(){
 };
 
 function iso(d){return d.toISOString().slice(0,10)}function addDays(ds,n){const d=new Date(ds+'T12:00:00');d.setDate(d.getDate()+n);return iso(d)}
-function dashboardDates(){let f=q('#dashboardFrom')?.value,t=q('#dashboardTo')?.value;const latest=state.dashboardSummary?.latestSalesDate||today();if(!t)t=latest;if(!f)f=addDays(t,-6);if(f>t)[f,t]=[t,f];return{f,t}}
-function setDashboardDefaults(){const latest=state.dashboardSummary?.latestSalesDate||today();if(q('#dashboardTo')&&!q('#dashboardTo').value)q('#dashboardTo').value=latest;if(q('#dashboardFrom')&&!q('#dashboardFrom').value)q('#dashboardFrom').value=addDays(latest,-6)}
+function dashboardCurrentDate(){return new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Nairobi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())}
+function dashboardDates(){let f=q('#dashboardFrom')?.value,t=q('#dashboardTo')?.value;const current=dashboardCurrentDate();if(!t)t=current;if(!f)f=current.slice(0,8)+'01';if(f>t)[f,t]=[t,f];return{f,t}}
+function setDashboardDefaults(){const current=dashboardCurrentDate();if(q('#dashboardTo')&&!q('#dashboardTo').value)q('#dashboardTo').value=current;if(q('#dashboardFrom')&&!q('#dashboardFrom').value)q('#dashboardFrom').value=current.slice(0,8)+'01'}
 function dateList(f,t){const a=[];for(let d=f;d<=t;d=addDays(d,1)){a.push(d);if(a.length>370)break}return a}
 function renderDashboardV1854(){
   setDashboardDefaults();const {f,t}=dashboardDates(),dates=dateList(f,t),sales=(state.sales||[]).filter(x=>inRange(x.date,f,t)),items=(state.saleItems||[]).filter(x=>inRange(x.date,f,t));
