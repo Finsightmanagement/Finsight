@@ -153,4 +153,6 @@ document.addEventListener('finsight:cloud-state-loaded',scheduleAttach);
 // Watch late-rendered Inventory screens without constantly rewriting their DOM.
 new MutationObserver(()=>{if(!$('#fsSupplierPriceListBtn'))scheduleAttach()}).observe(document.documentElement,{childList:true,subtree:true});
 
+// Load keyword search after FinSight's standard application shell.
+if(!document.querySelector('script[src*="keyword-select-search.js"]')){const script=document.createElement('script');script.src='keyword-select-search.js';script.defer=true;document.head.appendChild(script);}
 })();
