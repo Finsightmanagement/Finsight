@@ -3,13 +3,14 @@
 // Price history is derived from posted supplier bill lines, not edited stock item costs.
 const $=(s,r=document)=>r.querySelector(s);
 const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
+const appState=()=>typeof state!=='undefined'?state:(window.state||{});
 const norm=v=>String(v??'').trim().toLocaleLowerCase();
 const money=v=>Number(v).toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
 const currentDate=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Africa/Nairobi',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 const escape=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function history(){
   const records=[];
-  for(const bill of (window.state?.bills||[])){
+  for(const bill of (appState()?.bills||[])){
     const date=String(bill.date||'').slice(0,10),supplier=norm(bill.supplier);
     if(!date||!supplier)continue;
     for(const [i,line] of (bill.lines||[]).entries()){
@@ -30,7 +31,7 @@ function lookup(records,supplier,item,date){
   }
   return found;
 }
-function itemName(id){return (window.state?.stockItems||[]).find(x=>String(x.id)===String(id))?.name||'';}
+function itemName(id){return (appState()?.stockItems||[]).find(x=>String(x.id)===String(id))?.name||'';}
 function rateForRow(row,records){
   const batch=!!row.closest('#fsBillBatchRows');
   const supplier=batch?$('#fsBillBatchSupplier option:checked')?.textContent:$('#bSupplier')?.value;
@@ -75,10 +76,10 @@ document.addEventListener('click',e=>{
 },true);
 
 function priceGrid(asOf){
-  const items=(window.state?.stockItems||[]).filter(x=>x.is_active!==false);
+  const items=(appState()?.stockItems||[]).filter(x=>x.is_active!==false);
   const suppliers=[...new Set(history().filter(x=>x.date<=asOf).map(x=>x.supplier))];
   // Display the supplier's original name from the supplier master, if available.
-  const names=(window.state?.suppliers||[]);
+  const names=(appState()?.suppliers||[]);
   const label=s=>names.find(n=>norm(n)===s)||s;
   const records=history();
   return {suppliers: suppliers.map(s=>({key:s,label:label(s)})).sort((a,b)=>a.label.localeCompare(b.label)),
