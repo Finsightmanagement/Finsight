@@ -17,10 +17,10 @@ function history(){
       if(line.group!=='Purchase Item'||!line.item)continue;
       const rate=Number(line.rate);
       if(!Number.isFinite(rate)||rate<=0)continue;
-      records.push({date,supplier,item:norm(line.item),rate,order:records.length,invoice:bill.invoice||''});
+      records.push({date,supplier,item:norm(line.item),rate,postedAt:String(bill.createdAt||''),lineAt:String(line.createdAt||''),order:records.length,invoice:bill.invoice||''});
     }
   }
-  records.sort((a,b)=>a.date.localeCompare(b.date)||a.order-b.order);
+  records.sort((a,b)=>a.date.localeCompare(b.date)||a.postedAt.localeCompare(b.postedAt)||a.lineAt.localeCompare(b.lineAt)||a.order-b.order);
   return records;
 }
 function lookup(records,supplier,item,date){
@@ -42,7 +42,7 @@ function rateForRow(row,records){
   const match=lookup(records,supplier,item,day);
   // A suggestion, not a restriction: the input always remains editable.
   if(match){rate.value=String(match.rate);rate.dataset.fsSuggested='1';rate.title='Last posted cost from this supplier on '+match.date;}
-  else if(rate.dataset.fsSuggested==='1'){rate.value='';delete rate.dataset.fsSuggested;rate.removeAttribute('title');}
+  else {rate.value='';delete rate.dataset.fsSuggested;rate.removeAttribute('title');}
   rate.dispatchEvent(new Event('input',{bubbles:true}));
 }
 function updateRows(scope){
