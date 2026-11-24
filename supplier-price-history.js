@@ -122,21 +122,35 @@ function printPrices(grid,asOf){
  setTimeout(()=>{try{frame.contentWindow.focus();frame.contentWindow.print()}finally{setTimeout(()=>frame.remove(),3000)}},200);
 }
 function openPrices(){
- if(typeof window.openModal!=='function')return;
- window.openModal('Supplier Price List','', '<div class="toolbar" style="display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-bottom:12px"><div class="field"><label>As at</label><input class="input" type="date" id="fsPriceAsAt" value="'+currentDate()+'"></div><button class="btn" id="fsPriceCsv">Export Excel / CSV</button><button class="btn" id="fsPricePdf">Export PDF</button></div><div id="fsPriceView" style="max-height:65vh;overflow:auto"></div>');
+ const showModal=(title,body)=>{
+  if(typeof window.openModal==='function')return window.openModal(title,'',body);
+  let dialog=document.getElementById('fsPriceDialog');
+  if(!dialog){dialog=document.createElement('dialog');dialog.id='fsPriceDialog';dialog.style.cssText='width:min(1100px,94vw);max-height:90vh;border:1px solid #d5dbe4;border-radius:12px;padding:20px;background:#fff;color:#1c2430;';document.body.appendChild(dialog);}
+  dialog.innerHTML='<div style="display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:15px"><h2 style="margin:0">'+escape(title)+'</h2><button type="button" class="btn" id="fsPriceClose">Close</button></div>'+body;
+  $('#fsPriceClose').onclick=()=>dialog.close();dialog.showModal();
+ };
+ showModal('Supplier Price List','<div class="toolbar" style="display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-bottom:12px"><div class="field"><label>As at</label><input class="input" type="date" id="fsPriceAsAt" value="'+currentDate()+'"></div><button class="btn" id="fsPriceCsv">Export Excel / CSV</button><button class="btn" id="fsPricePdf">Export PDF</button></div><div id="fsPriceView" style="max-height:65vh;overflow:auto"></div>');
  const date=$('#fsPriceAsAt'),view=$('#fsPriceView');
  const render=()=>{const asOf=date.value||currentDate(),grid=priceGrid(asOf);view.innerHTML=grid.suppliers.length?priceTable(grid,asOf):'<div class="empty-state">No supplier purchase prices recorded on or before this date.</div>';return grid};
  date.onchange=render;$('#fsPriceCsv').onclick=()=>saveCSV(render(),date.value);
  $('#fsPricePdf').onclick=()=>printPrices(render(),date.value);render();
 }
 function attachButton(){
- const panel=$('#inventory .section-title');
- if(!panel||$('#fsSupplierPriceListBtn'))return;
- const actions=panel.querySelector(':scope > div:last-child');
- if(!actions)return;
+ if($('#fsSupplierPriceListBtn'))return;
+ // The Inventory section is re-rendered after login and company changes.
+ const sections=[$('#inventory'),$('#inventoryCogas'),$('#inventory-cogas'),...$$('section,main > div,.section')];
+ const panel=sections.find(el=>el&&(el.id==='inventory'||/inventory\s*(?:&|and)?\s*cogas/i.test(el.querySelector('h1,h2,h3,.section-title')?.textContent||'')));
+ if(!panel)return;
+ const bar=panel.querySelector('.section-title')||panel.querySelector('.toolbar')||panel;
+ const actions=bar.querySelector(':scope > div:last-child')||bar;
  const button=document.createElement('button');button.id='fsSupplierPriceListBtn';button.className='btn';button.textContent='Supplier Price List';button.type='button';
  button.onclick=openPrices;actions.insertBefore(button,actions.firstChild);
 }
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',attachButton);else attachButton();
-document.addEventListener('finsight:cloud-state-loaded',attachButton);
+let attachQueued=false;
+const scheduleAttach=()=>{if(attachQueued)return;attachQueued=true;setTimeout(()=>{attachQueued=false;attachButton()},100)};
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',scheduleAttach);else scheduleAttach();
+document.addEventListener('finsight:cloud-state-loaded',scheduleAttach);
+// Watch late-rendered Inventory screens without constantly rewriting their DOM.
+new MutationObserver(()=>{if(!$('#fsSupplierPriceListBtn'))scheduleAttach()}).observe(document.documentElement,{childList:true,subtree:true});
+
 })();
