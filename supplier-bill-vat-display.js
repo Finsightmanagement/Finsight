@@ -10,8 +10,8 @@ function breakdown(row){
  const vat=Number($(batch?'.fsbb-vat':'.line-vat',row)?.value||0);
  const amount=Math.max(0,qty*rate);
  // In existing supplier bill form 'rate' is VAT-inclusive; only display derived amounts.
- const exclusive=vat>0?amount/(1+vat/100):0;
- const vatAmount=vat>0?amount-exclusive:0;
+ const exclusive=vat>0?Math.round((amount/(1+vat/100)+Number.EPSILON)*100)/100:0;
+ const vatAmount=vat>0?Math.round((amount-exclusive+Number.EPSILON)*100)/100:0;
  const ex=$('.fsVatExclusive',row),tax=$('.fsVatAmount',row),inc=$('.fsVatInclusive',row);
  if(ex){const v=vat>0?money(exclusive):'—';if(ex.textContent!==v)ex.textContent=v;}
  if(tax){const v=vat>0?money(vatAmount):'—';if(tax.textContent!==v)tax.textContent=v;}
