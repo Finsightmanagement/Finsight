@@ -35,7 +35,7 @@ function ensure(){
  list=document.createElement('div');list.style.cssText='overflow:auto;max-height:45vh';
  input.addEventListener('input',render);
  input.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){e.preventDefault();close();active?.focus();return;}
+  if(e.key==='Escape'){e.preventDefault();const el=active;close();el?.focus();return;}
   if(e.key==='Enter'){const b=list.querySelector('button');if(b){e.preventDefault();b.click();}}
  });
  popup.append(input,list);document.body.appendChild(popup);
@@ -56,5 +56,5 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('pointerdown',e=>{if(popup&&!popup.contains(e.target)&&e.target!==active)close()},true);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&active)close()},true);
 window.addEventListener('resize',close);
-window.addEventListener('scroll',()=>{if(active)close()},true);
+window.addEventListener('scroll',e=>{if(active&&popup&&!popup.contains(e.target))close()},true);
 })();
