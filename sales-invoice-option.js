@@ -45,7 +45,21 @@ function install(){
   }
  }).observe(status,{childList:true,subtree:true,characterData:true});
 }
-let pending=false;const schedule=()=>{if(pending)return;pending=true;setTimeout(()=>{pending=false;install()},60)};
+function attachPostSalesEntry(){
+ if($('#fsOpenSalesInvoice'))return;
+ const heading=$('h1,h2,h3,h4,.section-title').find(el=>/^post sales$/i.test(el.textContent.trim()));
+ if(!heading)return;
+ const host=heading.closest('.section-title,.toolbar')||heading.parentElement;
+ if(!host)return;
+ const button=document.createElement('button');button.id='fsOpenSalesInvoice';button.className='btn';button.type='button';button.textContent='Generate Invoice';
+ button.onclick=()=>{
+  if(typeof window.openFinSightBatchSales!=='function'){alert('Open the Batch Sales form first.');return;}
+  window.openFinSightBatchSales();
+  setTimeout(()=>{install();const c=$('#fsInvoiceGenerate');if(c){c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}))}},150);
+ };
+ host.append(button);
+}
+let pending=false;const schedule=()=>{if(pending)return;pending=true;setTimeout(()=>{pending=false;install();attachPostSalesEntry()},60)};
 new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true});
 document.addEventListener('DOMContentLoaded',schedule);schedule();
 })();
