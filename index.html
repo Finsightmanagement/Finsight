@@ -4159,7 +4159,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
       `<div class="form-grid">
         <div class="field"><label>Date</label><input id="cDate" class="input" type="date" value="${today()}"></div>
         <div class="field"><label>Cheque No. (Optional)</label><input id="cNo" class="input"></div>
-        <div class="field"><label>Payee (Optional)</label><input id="cPayee" class="input" placeholder="Supplier or other payee"></div>
+        <div class="field"><label>Payee (Optional)</label><select id="cPayee" class="input"><option value="">— Select Supplier —</option>${(state.suppliers||[]).map(name=>`<option value="${String(name).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')}">${String(name).replace(/&/g,'&amp;').replace(/</g,'&lt;')}</option>`).join('')}</select></div>
         <div class="field"><label>Bank / Cash Account</label><select id="cBank" class="input">${paymentOptions()}</select></div>
         <div class="field full"><label>Memo</label><input id="cMemo" class="input"></div>
       </div>
