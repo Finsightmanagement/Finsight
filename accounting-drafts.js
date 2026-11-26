@@ -45,6 +45,12 @@ const read=()=>{try{return JSON.parse(localStorage.getItem(STORE)||'[]')}catch{r
 const write=rows=>{try{localStorage.setItem(STORE,JSON.stringify(rows));return true}catch(e){console.warn('FinSight draft save failed',e);return false}};
 // Stock Take has its own database-backed Draft / Continue mechanism.
 // Never attach generic draft controls or intercept input on any Stock Take subtree.
+function isReadOnlyReport(node){
+ if(!(node instanceof Element))return false;
+ const title=(node.querySelector('h1,h2,h3,h4,.modal-title,.statement-title')?.textContent||'').trim();
+ return /^(account statement|supplier statement|bank statement|general ledger|trial balance|balance sheet|profit (?:and|&) loss|cash flow|sales report|purchase report)\\b/i.test(title)
+  || node.matches('[data-readonly-report]') || !!node.closest('[data-readonly-report]');
+}
 function isStockTake(node){
  if(!(node instanceof Element))return false;
  return !!node.closest('#stock-take-clerk,#stock12body,#stock12form,#stockApprovalQueue12,[id="stock-take"],[id="stockTake"],[data-page="stock-take-clerk"]')
@@ -58,7 +64,7 @@ function removeStockTakeOverlays(){
 }
 const formKey=el=>el.id||el.getAttribute('data-draft-key')||el.getAttribute('aria-label')||el.querySelector('h1,h2,h3,h4')?.textContent.trim()||'Accounting Form';
 function container(node){
- if(!node||!(node instanceof Element)||isStockTake(node))return null;
+ if(!node||!(node instanceof Element)||isStockTake(node)||isReadOnlyReport(node))return null;
  const modal=node.closest('[role="dialog"],dialog,.modal,.modal-content,.modal-body');
  if(modal && !isStockTake(modal) && modal.querySelector('input:not([type=hidden]),textarea,select'))return modal;
  const section=node.closest('section,.page-section,.tab-panel,.content-section');
@@ -81,7 +87,7 @@ function capture(root){
 }
 function draftId(root){return namespace()+'::'+formKey(root);}
 function store(root,manual=false){
- if(isStockTake(root))return false;
+ if(isStockTake(root)||isReadOnlyReport(root))return false;
  const id=draftId(root),payload=capture(root);
  if(!Object.keys(payload.fields).length)return false;
  const all=read(),old=all.find(x=>x.id===id);
@@ -110,7 +116,7 @@ async function restore(root,item){
  notify('Draft restored. Review the details before posting.');
 }
 async function draftPanel(root){
- if(isStockTake(root))return;
+ if(isStockTake(root)||isReadOnlyReport(root))return;
  const drafts=read().filter(x=>x.owner===namespace()).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));
  const dialog=document.createElement('dialog');dialog.setAttribute('data-fs-draft-ui','');dialog.style.cssText='border:1px solid #d5dbe4;border-radius:12px;padding:20px;max-width:92vw;width:620px;background:#fff;color:#172238';
  const title=document.createElement('h3');title.textContent='Saved Drafts';dialog.appendChild(title);
@@ -128,7 +134,7 @@ async function draftPanel(root){
  const close=document.createElement('button');close.type='button';close.className='btn';close.textContent='Close';close.onclick=()=>dialog.close();dialog.append(close);document.body.appendChild(dialog);dialog.addEventListener('close',()=>dialog.remove());dialog.showModal();
 }
 function install(root){
- if(!root||isStockTake(root)||root.dataset.fsDraftReady==='1'||root.closest('[data-fs-draft-ui]'))return;
+ if(!root||isStockTake(root)||isReadOnlyReport(root)||root.dataset.fsDraftReady==='1'||root.closest('[data-fs-draft-ui]'))return;
  if(!controls(root).length)return;
  root.dataset.fsDraftReady='1';
  const bar=document.createElement('div');bar.dataset.fsDraftUi='1';bar.style.cssText='display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin:8px 0';
@@ -141,8 +147,24 @@ let pending=null;
 document.addEventListener('input',e=>{const root=container(e.target);if(!root)return;install(root);clearTimeout(pending);pending=setTimeout(()=>store(root),550)},true);
 document.addEventListener('change',e=>{const root=container(e.target);if(!root)return;install(root);store(root)},true);
 document.addEventListener('click',e=>{const root=container(e.target);if(root)setTimeout(()=>install(root),30)},true);
-const observer=new MutationObserver(()=>{removeStockTakeOverlays();for(const el of $$('[role="dialog"],dialog,.modal,.modal-content,section,.page-section')){if(!isStockTake(el)&&!el.dataset.fsDraftReady&&el.querySelector('input,textarea,select'))install(el)}});
+let scanPending=false;
+function scanForms(){
+ scanPending=false;
+ removeStockTakeOverlays();
+ for(const el of $('[role="dialog"],dialog,.modal,.modal-content,section,.page-section')){
+  if(!isStockTake(el)&&!isReadOnlyReport(el)&&!el.dataset.fsDraftReady&&el.querySelector('input,textarea,select'))install(el);
+ }
+}
+const observer=new MutationObserver(records=>{
+ // A report can insert thousands of journal rows. Inspect only changes that introduce
+ // new forms, not every individual table row or account-statement update.
+ if(scanPending)return;
+ if(!records.some(record=>[...record.addedNodes].some(node=>node.nodeType===1&&
+  (node.matches?.('form,dialog,[role="dialog"],.modal,section,.page-section,input,textarea,select')||
+   node.querySelector?.('form,dialog,[role="dialog"],.modal,section,.page-section,input,textarea,select')))))return;
+ scanPending=true;setTimeout(scanForms,150);
+});
 observer.observe(document.documentElement,{childList:true,subtree:true});
 document.addEventListener('DOMContentLoaded',()=>{removeStockTakeOverlays();for(const el of $$('[role="dialog"],dialog,.modal,.modal-content,section,.page-section'))install(el)});
-window.addEventListener('pagehide',()=>{for(const el of $('[data-fs-draft-ready="1"]')){if(!isStockTake(el))store(el)}});
+window.addEventListener('pagehide',()=>{for(const el of $('[data-fs-draft-ready="1"]')){if(!isStockTake(el)&&!isReadOnlyReport(el))store(el)}});
 })();
