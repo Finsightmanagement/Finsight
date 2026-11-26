@@ -4163,19 +4163,38 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
         <div class="field"><label>Bank / Cash Account</label><select id="cBank" class="input">${paymentOptions()}</select></div>
         <div class="field full"><label>Memo</label><input id="cMemo" class="input"></div>
       </div>
-      <div style="margin-top:14px;overflow:auto"><table class="line-table"><thead><tr><th>Description</th><th>Account</th><th>Amount</th><th></th></tr></thead><tbody id="chequeLines"></tbody></table></div>
+      <div style="margin-top:14px;overflow:auto"><table class="line-table"><thead><tr><th>Description</th><th>Account</th><th>Supplier (Accounts Payable)</th><th>Amount</th><th></th></tr></thead><tbody id="chequeLines"></tbody></table></div>
       <button class="btn" id="addChequeLine" style="margin-top:8px">+ Add Line</button>
       <div class="total-bar"><span>Cheque Total</span><strong class="lineTotal">KSh 0</strong></div>
-      <div class="modal-actions"><button class="btn primary" id="saveCheque">Post Cheque Online</button></div>`);
-    setTimeout(()=>{
+      <div class="modal-actions"><button class="btn primary" id="saveCheque">Post Cheque</button></div>`);
+    setTimeout(async()=>{
       const tb=document.getElementById('chequeLines');
+      const sb=window.finsightSupabase,companyId=window.finsightOnline?.companyId;
+      let suppliers=[];
+      if(sb&&companyId){
+        const {data,error}=await sb.from('suppliers').select('id,name').eq('company_id',companyId).eq('is_active',true).order('name');
+        if(error)toast('Could not load suppliers: '+error.message);
+        else suppliers=data||[];
+      }
+      const safe=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+      const supplierOptions='<option value="">Select Supplier</option>'+suppliers.map(s=>'<option value="'+safe(s.id)+'">'+safe(s.name)+'</option>').join('');
+      const isAccountsPayable=id=>(state.accounts||[]).some(a=>a.id===id&&(String(a.name||'').trim().toLowerCase()==='accounts payable'||String(a.sub||'').trim().toLowerCase()==='accounts payable'));
       const calc=()=>{
         const total=[...tb.querySelectorAll('tr')].reduce((a,r)=>a+Number(r.querySelector('.line-amount')?.value||0),0);
         const el=document.querySelector('.modal .lineTotal'); if(el)el.textContent=fmt(total);
       };
       const add=()=>{
         const tr=document.createElement('tr');
-        tr.innerHTML=`<td><input class="line-desc" placeholder="Description"></td><td><select class="line-account">${accountOptions()}</select></td><td><input class="line-amount" type="number" min="0" step="0.01" value="0"></td><td><button class="btn removeLine">×</button></td>`;
+        tr.innerHTML=`<td><input class="line-desc" placeholder="Description"></td><td><select class="line-account">${accountOptions()}</select></td><td><select class="line-supplier" style="min-width:180px">${supplierOptions}</select></td><td><input class="line-amount" type="number" min="0" step="0.01" value="0"></td><td><button class="btn removeLine">×</button></td>`;
+        const toggleSupplier=()=>{
+          const required=isAccountsPayable(tr.querySelector('.line-account').value);
+          const select=tr.querySelector('.line-supplier');
+          select.disabled=!required;select.required=required;
+          select.style.visibility=required?'visible':'hidden';
+          if(!required)select.value='';
+        };
+        tr.querySelector('.line-account').addEventListener('change',toggleSupplier);
+        toggleSupplier();
         tb.appendChild(tr);
         tr.querySelector('.line-amount').oninput=calc;
         tr.querySelector('.removeLine').onclick=()=>{tr.remove();calc();};
@@ -4192,6 +4211,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
         const memo=document.getElementById('cMemo').value.trim();
         const lines=[...tb.querySelectorAll('tr')].map(r=>({
           account_id:r.querySelector('.line-account').value,
+          supplier_id:isAccountsPayable(r.querySelector('.line-account').value)?(r.querySelector('.line-supplier').value||null):null,
           description:r.querySelector('.line-desc').value.trim(),
           amount:Number(r.querySelector('.line-amount').value||0)
         })).filter(x=>x.amount>0);
@@ -4199,6 +4219,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
         if(!paymentAccount)return toast('Choose the Bank / Cash account');
         if(!lines.length)return toast('Add at least one cheque line');
         if(lines.some(x=>!x.account_id))return toast('Choose an account for every cheque line');
+        if(lines.some(x=>isAccountsPayable(x.account_id)&&!x.supplier_id))return toast('Select a supplier on every Accounts Payable line');
         if(no && (state.cheques||[]).some(x=>String(x.no||'').trim()===no))return toast('Cheque number already exists');
         btn.disabled=true; btn.textContent='Posting…';
         try{
@@ -4216,11 +4237,11 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
           if(error)throw error;
           closeModal();
           if(typeof window.finsightReloadCloudState==='function')await window.finsightReloadCloudState();
-          toast('Cheque posted online');
+          toast('Cheque posted');
         }catch(e){
           console.error('[FinSight Phase 2D] Write Cheque failed',e);
-          toast(e?.message||'Unable to post cheque online.');
-          btn.disabled=false; btn.textContent='Post Cheque Online';
+          toast(e?.message||'Unable to post cheque.');
+          btn.disabled=false; btn.textContent='Post Cheque';
         }
       };
     },0);
