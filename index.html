@@ -1720,6 +1720,7 @@ function fsSupplierChequeCredits(supplier){
  }
  return out;
 }
+window.fsSupplierChequeCredits=fsSupplierChequeCredits;
 function supplierStatementHtml(supplier){
   let rows=[];
   state.bills.filter(b=>b.supplier===supplier).forEach(b=>{
@@ -4669,7 +4670,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
         const amount=Math.round(Number(l.gross||l.rate||0)*100)/100;
         running=Math.round((running-amount)*100)/100;
         const detail=[l.desc,l.supplier||accountName(l.accountId)].filter(Boolean).join(' · ');
-        result.push({...r,source_type:'Cheque',reference:(r.reference||cheque.no||'—')+' · '+(index+1)+'/'+lines.length,
+        result.push({...r,source_type:'Cheque',reference:(r.reference||cheque.no||'—')+' · '+(index+1)+'/'+lines.length+(detail?' · '+detail:''),
           description:detail,memo:detail,debit:0,credit:amount,movement:-amount,
           running_balance:index===lines.length-1?Number(r.running_balance||0):running});
       }
@@ -9289,7 +9290,7 @@ function statementRows(supplier){
   (state.billPayments||[]).filter(p=>p.billId===b.id).forEach(p=>arr.push({date:p.date||'',type:'Payment',ref:p.chequeNo||p.reference||'',debit:0,credit:Number(p.amount||0)}));
  });
  (state.supplierBankCredits||[]).filter(p=>p.supplier===supplier).forEach(p=>arr.push({date:p.date||'',type:'Bank Payment / Credit',ref:p.reference||'',debit:0,credit:Number(p.amount||0)}));
- arr.push(...fsSupplierChequeCredits(supplier));
+ arr.push(...(window.fsSupplierChequeCredits?.(supplier)||[]));
  arr.sort((a,b)=>a.date.localeCompare(b.date)||((a.type==='Bill'?0:1)-(b.type==='Bill'?0:1)));
  let running=0;return arr.map(r=>({...r,balance:(running+=r.debit-r.credit)}));
 }
