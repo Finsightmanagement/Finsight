@@ -4650,6 +4650,33 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
   function bankAccount(id){return (state.accounts||[]).find(a=>String(a.id)===String(id));}
   function liveBankRows(){return (state.accounts||[]).filter(a=>String(a.type||'').toLowerCase()==='asset' && String(a.sub||'').toLowerCase()==='bank');}
 
+  function displayChequeLines(rows){
+    const chequeMap=new Map((state.cheques||[]).map(c=>[String(c.id),c]));
+    const accountName=id=>(state.accounts||[]).find(a=>a.id===id)?.name||'';
+    const result=[];
+    for(const r of rows){
+      const isCheque=String(r.source_type||'').toLowerCase()==='cheque';
+      const cheque=isCheque?chequeMap.get(String(r.source_id||'')):null;
+      const lines=(cheque?.lines||[]).filter(l=>Number(l.gross||l.rate||0)>0);
+      const movement=Number(r.movement??(Number(r.debit||0)-Number(r.credit||0)));
+      const sum=lines.reduce((n,l)=>n+Math.round(Number(l.gross||l.rate||0)*100),0)/100;
+      // Expand display only when the bank's one posted credit exactly matches all cheque lines.
+      if(!cheque||lines.length<2||movement>=0||Math.abs(sum+movement)>.01){
+        result.push(r);continue;
+      }
+      let running=Number(r.running_balance||0)-movement;
+      for(const [index,l] of lines.entries()){
+        const amount=Math.round(Number(l.gross||l.rate||0)*100)/100;
+        running=Math.round((running-amount)*100)/100;
+        const detail=[l.desc,l.supplier||accountName(l.accountId)].filter(Boolean).join(' · ');
+        result.push({...r,source_type:'Cheque',reference:(r.reference||cheque.no||'—')+' · '+(index+1)+'/'+lines.length,
+          description:detail,memo:detail,debit:0,credit:amount,movement:-amount,
+          running_balance:index===lines.length-1?Number(r.running_balance||0):running});
+      }
+    }
+    return result;
+  }
+
   async function loadLedger(){
     const sb=window.finsightSupabase, online=window.finsightOnline||{};
     const id=q('#reconBank')?.value, m=q('#reconMonth')?.value, body=q('#reconTransactions');
@@ -4658,7 +4685,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     body.innerHTML='<tr><td colspan="6"><div class="empty-state">Loading bank ledger…</div></td></tr>';
     const {data,error}=await sb.rpc('get_bank_ledger',{p_company_id:online.companyId,p_bank_account_id:id,p_start_date:b.start,p_end_date:b.end});
     if(error){body.innerHTML=`<tr><td colspan="6"><div class="empty-state">${esc(error.message)}</div></td></tr>`;return;}
-    const rows=data||[];
+    const rows=displayChequeLines(data||[]);
     const closing=rows.length?Number(rows[rows.length-1].running_balance||0):0;
     q('#reconBook').textContent=money(closing);
     body.innerHTML=rows.length?rows.map(r=>{
