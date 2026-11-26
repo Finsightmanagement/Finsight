@@ -63,3 +63,110 @@ document.addEventListener('focusin',e=>{if(active&&!active.wrap.contains(e.targe
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&active)close()},true);
 window.addEventListener('resize',()=>close());
 })();
+
+
+/* Global master-data dropdown enhancements.
+   Only new-entry forms are normalized; never blank existing saved records. */
+(function(){
+'use strict';
+const terms={
+ account:{placeholder:'Select account',actions:['add account','new account','create account']},
+ supplier:{placeholder:'Select supplier',actions:['add supplier','new supplier','create supplier']},
+ item:{placeholder:'Select item',actions:['add item','new item','create item']},
+ category:{placeholder:'Select category',actions:['add category','new category','create category']},
+ department:{placeholder:'Select department',actions:['add department','new department','create department']},
+ employee:{placeholder:'Select employee',actions:['add employee','new employee','create employee']},
+ bank:{placeholder:'Select bank',actions:['add bank','new bank','create bank']}
+};
+const clean=s=>String(s||'').replace(/\s+/g,' ').trim().toLowerCase();
+const entryRe=/\b(new|add|create|post|batch|record|entry|purchase|bill|sales|cheque|transfer|deposit|journal|expense|payment|advance)\b/i;
+const editingRe=/\b(edit|update|amend|view|details|history|filter|search|report|statement|reconcil)\b/i;
+function context(el){
+ const root=el.closest('dialog,[role="dialog"],.modal,.modal-content,form,section,.page-section,.tab-panel')||el.parentElement;
+ const heading=root?.querySelector('h1,h2,h3,h4,.modal-title,.section-title')?.textContent||'';
+ return {root,heading:clean(heading)};
+}
+function fieldName(sel){
+ const label=sel.labels?.[0]?.textContent||document.querySelector('label[for="'+CSS.escape(sel.id||'__none__')+'"]')?.textContent||'';
+ return clean([label,sel.getAttribute('aria-label'),sel.name,sel.id,sel.closest('.field,.form-group')?.querySelector('label')?.textContent].filter(Boolean).join(' '));
+}
+function kind(sel){
+ const s=fieldName(sel);
+ if(/payment method|payment type|account type|account subtype|employment type|item type|status|station|role|tax|currency/.test(s))return null;
+ return Object.keys(terms).find(k=>new RegExp('\\b'+k+'s?\\b','i').test(s))||null;
+}
+function valid(sel){
+ if(!(sel instanceof HTMLSelectElement)||sel.multiple||sel.disabled||sel.closest('[data-fs-draft-ui],#fsKeywordCellEditor,#stock-take-clerk,#stock12body,#stock12form,#stockApprovalQueue12'))return false;
+ if(sel.closest('[data-fs-quick-add]'))return false;
+ const {heading,root}=context(sel);
+ if(editingRe.test(heading))return false;
+ if(root?.querySelector('[data-mode="edit"],input[name="record_id"][value]:not([value=""])'))return false;
+ return true;
+}
+function placeholder(sel){
+ if(sel.dataset.fsSelectInit==='1'||!valid(sel))return;
+ const {heading}=context(sel);
+ // Only reset new-entry dropdowns. Existing edits, historical records and filters stay intact.
+ if(!entryRe.test(heading))return;
+ const name=kind(sel);
+ const defaultText=terms[name]?.placeholder||'Select';
+ let blank=[...sel.options].find(o=>o.value==='');
+ if(!blank){
+   blank=document.createElement('option');blank.value='';blank.textContent=defaultText;blank.dataset.fsPlaceholder='1';
+   sel.insertBefore(blank,sel.firstChild);
+   // Prevent removing meaningful saved selections in forms that were populated before enhancement.
+   if(sel.selectedIndex===0||sel.value==='')sel.value='';
+ }else if(!clean(blank.textContent)||/choose|select|--/.test(clean(blank.textContent)))blank.textContent=defaultText;
+ sel.dataset.fsSelectInit='1';
+}
+function actionFor(name,origin){
+ const actions=terms[name].actions;
+ const candidates=[...document.querySelectorAll('button,[role="button"],a')].filter(e=>{
+   if(e.closest('[data-fs-quick-add]')||e.disabled)return false;
+   const t=clean(e.textContent||e.getAttribute('aria-label'));
+   return actions.some(a=>t===a||t===('+'+a)||t===('+ '+a));
+ });
+ const local=candidates.find(e=>origin.closest('section,.modal,dialog,[role="dialog"]')?.contains(e));
+ return local||candidates.find(e=>e.getClientRects().length>0)||null;
+}
+function install(sel){
+ if(!valid(sel))return;
+ placeholder(sel);
+ const name=kind(sel);
+ if(!name||sel.dataset.fsQuickAddInit==='1')return;
+ const action=actionFor(name,sel);
+ if(!action)return; // No parallel master-data creation workflow or unsafe direct DB inserts.
+ sel.dataset.fsQuickAddInit='1';
+ const button=document.createElement('button');button.type='button';button.className='fs-inline-quick-add';
+ button.dataset.fsQuickAdd='1';button.textContent='+';button.title='Quick Add '+name;button.setAttribute('aria-label','Quick Add '+name);
+ button.style.cssText='display:inline-flex;align-items:center;justify-content:center;margin-left:5px;min-width:32px;min-height:32px;padding:3px 8px;border:1px solid #cbd5e1;border-radius:6px;background:transparent;color:inherit;font:inherit;cursor:pointer;vertical-align:middle';
+ button.addEventListener('click',()=>{
+   const trigger=actionFor(name,sel);
+   if(!trigger)return;
+   const old=new Set([...sel.options].map(x=>x.value));
+   // Reuse application-native creation action and refresh the source dropdown after save.
+   trigger.click();
+   const watch=new MutationObserver(()=>{
+     const options=[...sel.options].filter(x=>x.value&&!old.has(x.value));
+     if(options.length===1){
+       sel.value=options[0].value;
+       sel.dispatchEvent(new Event('input',{bubbles:true}));
+       sel.dispatchEvent(new Event('change',{bubbles:true}));
+       watch.disconnect();
+     }
+   });
+   watch.observe(sel,{subtree:true,childList:true});
+   setTimeout(()=>watch.disconnect(),60000);
+ });
+ sel.insertAdjacentElement('afterend',button);
+}
+let scheduled=false;
+function scan(){
+ scheduled=false;
+ document.querySelectorAll('select').forEach(install);
+}
+function schedule(){if(scheduled)return;scheduled=true;setTimeout(scan,70);}
+new MutationObserver(schedule).observe(document.documentElement,{childList:true,subtree:true});
+document.addEventListener('DOMContentLoaded',schedule);
+schedule();
+})();
