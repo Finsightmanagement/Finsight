@@ -112,10 +112,11 @@ function placeholder(sel){
  const defaultText=terms[name]?.placeholder||'Select';
  let blank=[...sel.options].find(o=>o.value==='');
  if(!blank){
+   const wasFirstDefault=sel.selectedIndex===0 && !sel.options[0]?.hasAttribute('selected');
    blank=document.createElement('option');blank.value='';blank.textContent=defaultText;blank.dataset.fsPlaceholder='1';
    sel.insertBefore(blank,sel.firstChild);
    // Prevent removing meaningful saved selections in forms that were populated before enhancement.
-   if(sel.selectedIndex===0||sel.value==='')sel.value='';
+   if(wasFirstDefault||sel.value==='')sel.value='';
  }else if(!clean(blank.textContent)||/choose|select|--/.test(clean(blank.textContent)))blank.textContent=defaultText;
  sel.dataset.fsSelectInit='1';
 }
