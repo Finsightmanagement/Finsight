@@ -1710,6 +1710,16 @@ const oldOpenModal=openModal;
 openModal=function(t,s,b){oldOpenModal(t,s,b);const body=$('#modalBody');if(body&&!body.querySelector('.modal-resize-tip'))body.insertAdjacentHTML('afterbegin','<div class="modal-resize-tip">↔ ↕ Drag the form header to move it. Drag the bottom-right corner to resize the form.</div>')};
 
 // ---------- 2) Supplier list + statements ----------
+function fsSupplierChequeCredits(supplier){
+ const isAp=id=>(state.accounts||[]).some(a=>a.id===id&&(String(a.name||'').trim().toLowerCase()==='accounts payable'||String(a.sub||'').trim().toLowerCase()==='accounts payable'));
+ const out=[];
+ for(const c of (state.cheques||[]))for(const l of (c.lines||[])){
+  if(!l.supplierId||l.supplier!==supplier||!isAp(l.accountId))continue;
+  const amount=Number(l.gross||l.rate||0);if(amount<=0)continue;
+  out.push({date:c.date||'',type:'Cheque Payment',ref:(c.no||'—')+(l.desc?' · '+l.desc:''),debit:0,credit:amount});
+ }
+ return out;
+}
 function supplierStatementHtml(supplier){
   let rows=[];
   state.bills.filter(b=>b.supplier===supplier).forEach(b=>{
@@ -1717,6 +1727,7 @@ function supplierStatementHtml(supplier){
     state.billPayments.filter(p=>p.billId===b.id).forEach(p=>rows.push({date:p.date,type:'Payment',ref:p.chequeNo||'Payment',debit:0,credit:Number(p.amount||0)}));
   });
   (state.supplierBankCredits||[]).filter(p=>p.supplier===supplier).forEach(p=>rows.push({date:p.date,type:'Bank Payment / Credit',ref:p.reference||'—',debit:0,credit:Number(p.amount||0)}));
+  rows.push(...fsSupplierChequeCredits(supplier));
   rows.sort((a,b)=>a.date.localeCompare(b.date)||a.type.localeCompare(b.type)); let balance=0;
   const body=rows.length?rows.map(x=>{balance+=x.debit-x.credit;return `<tr><td>${x.date}</td><td>${x.type}</td><td>${x.ref}</td><td>${x.debit?fmt(x.debit):'—'}</td><td>${x.credit?fmt(x.credit):'—'}</td><td><b>${fmt(balance)}</b></td></tr>`}).join(''):'<tr><td colspan="6"><div class="empty-state">No supplier transactions yet.</div></td></tr>';
   return `<div style="overflow:auto"><table class="supplier-statement-table"><thead><tr><th>Date</th><th>Type</th><th>Reference</th><th>Bill / Debit</th><th>Payment / Credit</th><th>Running Balance</th></tr></thead><tbody>${body}</tbody></table></div><div class="total-bar"><span>Supplier Balance</span><strong>${fmt(balance)}</strong></div>`;
@@ -3586,7 +3597,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     state.bills=mine(bills).map(b=>({id:b.id,date:b.bill_date,createdAt:b.created_at||'',supplier:supplierName(b.supplier_id),invoice:b.invoice_no||'—',due:b.due_date||'',memo:b.memo||'',total:Number(b.total_amount||0),lines:(billLinesByBill.get(b.id)||[]).map(l=>({createdAt:l.created_at||'',group:l.line_type,item:stockName(l.stock_item_id),desc:l.description||'',accountId:l.account_id,qty:Number(l.quantity||0),rate:Number(l.rate||0),vatRate:Number(l.vat_rate||0)/100,net:Number(l.net_amount||0),vat:Number(l.vat_amount||0),gross:Number(l.gross_amount||0)}))}));
     state.billPayments=mine(billPayments).map(p=>({id:p.id,billId:p.bill_id,date:p.payment_date,accountId:p.payment_account_id,amount:Number(p.amount||0),chequeNo:p.reference||'',memo:p.memo||''}));
     state.supplierBankCredits=mine(supplierBankCredits).map(p=>({id:p.id,supplierId:p.supplier_id,supplier:supplierName(p.supplier_id),date:p.payment_date,amount:Number(p.amount||0),reference:p.reference||'',memo:p.memo||''}));
-    state.cheques=mine(cheques).map(c=>({id:c.id,date:c.cheque_date||c.transaction_date||'',no:c.cheque_no||'',payee:c.payee||'',bankId:c.payment_account_id||c.bank_account_id||'',memo:c.memo||'',total:Number(c.total_amount||0),lines:(chequeLinesByCheque.get(c.id)||[]).map(l=>({desc:l.description||'',accountId:l.account_id,qty:1,rate:Number(l.amount||0),gross:Number(l.amount||0),net:Number(l.amount||0),vatRate:0}))}));
+    state.cheques=mine(cheques).map(c=>({id:c.id,date:c.cheque_date||c.transaction_date||'',no:c.cheque_no||'',payee:c.payee||'',bankId:c.payment_account_id||c.bank_account_id||'',memo:c.memo||'',total:Number(c.total_amount||0),lines:(chequeLinesByCheque.get(c.id)||[]).map(l=>({desc:l.description||'',accountId:l.account_id,qty:1,rate:Number(l.amount||0),gross:Number(l.amount||0),net:Number(l.amount||0),vatRate:0,supplierId:l.supplier_id||null,supplier:l.supplier_id?supplierName(l.supplier_id):''}))}));
     state.fundTransfers=mine(transfers).map(t=>({id:t.id,date:t.transfer_date||t.transaction_date||'',fromId:t.from_account_id,toId:t.to_account_id,amount:Number(t.amount||0),reference:t.reference||'',memo:t.memo||''}));
     state.fundDeposits=mine(deposits).map(d=>({id:d.id,date:d.deposit_date||d.transaction_date||'',toId:d.deposit_to_account_id||d.deposit_account_id||d.to_account_id,sourceId:d.source_account_id,amount:Number(d.amount||0),reference:d.reference||'',memo:d.memo||''}));
     state.stock={opening:mine(opening).map(x=>({id:x.id,date:x.stock_date,item:stockName(x.stock_item_id),qty:Number(x.quantity||0),unitCost:Number(x.unit_cost||0)})),closing:mine(closing).map(x=>({id:x.id,date:x.stock_date,item:stockName(x.stock_item_id),qty:Number(x.quantity||0),unitCost:Number(x.unit_cost||0)}))};state.onlinePettyTransactions=mine(pettyTx);state.auditLog=state.auditLog||[];state.dailyComments=state.dailyComments||{};
@@ -8878,14 +8889,23 @@ function installSales(){
 
 /* SUPPLIER BALANCES: Reports Centre panel, as-at date + Outstanding Only. */
 async function supplierBalanceData(asAt){
- const [sup,bills,pays,credits]=await Promise.all([
+ const [sup,bills,pays,credits,cheques,chequeLines]=await Promise.all([
    sb().from('suppliers').select('id,name,is_active').eq('company_id',cid()).order('name'),
    sb().from('supplier_bills').select('id,supplier_id,bill_date,total_amount').eq('company_id',cid()).lte('bill_date',asAt),
    sb().from('supplier_bill_payments').select('bill_id,payment_date,amount').eq('company_id',cid()).lte('payment_date',asAt),
-   sb().from('fs_supplier_bank_credits').select('supplier_id,payment_date,amount').eq('company_id',cid()).lte('payment_date',asAt)
- ]);for(const r of [sup,bills,pays,credits])if(r.error)throw r.error;
+   sb().from('fs_supplier_bank_credits').select('supplier_id,payment_date,amount').eq('company_id',cid()).lte('payment_date',asAt),
+   sb().from('cheques').select('id,cheque_date').eq('company_id',cid()).lte('cheque_date',asAt),
+   sb().from('cheque_lines').select('cheque_id,supplier_id,account_id,amount').eq('company_id',cid()).not('supplier_id','is',null)
+ ]);for(const r of [sup,bills,pays,credits,cheques,chequeLines])if(r.error)throw r.error;
  const payMap=new Map();(pays.data||[]).forEach(x=>payMap.set(x.bill_id,(payMap.get(x.bill_id)||0)+n(x.amount)));
  const creditMap=new Map();(credits.data||[]).forEach(x=>creditMap.set(x.supplier_id,(creditMap.get(x.supplier_id)||0)+n(x.amount)));
+ // Count only an explicitly supplier-tagged AP debit, once. Cheque posting already created the GL journal.
+ const chequeIds=new Set((cheques.data||[]).map(c=>c.id));
+ const apIds=new Set((state.accounts||[]).filter(a=>String(a.name||'').trim().toLowerCase()==='accounts payable'||String(a.sub||'').trim().toLowerCase()==='accounts payable').map(a=>a.id));
+ for(const line of (chequeLines.data||[])){
+   if(!chequeIds.has(line.cheque_id)||!apIds.has(line.account_id))continue;
+   creditMap.set(line.supplier_id,(creditMap.get(line.supplier_id)||0)+n(line.amount));
+ }
  return (sup.data||[]).map(s=>{const bs=(bills.data||[]).filter(b=>b.supplier_id===s.id),total=bs.reduce((a,b)=>a+n(b.total_amount),0),paid=bs.reduce((a,b)=>a+(payMap.get(b.id)||0),0)+(creditMap.get(s.id)||0);return{name:s.name,bills:total,paid,balance:total-paid}}).sort((a,b)=>b.balance-a.balance);
 }
 function ensureSupplierBalances(){
@@ -9242,6 +9262,7 @@ function statementRows(supplier){
   (state.billPayments||[]).filter(p=>p.billId===b.id).forEach(p=>arr.push({date:p.date||'',type:'Payment',ref:p.chequeNo||p.reference||'',debit:0,credit:Number(p.amount||0)}));
  });
  (state.supplierBankCredits||[]).filter(p=>p.supplier===supplier).forEach(p=>arr.push({date:p.date||'',type:'Bank Payment / Credit',ref:p.reference||'',debit:0,credit:Number(p.amount||0)}));
+ arr.push(...fsSupplierChequeCredits(supplier));
  arr.sort((a,b)=>a.date.localeCompare(b.date)||((a.type==='Bill'?0:1)-(b.type==='Bill'?0:1)));
  let running=0;return arr.map(r=>({...r,balance:(running+=r.debit-r.credit)}));
 }
