@@ -48,7 +48,7 @@ const write=rows=>{try{localStorage.setItem(STORE,JSON.stringify(rows));return t
 function isReadOnlyReport(node){
  if(!(node instanceof Element))return false;
  const title=(node.querySelector('h1,h2,h3,h4,.modal-title,.statement-title')?.textContent||'').trim();
- return /^(account statement|supplier statement|bank statement|general ledger|trial balance|balance sheet|profit (?:and|&) loss|cash flow|sales report|purchase report)\\b/i.test(title)
+ return /^(account statement|supplier statement|bank statement|general ledger|trial balance|balance sheet|profit (?:and|&) loss|cash flow|sales report|purchase report)\b/i.test(title)
   || node.matches('[data-readonly-report]') || !!node.closest('[data-readonly-report]');
 }
 function isStockTake(node){
