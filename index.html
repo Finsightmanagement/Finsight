@@ -3589,7 +3589,7 @@ window.finsightPasswordRecovery={attach,isActive:()=>mode!=='login'||recoverySes
     for(const item of mine(saleItems)){if(!saleItemsBySale.has(item.sale_id))saleItemsBySale.set(item.sale_id,item);}
     const cloudSales=mine(sales).map(s=>{const first=saleItemsBySale.get(s.id)||{};return{id:s.id,date:s.sale_date,paymentType:ptName(s.payment_type_id),incomeId:s.income_account_id,memo:s.memo||'',amount:Number(s.total_amount||0),item:first.item_name||'',category:catName(first.category_id),qty:Number(first.quantity||0)}});
     const saleDateById=new Map(cloudSales.map(s=>[s.id,s.date]));
-    state.accounts=A.map(a=>({id:a.id,name:a.name,type:a.account_type,sub:a.sub_type||'',cashflow:a.cash_flow_class||'Operating',active:a.is_active!==false}));
+    state.accounts=A.map(a=>({id:a.id,name:a.name,type:a.account_type,sub:a.sub_type||'',cashflow:a.cash_flow_class||'Operating',parentId:a.parent_account_id||null,active:a.is_active!==false}));
     state.paymentTypes=PT.filter(x=>x.is_active!==false).map(x=>x.name);state.categories=CAT.filter(x=>x.is_active!==false).map(x=>x.name);state.suppliers=SUP.filter(x=>x.is_active!==false).map(x=>x.name);state.stockItems=SI.filter(x=>x.is_active!==false).map(x=>({id:x.id,name:x.name,unit:x.unit||'Unit',track_variance:x.track_variance!==false,is_active:x.is_active!==false}));window.finsightStockItems=state.stockItems;
     state.sales=cloudSales;state.saleItems=mine(saleItems).map(x=>{const saleDate=saleDateById.get(x.sale_id);return{saleId:x.sale_id,date:saleDate||'',item:x.item_name||'',category:catName(x.category_id),qty:Number(x.quantity||0),revenue:Number(x.line_revenue||0)}});
     state.receipts=mine(receipts).map(r=>({id:r.id,saleId:r.sale_id,date:r.receipt_date,salesDate:saleDateById.get(r.sale_id)||'',accountId:r.destination_account_id,amount:Number(r.amount||0),memo:r.memo||'',reference:r.reference||''}));
@@ -6064,6 +6064,7 @@ async function saveCloudAccount(existing=null){
          </select>
        </div>
        <div class="field"><label>Sub-Type</label><select class="input" id="cloudAccSub">${subtypeOptions(a.type,a.sub)}</select></div>
+       <div class="field"><label>Parent Account (Optional)</label><select class="input" id="cloudAccParent"><option value="">— No Parent —</option></select></div>
        <div class="field"><label>Cash Flow</label>
          <select class="input" id="cloudAccCF">
            ${['Operating','Investing','Financing','Cash / N/A'].map(x=>`<option ${x===a.cashflow?'selected':''}>${x}</option>`).join('')}
@@ -6078,10 +6079,26 @@ async function saveCloudAccount(existing=null){
      </div>
      <div class="modal-actions"><button class="btn primary" id="cloudAccSave" type="button">${existing?'Save Changes':'Add Account'}</button></div>`);
 
-  const typeEl=q('#cloudAccType'),subEl=q('#cloudAccSub'),cfEl=q('#cloudAccCF');
+  const typeEl=q('#cloudAccType'),subEl=q('#cloudAccSub'),cfEl=q('#cloudAccCF'),parentEl=q('#cloudAccParent');
+  const refreshParents=()=>{
+    const descendants=new Set();
+    let pending=existing?.id?[existing.id]:[];
+    while(pending.length){
+      const id=pending.shift();
+      if(descendants.has(id))continue;
+      descendants.add(id);
+      pending.push(...(state.accounts||[]).filter(a=>a.parentId===id).map(a=>a.id));
+    }
+    const options=(state.accounts||[]).filter(x=>x.active!==false&&x.type===typeEl.value&&!descendants.has(x.id))
+      .sort((a,b)=>a.name.localeCompare(b.name));
+    parentEl.innerHTML='<option value="">— No Parent —</option>'+options.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name)+'</option>').join('');
+    if(options.some(x=>x.id===a.parentId))parentEl.value=a.parentId;
+  };
+  refreshParents();
   typeEl.onchange=()=>{
     subEl.innerHTML=subtypeOptions(typeEl.value,'');
     cfEl.value=defaultCashFlow(typeEl.value,subEl.value);
+    refreshParents();
   };
   subEl.onchange=()=>{cfEl.value=defaultCashFlow(typeEl.value,subEl.value)};
 
@@ -6096,7 +6113,9 @@ async function saveCloudAccount(existing=null){
       const duplicate=(state.accounts||[]).find(x=>x.id!==existing?.id && normalized(x.name)===normalized(name));
       if(duplicate)throw new Error('An account with that name already exists.');
 
-      const row={company_id:cid,name,account_type:type,sub_type:sub,cash_flow_class:cf,is_active};
+      const parent_account_id=parentEl.value||null;
+      if(parent_account_id && !(state.accounts||[]).some(x=>x.id===parent_account_id&&x.type===type))throw new Error('Select a parent account of the same type.');
+      const row={company_id:cid,name,account_type:type,sub_type:sub,cash_flow_class:cf,is_active,parent_account_id};
       const result=existing
         ? await sb.from('accounts').update(row).eq('company_id',cid).eq('id',existing.id)
         : await sb.from('accounts').insert(row);
@@ -6363,7 +6382,7 @@ function renderCloudCoaActions(){
   if(!tbody)return;
   tbody.innerHTML=(state.accounts||[]).map(a=>`
     <tr>
-      <td><b>${esc(a.name)}</b></td>
+      <td style="padding-left:${a.parentId?'28px':'12px'}"><b>${esc(a.name)}</b>${a.parentId?'<small style="display:block;opacity:.65">Under '+esc((state.accounts||[]).find(x=>x.id===a.parentId)?.name||'Parent account')+'</small>':''}</td>
       <td>${esc(a.type)}</td>
       <td>${esc(a.sub)}</td>
       <td>${esc(a.cashflow)}</td>
