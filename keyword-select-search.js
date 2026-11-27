@@ -171,3 +171,76 @@ new MutationObserver(schedule).observe(document.documentElement,{childList:true,
 document.addEventListener('DOMContentLoaded',schedule);
 schedule();
 })();
+
+
+/* Chart of Accounts quick balances: fetch posted-journal totals in one RPC.
+   Read-only presentation enhancement; never modifies ledger data. */
+(function(){
+'use strict';
+const normalize=s=>String(s||'').trim().replace(/\s+/g,' ').toLowerCase();
+const client=()=>{try{return typeof sb!=='undefined'?sb:(window.sb||window.finsightSupabase||null)}catch{return null}};
+const company=()=>{try{
+ return String(typeof companyId!=='undefined'?companyId:(typeof state!=='undefined'?(state.companyId||state.company?.id):window.state?.companyId)||'');
+}catch{return ''}};
+const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+let pending=false,request=null,cache=null,cacheCompany='',cachedAt=0;
+function relevantRows(){
+ return [...document.querySelectorAll('tr')].filter(tr=>{
+   if(tr.cells.length<6||tr.closest('[data-fs-draft-ui]'))return false;
+   const buttons=[...tr.querySelectorAll('button,a')];
+   return buttons.some(x=>normalize(x.textContent)==='statement') &&
+      [...tr.cells].some(x=>normalize(x.textContent)==='loading...');
+ });
+}
+function balanceCell(tr){
+ const cells=[...tr.cells];
+ // The Chart of Accounts columns are: Account, Type, Subtype, Cash Flow, Balance, Status, Actions.
+ // Prefer the header index if it is present instead of a fixed column index.
+ const headers=[...(tr.closest('table')?.querySelectorAll('thead th')||[])].map(x=>normalize(x.textContent));
+ const col=headers.findIndex(x=>x==='balance'||x==='quick balance'||x==='current balance');
+ if(col>=0&&cells[col])return cells[col];
+ return cells.find(x=>normalize(x.textContent)==='loading...')||null;
+}
+function apply(rows){
+ const byName=new Map(),duplicates=new Set();
+ for(const a of rows){
+  const key=normalize(a.account_name);
+  if(byName.has(key))duplicates.add(key);
+  byName.set(key,a);
+ }
+ for(const tr of relevantRows()){
+   const name=normalize(tr.cells[0]?.textContent);
+   if(!name||duplicates.has(name))continue;
+   const account=byName.get(name),cell=balanceCell(tr);
+   if(!account||!cell||normalize(cell.textContent)!=='loading...')continue;
+   const numeric=Number(account.balance);
+   if(!Number.isFinite(numeric))continue;
+   cell.textContent=numeric.toLocaleString('en-KE',{minimumFractionDigits:2,maximumFractionDigits:2});
+   cell.dataset.fsFastBalance='1';
+ }
+}
+async function refresh(){
+ const rows=relevantRows();
+ if(!rows.length)return;
+ const id=company(),db=client();
+ if(!uuid.test(id)||!db?.rpc)return;
+ if(cache&&cacheCompany===id&&Date.now()-cachedAt<12000){apply(cache);return;}
+ if(request)return;
+ request=(async()=>{
+  const {data,error}=await db.rpc('fs_chart_account_balances_named',{p_company:id});
+  if(error)throw error;
+  if(company()!==id)return;
+  cache=Array.isArray(data)?data:[];cacheCompany=id;cachedAt=Date.now();
+  apply(cache);
+ })();
+ try{await request}catch(e){console.warn('Quick balance summary unavailable; normal balances remain in use.',e?.message||e);}
+ finally{request=null;}
+}
+function schedule(){if(pending)return;pending=true;setTimeout(()=>{pending=false;void refresh()},120);}
+new MutationObserver(records=>{
+ if(records.some(r=>(r.type==='characterData'&&r.target?.parentElement?.closest('tr'))||
+  [...r.addedNodes].some(n=>n.nodeType===1&&(n.matches?.('tr,td,tbody,table')||n.querySelector?.('tr')))))schedule();
+}).observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+document.addEventListener('DOMContentLoaded',schedule);
+schedule();
+})();
